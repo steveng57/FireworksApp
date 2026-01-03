@@ -14,7 +14,7 @@ public partial class MainWindow : Window
 
         CompositionTarget.Rendering += (_, _) =>
         {
-            Title = $"FireworksApp | Down:{DxView.MouseDownCount} Up:{DxView.MouseUpCount} Move:{DxView.MouseMoveCount} Wheel:{DxView.MouseWheelCount} SetCursor:{DxView.SetCursorCount}";
+            Title = $"FireworksApp | Down:{DxView.MouseDownCount} Up:{DxView.MouseUpCount} Move:{DxView.MouseMoveCount} Wheel:{DxView.MouseWheelCount} SetCursor:{DxView.SetCursorCount} Shells:{DxView.RendererSpawnCount}";
         };
     }
 }

@@ -25,6 +25,8 @@ public sealed class D3DHost : HwndHost
     public int MouseWheelCount { get; private set; }
     public int SetCursorCount { get; private set; }
 
+    public int RendererSpawnCount => _renderer?.ShellSpawnCount ?? 0;
+
     private const string WindowClassName = "FireworksApp.D3DHostWindow";
     private static ushort s_classAtom;
 
@@ -120,6 +122,13 @@ public sealed class D3DHost : HwndHost
 
         _renderer.Initialize(width, height);
 
+        // Basic input for simulation testing
+        var window = Window.GetWindow(this);
+        if (window != null)
+        {
+            window.KeyDown += OnWindowKeyDown;
+        }
+
         CompositionTarget.Rendering += OnRendering;
         _started = true;
     }
@@ -130,7 +139,23 @@ public sealed class D3DHost : HwndHost
             return;
 
         CompositionTarget.Rendering -= OnRendering;
+
+        var window = Window.GetWindow(this);
+        if (window != null)
+        {
+            window.KeyDown -= OnWindowKeyDown;
+        }
+
         _started = false;
+    }
+
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Space)
+        {
+            _renderer?.SpawnShell();
+            e.Handled = true;
+        }
     }
 
     
@@ -148,11 +173,13 @@ public sealed class D3DHost : HwndHost
     {
         const int WM_NCCREATE = 0x0081;
         const int WM_NCDESTROY = 0x0082;
+        const int WM_KEYDOWN = 0x0100;
         const int WM_LBUTTONDOWN = 0x0201;
         const int WM_LBUTTONUP = 0x0202;
         const int WM_MOUSEMOVE = 0x0200;
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_SETCURSOR = 0x0020;
+        const int VK_SPACE = 0x20;
 
         if (msg == WM_NCCREATE)
         {
@@ -168,6 +195,14 @@ public sealed class D3DHost : HwndHost
             {
                 switch ((int)msg)
                 {
+                    case WM_KEYDOWN:
+                        if ((int)wParam == VK_SPACE)
+                        {
+                            host._renderer?.SpawnShell();
+                            return IntPtr.Zero;
+                        }
+                        break;
+
                     case WM_SETCURSOR:
                         host.SetCursorCount++;
                         NativeMethods.SetCursor(NativeMethods.LoadCursor(IntPtr.Zero, NativeMethods.IDC_ARROW));
@@ -178,6 +213,7 @@ public sealed class D3DHost : HwndHost
                         host._isDragging = true;
                         host._lastMouse = GetMousePointFromLParam(lParam);
                         NativeMethods.SetCapture(hWnd);
+                        NativeMethods.SetFocus(hWnd);
                         return IntPtr.Zero;
 
                     case WM_LBUTTONUP:
@@ -326,6 +362,9 @@ public sealed class D3DHost : HwndHost
 
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetFocus(IntPtr hWnd);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct TRACKMOUSEEVENT

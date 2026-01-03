@@ -22,6 +22,8 @@ public struct PadVertex
     {
         Position = new Vector3(x, y, z);
     }
+
+    public int ShellSpawnCount { get; private set; }
 }
 
 public sealed class D3D11Renderer : IDisposable
@@ -53,6 +55,38 @@ public sealed class D3D11Renderer : IDisposable
     private ID3D11Buffer? _groundVB;
     private ID3D11Buffer? _sceneCB;
     private ID3D11Buffer? _lightingCB;
+    private ID3D11Buffer? _objectCB;
+
+    // Canister pipeline
+    private ID3D11VertexShader? _canisterVS;
+    private ID3D11PixelShader? _canisterPS;
+    private ID3D11InputLayout? _canisterInputLayout;
+    private ID3D11Buffer? _canisterVB;
+    private int _canisterVertexCount;
+
+    // Shell (firework) pipeline (reuse simple lit shader for now)
+    private ID3D11VertexShader? _shellVS;
+    private ID3D11PixelShader? _shellPS;
+    private ID3D11InputLayout? _shellInputLayout;
+    private ID3D11Buffer? _shellVB;
+    private int _shellVertexCount;
+
+    private readonly System.Collections.Generic.List<ShellState> _shells = new();
+    private long _lastTick;
+    private readonly System.Random _rng = new();
+
+    private Matrix4x4 _view;
+    private Matrix4x4 _proj;
+
+    public int ShellSpawnCount { get; private set; }
+
+    private struct ShellState
+    {
+        public Vector3 Position;
+        public Vector3 Velocity;
+        public float Age;
+        public bool Alive;
+    }
 
     // Simple orbit camera (around origin)
     private float _cameraYaw = 0.0f;
@@ -111,8 +145,13 @@ public sealed class D3D11Renderer : IDisposable
         SetViewport(width, height);
         LoadPadShadersAndGeometry();
         LoadGroundShadersAndGeometry();
+        LoadCanisterShadersAndGeometry();
+        LoadShellShaders();
+        CreateShellGeometry();
         CreateSceneConstants();
         UpdateSceneConstants();
+
+        _lastTick = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
     public void OnMouseDrag(float deltaX, float deltaY)
@@ -173,6 +212,9 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || _rtv is null || _swapChain is null)
             return;
 
+        float dt = GetDeltaTimeSeconds();
+        UpdateShells(dt);
+
         if (_cameraDirty)
         {
             UpdateSceneConstants();
@@ -205,8 +247,326 @@ public sealed class D3D11Renderer : IDisposable
         // Draw the simple launch pad
         DrawLaunchPad();
 
+        DrawCanister();
+
+        DrawShells();
+
         // Present
         _swapChain.Present(1, PresentFlags.None);
+    }
+
+    private void CreateShellGeometry()
+    {
+        if (_device is null)
+            return;
+
+        // Debug visibility: make the shell larger for now.
+        // Physical will be smaller later (5cm diameter => radius 0.025m).
+        const float radius = 0.10f;
+        const int slices = 16;
+        const int stacks = 12;
+
+        var verts = new System.Collections.Generic.List<GroundVertex>(slices * stacks * 6);
+
+        for (int stack = 0; stack < stacks; stack++)
+        {
+            float v0 = (float)stack / stacks;
+            float v1 = (float)(stack + 1) / stacks;
+            float phi0 = (float)(v0 * System.Math.PI);
+            float phi1 = (float)(v1 * System.Math.PI);
+
+            for (int slice = 0; slice < slices; slice++)
+            {
+                float u0 = (float)slice / slices;
+                float u1 = (float)(slice + 1) / slices;
+                float theta0 = (float)(u0 * System.Math.PI * 2.0);
+                float theta1 = (float)(u1 * System.Math.PI * 2.0);
+
+                Vector3 p00 = Spherical(radius, theta0, phi0);
+                Vector3 p10 = Spherical(radius, theta0, phi1);
+                Vector3 p01 = Spherical(radius, theta1, phi0);
+                Vector3 p11 = Spherical(radius, theta1, phi1);
+
+                Vector3 n00 = Vector3.Normalize(p00);
+                Vector3 n10 = Vector3.Normalize(p10);
+                Vector3 n01 = Vector3.Normalize(p01);
+                Vector3 n11 = Vector3.Normalize(p11);
+
+                verts.Add(new GroundVertex(p00, n00));
+                verts.Add(new GroundVertex(p10, n10));
+                verts.Add(new GroundVertex(p11, n11));
+
+                verts.Add(new GroundVertex(p00, n00));
+                verts.Add(new GroundVertex(p11, n11));
+                verts.Add(new GroundVertex(p01, n01));
+            }
+        }
+
+        _shellVertexCount = verts.Count;
+        int stride = Marshal.SizeOf<GroundVertex>();
+
+        _shellVB?.Dispose();
+        _shellVB = _device.CreateBuffer(
+            verts.ToArray(),
+            new BufferDescription
+            {
+                BindFlags = BindFlags.VertexBuffer,
+                Usage = ResourceUsage.Default,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = (uint)(stride * verts.Count),
+                StructureByteStride = (uint)stride
+            });
+    }
+
+    private static Vector3 Spherical(float r, float theta, float phi)
+    {
+        float sinPhi = (float)System.Math.Sin(phi);
+        float x = r * (float)(System.Math.Cos(theta) * sinPhi);
+        float y = r * (float)System.Math.Cos(phi);
+        float z = r * (float)(System.Math.Sin(theta) * sinPhi);
+        return new Vector3(x, y, z);
+    }
+
+    private float GetDeltaTimeSeconds()
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        long prev = _lastTick;
+        _lastTick = now;
+        double dt = (now - prev) / (double)System.Diagnostics.Stopwatch.Frequency;
+        if (dt < 0.0) dt = 0.0;
+        if (dt > 0.05) dt = 0.05; // clamp to avoid big jumps
+        return (float)dt;
+    }
+
+    private void UpdateShells(float dt)
+    {
+        if (dt <= 0)
+            return;
+
+        Vector3 gravity = new(0.0f, -9.81f, 0.0f);
+
+        for (int i = 0; i < _shells.Count; i++)
+        {
+            var s = _shells[i];
+            if (!s.Alive)
+                continue;
+
+            s.Velocity += gravity * dt;
+            s.Position += s.Velocity * dt;
+            s.Age += dt;
+
+            // kill if it hits the ground or too old (placeholder)
+            if (s.Position.Y <= 0.0f || s.Age > 20.0f)
+            {
+                s.Alive = false;
+            }
+
+            _shells[i] = s;
+        }
+    }
+
+    public void SpawnShell()
+    {
+        // Spawn at canister mouth (center of pad)
+        Vector3 spawn = new(0.0f, 0.30f, 0.0f);
+
+        // Choose desired apex height in meters
+        float apex = 150.0f + (float)_rng.NextDouble() * 50.0f; // 150-200
+        float vy = (float)System.Math.Sqrt(2.0 * 9.81 * apex);
+
+        // Small random deviation from vertical (radians)
+        float maxAngle = (float)(5.0 * System.Math.PI / 180.0); // 5 degrees
+        float yaw = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
+        float pitch = (float)(_rng.NextDouble() * maxAngle);
+        float sinP = (float)System.Math.Sin(pitch);
+        float cosP = (float)System.Math.Cos(pitch);
+
+        Vector3 dir = new(
+            sinP * (float)System.Math.Cos(yaw),
+            cosP,
+            sinP * (float)System.Math.Sin(yaw));
+
+        // Scale so vertical component matches vy
+        float speed = vy / System.Math.Max(0.001f, dir.Y);
+        Vector3 vel = dir * speed;
+
+        _shells.Add(new ShellState { Position = spawn, Velocity = vel, Age = 0.0f, Alive = true });
+    }
+
+    private void DrawShells()
+    {
+        if (_context is null || _shellVB is null || _shellVS is null || _shellPS is null || _shellInputLayout is null)
+            return;
+
+        int stride = Marshal.SizeOf<GroundVertex>();
+        uint[] strides = new[] { (uint)stride };
+        uint[] offsets = new[] { 0u };
+
+        _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        _context.IASetInputLayout(_shellInputLayout);
+        _context.IASetVertexBuffers(0, 1, new[] { _shellVB }, strides, offsets);
+
+        _context.VSSetShader(_shellVS);
+        _context.PSSetShader(_shellPS);
+
+        for (int i = 0; i < _shells.Count; i++)
+        {
+            var s = _shells[i];
+            if (!s.Alive)
+                continue;
+
+            var world = Matrix4x4.CreateTranslation(s.Position);
+            var wvp = Matrix4x4.Transpose(world * _view * _proj);
+
+            if (_objectCB != null)
+            {
+                var obj = new SceneCBData { WorldViewProjection = wvp, World = Matrix4x4.Transpose(world) };
+                var mapped = _context.Map(_objectCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                Marshal.StructureToPtr(obj, mapped.DataPointer, false);
+                _context.Unmap(_objectCB, 0);
+                _context.VSSetConstantBuffer(0, _objectCB);
+            }
+            _context.Draw((uint)_shellVertexCount, 0);
+        }
+
+        // Restore scene constants for subsequent draws
+        if (_sceneCB != null)
+        {
+            _context.VSSetConstantBuffer(0, _sceneCB);
+        }
+    }
+
+    private void LoadShellShaders()
+    {
+        if (_device is null)
+            return;
+
+        string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Shell.hlsl");
+        string source = File.ReadAllText(shaderPath);
+
+        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = Compiler.Compile(source, "PSMain", shaderPath, "ps_5_0");
+        byte[] vsBytes = vsBlob.ToArray();
+        byte[] psBytes = psBlob.ToArray();
+
+        _shellVS = _device.CreateVertexShader(vsBytes);
+        _shellPS = _device.CreatePixelShader(psBytes);
+
+        var elements = new[]
+        {
+            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0)
+        };
+        _shellInputLayout = _device.CreateInputLayout(elements, vsBytes);
+    }
+
+    private void LoadCanisterShadersAndGeometry()
+    {
+        if (_device is null)
+            return;
+
+        string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Canister.hlsl");
+        string source = File.ReadAllText(shaderPath);
+
+        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = Compiler.Compile(source, "PSMain", shaderPath, "ps_5_0");
+        byte[] vsBytes = vsBlob.ToArray();
+        byte[] psBytes = psBlob.ToArray();
+
+        _canisterVS = _device.CreateVertexShader(vsBytes);
+        _canisterPS = _device.CreatePixelShader(psBytes);
+
+        var elements = new[]
+        {
+            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0)
+        };
+        _canisterInputLayout = _device.CreateInputLayout(elements, vsBytes);
+
+        // Cylinder dimensions (meters)
+        const float radius = 0.075f; // 15cm diameter
+        const float height = 0.30f;  // 30cm tall
+        const int slices = 32;
+
+        var verts = new System.Collections.Generic.List<GroundVertex>(slices * 6);
+
+        const float padThickness = 0.10f;
+        float y0 = padThickness;
+        float y1 = padThickness + height;
+
+        for (int i = 0; i < slices; i++)
+        {
+            float a0 = (float)(i * (System.Math.PI * 2.0) / slices);
+            float a1 = (float)((i + 1) * (System.Math.PI * 2.0) / slices);
+
+            float c0 = (float)System.Math.Cos(a0);
+            float s0 = (float)System.Math.Sin(a0);
+            float c1 = (float)System.Math.Cos(a1);
+            float s1 = (float)System.Math.Sin(a1);
+
+            var p00 = new Vector3(radius * c0, y0, radius * s0);
+            var p01 = new Vector3(radius * c1, y0, radius * s1);
+            var p10 = new Vector3(radius * c0, y1, radius * s0);
+            var p11 = new Vector3(radius * c1, y1, radius * s1);
+
+            var n0 = Vector3.Normalize(new Vector3(c0, 0.0f, s0));
+            var n1 = Vector3.Normalize(new Vector3(c1, 0.0f, s1));
+
+            // Side quad (two triangles)
+            verts.Add(new GroundVertex(p00, n0));
+            verts.Add(new GroundVertex(p10, n0));
+            verts.Add(new GroundVertex(p11, n1));
+
+            verts.Add(new GroundVertex(p00, n0));
+            verts.Add(new GroundVertex(p11, n1));
+            verts.Add(new GroundVertex(p01, n1));
+        }
+
+        _canisterVertexCount = verts.Count;
+
+        int stride = Marshal.SizeOf<GroundVertex>();
+        _canisterVB?.Dispose();
+        _canisterVB = _device.CreateBuffer(
+            verts.ToArray(),
+            new BufferDescription
+            {
+                BindFlags = BindFlags.VertexBuffer,
+                Usage = ResourceUsage.Default,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = (uint)(stride * verts.Count),
+                StructureByteStride = (uint)stride
+            });
+    }
+
+    private void DrawCanister()
+    {
+        if (_context is null || _canisterVS is null || _canisterPS is null || _canisterVB is null || _canisterInputLayout is null)
+            return;
+
+        int stride = Marshal.SizeOf<GroundVertex>();
+        uint[] strides = new[] { (uint)stride };
+        uint[] offsets = new[] { 0u };
+        var buffers = new[] { _canisterVB };
+
+        _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        _context.IASetInputLayout(_canisterInputLayout);
+        _context.IASetVertexBuffers(0, 1, buffers, strides, offsets);
+
+        _context.VSSetShader(_canisterVS);
+        _context.PSSetShader(_canisterPS);
+
+        if (_sceneCB != null)
+        {
+            _context.VSSetConstantBuffer(0, _sceneCB);
+        }
+        if (_lightingCB != null)
+        {
+            _context.PSSetConstantBuffer(1, _lightingCB);
+        }
+
+        _context.Draw((uint)_canisterVertexCount, 0);
     }
 
     private void CreateDeviceAndSwapChain(int width, int height)
@@ -316,6 +676,15 @@ public sealed class D3D11Renderer : IDisposable
             CPUAccessFlags = CpuAccessFlags.Write,
             ByteWidth = (uint)Marshal.SizeOf<LightingCBData>()
         });
+
+        _objectCB?.Dispose();
+        _objectCB = _device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<SceneCBData>()
+        });
     }
 
     private void UpdateSceneConstants()
@@ -338,13 +707,14 @@ public sealed class D3D11Renderer : IDisposable
         var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistance;
         var eye = target + eyeOffset;
 
-        var view = Matrix4x4.CreateLookAt(eye, target, up);
-        var proj = Matrix4x4.CreatePerspectiveFieldOfView((float)(System.Math.PI / 4.0), aspect, 0.1f, 500.0f);
+        _view = Matrix4x4.CreateLookAt(eye, target, up);
+        // Use clip planes suitable for ~500m fireworks scenes.
+        _proj = Matrix4x4.CreatePerspectiveFieldOfView((float)(System.Math.PI / 4.0), aspect, 1.0f, 2000.0f);
         var world = Matrix4x4.Identity;
 
         // HLSL expects column-major by default; System.Numerics uses row-major.
         // Transpose so mul(position, WorldViewProjection) matches.
-        var wvp = Matrix4x4.Transpose(world * view * proj);
+        var wvp = Matrix4x4.Transpose(world * _view * _proj);
 
         var scene = new SceneCBData
         {
@@ -458,18 +828,54 @@ public sealed class D3D11Renderer : IDisposable
             DepthClipEnable = true
         });
 
-        // --- Create a 20m x 20m quad on the ground (XZ plane, Y=0) ---
-        // Two triangles making a rectangle centered at origin.
+        // --- Create a 20m x 20m pad with 10cm thickness (a simple box) ---
         const float half = 10.0f;
+        const float thickness = 0.10f;
+        float y0 = 0.0f;
+        float y1 = thickness;
+
+        // Top face + 4 sides (no bottom, since it sits on ground)
         PadVertex[] verts =
         {
-            new PadVertex(-half, 0.0f, -half),
-            new PadVertex( half, 0.0f, -half),
-            new PadVertex(-half, 0.0f,  half),
+            // Top (y1)
+            new PadVertex(-half, y1, -half),
+            new PadVertex( half, y1, -half),
+            new PadVertex(-half, y1,  half),
+            new PadVertex( half, y1, -half),
+            new PadVertex( half, y1,  half),
+            new PadVertex(-half, y1,  half),
 
-            new PadVertex( half, 0.0f, -half),
-            new PadVertex( half, 0.0f,  half),
-            new PadVertex(-half, 0.0f,  half),
+            // +Z side (front)
+            new PadVertex(-half, y0,  half),
+            new PadVertex( half, y0,  half),
+            new PadVertex(-half, y1,  half),
+            new PadVertex( half, y0,  half),
+            new PadVertex( half, y1,  half),
+            new PadVertex(-half, y1,  half),
+
+            // -Z side (back)
+            new PadVertex( half, y0, -half),
+            new PadVertex(-half, y0, -half),
+            new PadVertex( half, y1, -half),
+            new PadVertex(-half, y0, -half),
+            new PadVertex(-half, y1, -half),
+            new PadVertex( half, y1, -half),
+
+            // +X side (right)
+            new PadVertex( half, y0,  half),
+            new PadVertex( half, y0, -half),
+            new PadVertex( half, y1,  half),
+            new PadVertex( half, y0, -half),
+            new PadVertex( half, y1, -half),
+            new PadVertex( half, y1,  half),
+
+            // -X side (left)
+            new PadVertex(-half, y0, -half),
+            new PadVertex(-half, y0,  half),
+            new PadVertex(-half, y1, -half),
+            new PadVertex(-half, y0,  half),
+            new PadVertex(-half, y1,  half),
+            new PadVertex(-half, y1, -half),
         };
 
         int stride = Marshal.SizeOf<PadVertex>();
@@ -611,11 +1017,22 @@ public sealed class D3D11Renderer : IDisposable
         }
 
         // No special blending/depth yet
-        _context.Draw(6, 0);
+        _context.Draw(30, 0);
     }
 
     public void Dispose()
     {
+        _shellInputLayout?.Dispose();
+        _shellInputLayout = null;
+
+        _shellVS?.Dispose();
+        _shellVS = null;
+
+        _shellPS?.Dispose();
+        _shellPS = null;
+
+        _objectCB?.Dispose();
+        _objectCB = null;
         _depthStencilState?.Dispose();
         _depthStencilState = null;
 
