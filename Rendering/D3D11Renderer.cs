@@ -23,6 +23,8 @@ public struct PadVertex
         Position = new Vector3(x, y, z);
     }
 
+// ...existing code...
+
     public int ShellSpawnCount { get; private set; }
 }
 
@@ -75,6 +77,21 @@ public sealed class D3D11Renderer : IDisposable
     private long _lastTick;
     private readonly System.Random _rng = new();
 
+    // GPU particles (sparks)
+    private ID3D11Buffer? _particleBuffer;
+    private ID3D11Buffer? _particleUploadBuffer;
+    private ID3D11ShaderResourceView? _particleSRV;
+    private ID3D11UnorderedAccessView? _particleUAV;
+    private ID3D11ComputeShader? _particlesCS;
+    private ID3D11VertexShader? _particlesVS;
+    private ID3D11PixelShader? _particlesPS;
+    private ID3D11BlendState? _blendAdditive;
+    private ID3D11BlendState? _blendAlpha;
+    private ID3D11DepthStencilState? _depthReadNoWrite;
+    private ID3D11Buffer? _frameCB;
+    private int _particleCapacity = 2097152;
+    private int _particleWriteCursor;
+
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
@@ -85,7 +102,41 @@ public sealed class D3D11Renderer : IDisposable
         public Vector3 Position;
         public Vector3 Velocity;
         public float Age;
+        public float Fuse;
         public bool Alive;
+        public bool Bursted;
+    }
+
+    private enum ParticleKind : uint
+    {
+        Dead = 0,
+        Shell = 1,
+        Spark = 2,
+        Smoke = 3
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GpuParticle
+    {
+        public Vector3 Position;
+        public Vector3 Velocity;
+        public float Age;
+        public float Lifetime;
+        public Vector4 Color;
+        public uint Kind;
+        public uint _pad0;
+        public uint _pad1;
+        public uint _pad2;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FrameCBData
+    {
+        public Matrix4x4 ViewProjection;
+        public Vector3 CameraRightWS;
+        public float DeltaTime;
+        public Vector3 CameraUpWS;
+        public float Time;
     }
 
     // Simple orbit camera (around origin)
@@ -93,6 +144,8 @@ public sealed class D3D11Renderer : IDisposable
     private float _cameraPitch = 0.55f;
     private float _cameraDistance = 35.0f;
     private bool _cameraDirty = true;
+
+    private Vector3 _cameraTarget = Vector3.Zero;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SceneCBData
@@ -151,6 +204,8 @@ public sealed class D3D11Renderer : IDisposable
         CreateSceneConstants();
         UpdateSceneConstants();
 
+        CreateParticleSystem();
+
         _lastTick = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
@@ -170,7 +225,21 @@ public sealed class D3D11Renderer : IDisposable
     {
         // WPF delta is typically 120 per notch
         _cameraDistance *= (float)System.Math.Pow(0.9, delta / 120.0);
-        _cameraDistance = System.Math.Clamp(_cameraDistance, 5.0f, 200.0f);
+        _cameraDistance = System.Math.Clamp(_cameraDistance, 5.0f, 300.0f);
+        _cameraDirty = true;
+    }
+
+    public void PanCamera(float deltaX, float deltaY)
+    {
+        // World-units per pixel (tune later). Scale by distance so panning feels consistent.
+        float k = 0.0025f * _cameraDistance;
+
+        // Right and up vectors from current view matrix (world-space).
+        // view is orthonormal: right = (M11,M21,M31), up=(M12,M22,M32)
+        var right = new Vector3(_view.M11, _view.M21, _view.M31);
+        var up = new Vector3(_view.M12, _view.M22, _view.M32);
+
+        _cameraTarget += (-right * deltaX + up * deltaY) * k;
         _cameraDirty = true;
     }
 
@@ -214,6 +283,7 @@ public sealed class D3D11Renderer : IDisposable
 
         float dt = GetDeltaTimeSeconds();
         UpdateShells(dt);
+        UpdateParticles(dt);
 
         if (_cameraDirty)
         {
@@ -250,6 +320,9 @@ public sealed class D3D11Renderer : IDisposable
         DrawCanister();
 
         DrawShells();
+
+        DrawParticles(additive: true);
+        DrawParticles(additive: false);
 
         // Present
         _swapChain.Present(1, PresentFlags.None);
@@ -352,9 +425,26 @@ public sealed class D3D11Renderer : IDisposable
             if (!s.Alive)
                 continue;
 
+            float prevVy = s.Velocity.Y;
+
             s.Velocity += gravity * dt;
             s.Position += s.Velocity * dt;
             s.Age += dt;
+
+            // Burst trigger: apex (vy crosses 0) OR fuse timer.
+            bool crossedApex = (prevVy > 0.0f && s.Velocity.Y <= 0.0f);
+            bool fuseExpired = (s.Age >= s.Fuse);
+            if (!s.Bursted && (crossedApex || fuseExpired))
+            {
+                SpawnBurst(s.Position, RandomBurstColor(), count: 6000);
+                s.Bursted = true;
+
+                // IMPORTANT: shells are purely a launcher; after bursting they should not be
+                // subject to further lifetime/ground-kill logic in this pass.
+                s.Alive = false;
+                _shells[i] = s;
+                continue;
+            }
 
             // kill if it hits the ground or too old (placeholder)
             if (s.Position.Y <= 0.0f || s.Age > 20.0f)
@@ -391,7 +481,334 @@ public sealed class D3D11Renderer : IDisposable
         float speed = vy / System.Math.Max(0.001f, dir.Y);
         Vector3 vel = dir * speed;
 
-        _shells.Add(new ShellState { Position = spawn, Velocity = vel, Age = 0.0f, Alive = true });
+        // Fuse is a backup in case numerical conditions miss apex.
+        float fuse = 3.0f + (float)_rng.NextDouble() * 2.0f;
+        _shells.Add(new ShellState { Position = spawn, Velocity = vel, Age = 0.0f, Fuse = fuse, Alive = true, Bursted = false });
+    }
+
+    private Vector4 RandomBurstColor()
+    {
+        // gold, blue, red, green, magenta, white
+        return _rng.Next(6) switch
+        {
+            0 => new Vector4(1.0f, 0.80f, 0.25f, 1.0f),
+            1 => new Vector4(0.25f, 0.55f, 1.00f, 1.0f),
+            2 => new Vector4(1.00f, 0.20f, 0.15f, 1.0f),
+            3 => new Vector4(0.20f, 1.00f, 0.35f, 1.0f),
+            4 => new Vector4(1.00f, 0.20f, 1.00f, 1.0f),
+            _ => new Vector4(1.00f, 1.00f, 1.00f, 1.0f)
+        };
+    }
+
+    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
+    {
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        count = System.Math.Clamp(count, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            float u = (float)_rng.NextDouble();
+            float speed = 6.0f + (u * u) * 12.0f;
+            Vector3 vel = dir * speed;
+
+            float lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+
+            staging[i] = new GpuParticle
+            {
+                Position = position,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = baseColor,
+                Kind = (uint)ParticleKind.Spark
+            };
+        }
+
+        // Write into a rotating region. Wrap with a split update when needed.
+        // Use `Map` + memcpy because Vortice's `UpdateSubresource` overloads vary by version.
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
+    }
+
+    private Vector3 RandomUnitVector()
+    {
+        // Uniform on sphere
+        float z = (float)(_rng.NextDouble() * 2.0 - 1.0);
+        float a = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
+        float r = (float)System.Math.Sqrt(System.Math.Max(0.0, 1.0 - z * z));
+        return new Vector3(r * (float)System.Math.Cos(a), z, r * (float)System.Math.Sin(a));
+    }
+
+    private void CreateParticleSystem()
+    {
+        if (_device is null)
+            return;
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+
+        _particleBuffer?.Dispose();
+        _particleUploadBuffer?.Dispose();
+        _particleSRV?.Dispose();
+        _particleUAV?.Dispose();
+        _particlesCS?.Dispose();
+        _particlesVS?.Dispose();
+        _particlesPS?.Dispose();
+        _blendAdditive?.Dispose();
+        _blendAlpha?.Dispose();
+        _depthReadNoWrite?.Dispose();
+        _frameCB?.Dispose();
+
+        // Init dead particles.
+        var init = new GpuParticle[_particleCapacity];
+        for (int i = 0; i < init.Length; i++)
+        {
+            init[i].Kind = (uint)ParticleKind.Dead;
+            init[i].Color = Vector4.Zero;
+        }
+
+        _particleBuffer = _device.CreateBuffer(
+            init,
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
+                Usage = ResourceUsage.Default,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.BufferStructured,
+                ByteWidth = (uint)(stride * _particleCapacity),
+                StructureByteStride = (uint)stride
+            });
+
+        _particleUploadBuffer = _device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(stride * _particleCapacity),
+            StructureByteStride = (uint)stride
+        });
+
+        _particleSRV = _device.CreateShaderResourceView(_particleBuffer, new ShaderResourceViewDescription
+        {
+            ViewDimension = ShaderResourceViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferShaderResourceView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_particleCapacity
+            }
+        });
+
+        _particleUAV = _device.CreateUnorderedAccessView(_particleBuffer, new UnorderedAccessViewDescription
+        {
+            ViewDimension = UnorderedAccessViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferUnorderedAccessView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_particleCapacity
+            }
+        });
+
+        string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
+        string source = File.ReadAllText(shaderPath);
+
+        var csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
+        var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
+        var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
+
+        byte[] csBytes = csBlob.ToArray();
+        byte[] vsBytes = vsBlob.ToArray();
+        byte[] psBytes = psBlob.ToArray();
+
+        _particlesCS = _device.CreateComputeShader(csBytes);
+        _particlesVS = _device.CreateVertexShader(vsBytes);
+        _particlesPS = _device.CreatePixelShader(psBytes);
+
+        _frameCB = _device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<FrameCBData>()
+        });
+
+        _blendAdditive = _device.CreateBlendState(new BlendDescription
+        {
+            AlphaToCoverageEnable = false,
+            IndependentBlendEnable = false,
+            RenderTarget =
+            {
+                [0] = new RenderTargetBlendDescription
+                {
+                    BlendEnable = true,
+                    SourceBlend = Blend.One,
+                    DestinationBlend = Blend.One,
+                    BlendOperation = BlendOperation.Add,
+                    SourceBlendAlpha = Blend.One,
+                    DestinationBlendAlpha = Blend.One,
+                    BlendOperationAlpha = BlendOperation.Add,
+                    RenderTargetWriteMask = ColorWriteEnable.All
+                }
+            }
+        });
+
+        _blendAlpha = _device.CreateBlendState(new BlendDescription
+        {
+            AlphaToCoverageEnable = false,
+            IndependentBlendEnable = false,
+            RenderTarget =
+            {
+                [0] = new RenderTargetBlendDescription
+                {
+                    BlendEnable = true,
+                    SourceBlend = Blend.SourceAlpha,
+                    DestinationBlend = Blend.InverseSourceAlpha,
+                    BlendOperation = BlendOperation.Add,
+                    SourceBlendAlpha = Blend.One,
+                    DestinationBlendAlpha = Blend.InverseSourceAlpha,
+                    BlendOperationAlpha = BlendOperation.Add,
+                    RenderTargetWriteMask = ColorWriteEnable.All
+                }
+            }
+        });
+
+        _depthReadNoWrite = _device.CreateDepthStencilState(new DepthStencilDescription
+        {
+            DepthEnable = true,
+            DepthWriteMask = DepthWriteMask.Zero,
+            DepthFunc = ComparisonFunction.LessEqual,
+            StencilEnable = false
+        });
+    }
+
+    private void UpdateParticles(float dt)
+    {
+        if (_context is null || _particlesCS is null || _particleUAV is null || _frameCB is null)
+            return;
+
+        // Camera basis from view matrix (world-space).
+        // view is orthonormal: right = (M11,M21,M31), up=(M12,M22,M32)
+        var right = new Vector3(_view.M11, _view.M21, _view.M31);
+        var up = new Vector3(_view.M12, _view.M22, _view.M32);
+
+        var vp = Matrix4x4.Transpose(_view * _proj);
+
+        var frame = new FrameCBData
+        {
+            ViewProjection = vp,
+            CameraRightWS = right,
+            DeltaTime = dt,
+            CameraUpWS = up,
+            Time = (float)(Environment.TickCount64 / 1000.0)
+        };
+
+        var mapped = _context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        Marshal.StructureToPtr(frame, mapped.DataPointer, false);
+        _context.Unmap(_frameCB, 0);
+
+        _context.CSSetShader(_particlesCS);
+        _context.CSSetConstantBuffer(0, _frameCB);
+        _context.CSSetUnorderedAccessView(0, _particleUAV);
+
+        uint groups = (uint)((_particleCapacity + 255) / 256);
+        _context.Dispatch(groups, 1, 1);
+
+        // Unbind UAV to avoid hazards with SRV on draw.
+        _context.CSSetUnorderedAccessView(0, null);
+        _context.CSSetShader(null);
+    }
+
+    private void DrawParticles(bool additive)
+    {
+        if (_context is null || _particlesVS is null || _particlesPS is null || _particleSRV is null || _frameCB is null)
+            return;
+
+        _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        _context.IASetInputLayout(null);
+        _context.IASetVertexBuffers(0, 0, Array.Empty<ID3D11Buffer>(), Array.Empty<uint>(), Array.Empty<uint>());
+
+        _context.OMSetDepthStencilState(_depthReadNoWrite, 0);
+        _context.OMSetBlendState(additive ? _blendAdditive : _blendAlpha, new Color4(0, 0, 0, 0), uint.MaxValue);
+
+        _context.VSSetShader(_particlesVS);
+        _context.PSSetShader(_particlesPS);
+
+        _context.VSSetConstantBuffer(0, _frameCB);
+        _context.VSSetShaderResource(0, _particleSRV);
+
+        // Pass 1: additive (bright). Pass 2: alpha (embers). Shader currently outputs same color;
+        // we split passes to match desired blend modes.
+        _context.Draw((uint)(_particleCapacity * 6), 0);
+
+        _context.VSSetShaderResource(0, null);
+        _context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);
+        _context.OMSetDepthStencilState(_depthStencilState, 0);
     }
 
     private void DrawShells()
@@ -694,8 +1111,6 @@ public sealed class D3D11Renderer : IDisposable
 
         float aspect = _height > 0 ? (float)_width / _height : 1.0f;
 
-        // Orbit camera around the origin (pad center)
-        var target = Vector3.Zero;
         var up = Vector3.UnitY;
 
         float cy = (float)System.Math.Cos(_cameraYaw);
@@ -705,6 +1120,8 @@ public sealed class D3D11Renderer : IDisposable
 
         // Spherical coordinates: forward is +Z
         var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistance;
+
+        var target = _cameraTarget;
         var eye = target + eyeOffset;
 
         _view = Matrix4x4.CreateLookAt(eye, target, up);
@@ -1022,6 +1439,39 @@ public sealed class D3D11Renderer : IDisposable
 
     public void Dispose()
     {
+        _particleUploadBuffer?.Dispose();
+        _particleUploadBuffer = null;
+
+        _particleSRV?.Dispose();
+        _particleSRV = null;
+
+        _particleUAV?.Dispose();
+        _particleUAV = null;
+
+        _particleBuffer?.Dispose();
+        _particleBuffer = null;
+
+        _particlesCS?.Dispose();
+        _particlesCS = null;
+
+        _particlesVS?.Dispose();
+        _particlesVS = null;
+
+        _particlesPS?.Dispose();
+        _particlesPS = null;
+
+        _blendAdditive?.Dispose();
+        _blendAdditive = null;
+
+        _blendAlpha?.Dispose();
+        _blendAlpha = null;
+
+        _depthReadNoWrite?.Dispose();
+        _depthReadNoWrite = null;
+
+        _frameCB?.Dispose();
+        _frameCB = null;
+
         _shellInputLayout?.Dispose();
         _shellInputLayout = null;
 

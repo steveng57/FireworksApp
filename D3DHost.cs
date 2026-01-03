@@ -13,10 +13,14 @@ namespace FireworksApp;
 /// </summary>
 public sealed class D3DHost : HwndHost
 {
+    private Point _lastMousePos;
+    private bool _panning;
+
     private IntPtr _hwnd;
     private D3D11Renderer? _renderer;
     private bool _started;
     private bool _isDragging;
+    private bool _isPanning;
     private Point _lastMouse;
 
     public int MouseMoveCount { get; private set; }
@@ -31,6 +35,18 @@ public sealed class D3DHost : HwndHost
     private static ushort s_classAtom;
 
     private static readonly NativeMethods.WndProc s_wndProc = ChildWndProc;
+
+    public D3DHost()
+    {
+        Focusable = true;
+
+        MouseDown += OnMouseDown;
+        MouseUp += OnMouseUp;
+        MouseMove += OnMouseMove;
+        MouseWheel += OnMouseWheel;
+
+        CompositionTarget.Rendering += OnRendering;
+    }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
@@ -124,10 +140,7 @@ public sealed class D3DHost : HwndHost
 
         // Basic input for simulation testing
         var window = Window.GetWindow(this);
-        if (window != null)
-        {
-            window.KeyDown += OnWindowKeyDown;
-        }
+        window?.KeyDown += OnWindowKeyDown;
 
         CompositionTarget.Rendering += OnRendering;
         _started = true;
@@ -141,10 +154,7 @@ public sealed class D3DHost : HwndHost
         CompositionTarget.Rendering -= OnRendering;
 
         var window = Window.GetWindow(this);
-        if (window != null)
-        {
-            window.KeyDown -= OnWindowKeyDown;
-        }
+        window?.KeyDown -= OnWindowKeyDown;
 
         _started = false;
     }
@@ -157,8 +167,6 @@ public sealed class D3DHost : HwndHost
             e.Handled = true;
         }
     }
-
-    
 
     private static Point GetMousePointFromLParam(IntPtr lParam)
     {
@@ -176,6 +184,10 @@ public sealed class D3DHost : HwndHost
         const int WM_KEYDOWN = 0x0100;
         const int WM_LBUTTONDOWN = 0x0201;
         const int WM_LBUTTONUP = 0x0202;
+        const int WM_RBUTTONDOWN = 0x0204;
+        const int WM_RBUTTONUP = 0x0205;
+        const int WM_MBUTTONDOWN = 0x0207;
+        const int WM_MBUTTONUP = 0x0208;
         const int WM_MOUSEMOVE = 0x0200;
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_SETCURSOR = 0x0020;
@@ -211,6 +223,7 @@ public sealed class D3DHost : HwndHost
                     case WM_LBUTTONDOWN:
                         host.MouseDownCount++;
                         host._isDragging = true;
+                        host._isPanning = false;
                         host._lastMouse = GetMousePointFromLParam(lParam);
                         NativeMethods.SetCapture(hWnd);
                         NativeMethods.SetFocus(hWnd);
@@ -219,6 +232,25 @@ public sealed class D3DHost : HwndHost
                     case WM_LBUTTONUP:
                         host.MouseUpCount++;
                         host._isDragging = false;
+                        host._isPanning = false;
+                        NativeMethods.ReleaseCapture();
+                        return IntPtr.Zero;
+
+                    case WM_RBUTTONDOWN:
+                    case WM_MBUTTONDOWN:
+                        host.MouseDownCount++;
+                        host._isDragging = true;
+                        host._isPanning = true;
+                        host._lastMouse = GetMousePointFromLParam(lParam);
+                        NativeMethods.SetCapture(hWnd);
+                        NativeMethods.SetFocus(hWnd);
+                        return IntPtr.Zero;
+
+                    case WM_RBUTTONUP:
+                    case WM_MBUTTONUP:
+                        host.MouseUpCount++;
+                        host._isDragging = false;
+                        host._isPanning = false;
                         NativeMethods.ReleaseCapture();
                         return IntPtr.Zero;
 
@@ -230,7 +262,14 @@ public sealed class D3DHost : HwndHost
                             var dx = (float)(pos.X - host._lastMouse.X);
                             var dy = (float)(pos.Y - host._lastMouse.Y);
                             host._lastMouse = pos;
-                            host._renderer.OnMouseDrag(dx, dy);
+                            if (host._isPanning)
+                            {
+                                host._renderer.PanCamera(dx, dy);
+                            }
+                            else
+                            {
+                                host._renderer.OnMouseDrag(dx, dy);
+                            }
                         }
                         return IntPtr.Zero;
 
@@ -390,6 +429,56 @@ public sealed class D3DHost : HwndHost
                 dwHoverTime = 0
             };
             TrackMouseEvent(ref tme);
+        }
+    }
+
+    private void OnMouseMove(object sender, MouseEventArgs e)
+    {
+        Point p = e.GetPosition(this);
+        float dx = (float)(p.X - _lastMousePos.X);
+        float dy = (float)(p.Y - _lastMousePos.Y);
+        _lastMousePos = p;
+
+        if (_panning)
+        {
+            _renderer?.PanCamera(dx, dy);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            _renderer?.OnMouseDrag(dx, dy);
+            e.Handled = true;
+        }
+    }
+
+    private void OnMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        _renderer?.OnMouseWheel(e.Delta);
+        e.Handled = true;
+    }
+
+    private void OnMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        Focus();
+        _lastMousePos = e.GetPosition(this);
+
+        if (e.ChangedButton == MouseButton.Middle)
+        {
+            _panning = true;
+            CaptureMouse();
+            e.Handled = true;
+        }
+    }
+
+    private void OnMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle && _panning)
+        {
+            _panning = false;
+            ReleaseMouseCapture();
+            e.Handled = true;
         }
     }
 }
