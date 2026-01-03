@@ -92,6 +92,7 @@ public sealed class D3D11Renderer : IDisposable
     private ID3D11PixelShader? _particlesPS;
     private ID3D11BlendState? _blendAdditive;
     private ID3D11BlendState? _blendAlpha;
+    private ID3D11BlendState? _blendAlphaPremult;
     private ID3D11DepthStencilState? _depthReadNoWrite;
     private ID3D11Buffer? _frameCB;
     private int _particleCapacity = 2097152;
@@ -120,6 +121,9 @@ public sealed class D3D11Renderer : IDisposable
         Smoke = 3,
         Crackle = 4
     }
+
+    // Smoke tuning
+    private const float SmokeIntensity = 0.45f;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GpuParticle
@@ -150,6 +154,11 @@ public sealed class D3D11Renderer : IDisposable
         public float CrackleFlashSizeMul;
         public Vector3 CrackleFadeColor;
         public float CrackleTau;
+
+        public uint ParticlePass;
+        public uint _ppad0;
+        public uint _ppad1;
+        public uint _ppad2;
     }
 
     // Crackling spark tuning (world meters / HDR-ish colors)
@@ -467,6 +476,7 @@ public sealed class D3D11Renderer : IDisposable
             if (!s.Bursted && (crossedApex || fuseExpired))
             {
                 SpawnBurst(s.Position, RandomBurstColor(), count: 6000);
+                SpawnSmoke(s.Position);
                 s.Bursted = true;
 
                 // IMPORTANT: shells are purely a launcher; after bursting they should not be
@@ -484,6 +494,113 @@ public sealed class D3D11Renderer : IDisposable
 
             _shells[i] = s;
         }
+    }
+
+    private void SpawnSmoke(Vector3 burstCenter)
+    {
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        int count = _rng.Next(200, 601);
+        count = System.Math.Clamp(count, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+
+        // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
+        Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            Vector3 pos = burstCenter + dir * 0.5f;
+
+            float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
+            Vector3 outward = dir * outwardSpeed;
+
+            float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
+            Vector3 up = new(0.0f, upSpeed, 0.0f);
+
+            Vector3 vel = outward * 0.7f + up;
+
+            float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
+
+            staging[i] = new GpuParticle
+            {
+                Position = pos,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = startColor,
+                Kind = (uint)ParticleKind.Smoke,
+                _pad0 = (uint)_rng.Next(),
+                _pad1 = (uint)_rng.Next(),
+                _pad2 = (uint)_rng.Next()
+            };
+        }
+
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
@@ -771,6 +888,7 @@ public sealed class D3D11Renderer : IDisposable
         _particlesPS?.Dispose();
         _blendAdditive?.Dispose();
         _blendAlpha?.Dispose();
+        _blendAlphaPremult?.Dispose();
         _depthReadNoWrite?.Dispose();
         _frameCB?.Dispose();
 
@@ -793,6 +911,27 @@ public sealed class D3D11Renderer : IDisposable
                 ByteWidth = (uint)(stride * _particleCapacity),
                 StructureByteStride = (uint)stride
             });
+
+        // Premultiplied alpha for softer overlapping smoke (reduces visible quad edges).
+        _blendAlphaPremult = _device.CreateBlendState(new BlendDescription
+        {
+            AlphaToCoverageEnable = false,
+            IndependentBlendEnable = false,
+            RenderTarget =
+            {
+                [0] = new RenderTargetBlendDescription
+                {
+                    BlendEnable = true,
+                    SourceBlend = Blend.One,
+                    DestinationBlend = Blend.InverseSourceAlpha,
+                    BlendOperation = BlendOperation.Add,
+                    SourceBlendAlpha = Blend.One,
+                    DestinationBlendAlpha = Blend.InverseSourceAlpha,
+                    BlendOperationAlpha = BlendOperation.Add,
+                    RenderTargetWriteMask = ColorWriteEnable.All
+                }
+            }
+        });
 
         _particleUploadBuffer = _device.CreateBuffer(new BufferDescription
         {
@@ -923,7 +1062,10 @@ public sealed class D3D11Renderer : IDisposable
             CracklePeakColor = CracklePeakColor,
             CrackleFlashSizeMul = CrackleFlashSizeMul,
             CrackleFadeColor = CrackleFadeColor,
-            CrackleTau = CrackleTau
+            CrackleTau = CrackleTau,
+
+            // Default to additive pass unless overridden right before drawing.
+            ParticlePass = 0u
         };
 
         var mapped = _context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -947,11 +1089,56 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || _particlesVS is null || _particlesPS is null || _particleSRV is null || _frameCB is null)
             return;
 
+        // Mark the current particle render pass for the shader.
+        // 0 = additive (bright), 1 = alpha (smoke/embers)
+        var mappedPass = _context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            // ParticlePass is located after the existing data; do a full struct write to keep it simple.
+            // Rebuild the same data as UpdateParticles but keep DeltaTime = 0 here (not used in VS/PS).
+            var right = new Vector3(_view.M11, _view.M21, _view.M31);
+            var up = new Vector3(_view.M12, _view.M22, _view.M32);
+            var vp = Matrix4x4.Transpose(_view * _proj);
+
+            var frame = new FrameCBData
+            {
+                ViewProjection = vp,
+                CameraRightWS = right,
+                DeltaTime = 0.0f,
+                CameraUpWS = up,
+                Time = (float)(Environment.TickCount64 / 1000.0),
+
+                CrackleBaseColor = CrackleBaseColor,
+                CrackleBaseSize = CrackleBaseSize,
+                CracklePeakColor = CracklePeakColor,
+                CrackleFlashSizeMul = CrackleFlashSizeMul,
+                CrackleFadeColor = CrackleFadeColor,
+                CrackleTau = CrackleTau,
+
+                ParticlePass = additive ? 0u : 1u
+            };
+
+            Marshal.StructureToPtr(frame, mappedPass.DataPointer, false);
+        }
+        finally
+        {
+            _context.Unmap(_frameCB, 0);
+        }
+
         _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         _context.IASetInputLayout(null);
         _context.IASetVertexBuffers(0, 0, Array.Empty<ID3D11Buffer>(), Array.Empty<uint>(), Array.Empty<uint>());
 
-        _context.OMSetDepthStencilState(_depthReadNoWrite, 0);
+        // For additive sparks we keep depth read so particles sit in the scene.
+        // For alpha-blended smoke we disable depth to avoid it looking like a hard foreground card.
+        if (additive)
+        {
+            _context.OMSetDepthStencilState(_depthReadNoWrite, 0);
+        }
+        else
+        {
+            _context.OMSetDepthStencilState(null, 0);
+        }
         _context.OMSetBlendState(additive ? _blendAdditive : _blendAlpha, new Color4(0, 0, 0, 0), uint.MaxValue);
 
         _context.VSSetShader(_particlesVS);
@@ -1623,6 +1810,9 @@ public sealed class D3D11Renderer : IDisposable
 
         _blendAlpha?.Dispose();
         _blendAlpha = null;
+
+        _blendAlphaPremult?.Dispose();
+        _blendAlphaPremult = null;
 
         _depthReadNoWrite?.Dispose();
         _depthReadNoWrite = null;

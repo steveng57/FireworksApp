@@ -15,6 +15,9 @@ cbuffer FrameCB : register(b0)
     float    CrackleFlashSizeMul;
     float3   CrackleFadeColor;
     float    CrackleTau;
+
+    uint     ParticlePass; // 0=additive, 1=alpha
+    uint3    _ppad;
 };
 
 struct Particle
@@ -31,6 +34,7 @@ struct Particle
 RWStructuredBuffer<Particle> Particles : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
+static const float SmokeIntensity = 0.28f;
 
 float4 ColorRampSpark(float t, float4 baseColor)
 {
@@ -120,6 +124,11 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     // Integrate motion (semi-implicit Euler)
     float drag = 0.02f; // very small (almost vacuum)
+    if (p.Kind == 3)
+    {
+        // Smoke has much higher drag so it slows quickly.
+        drag = 2.2f;
+    }
     p.Velocity += Gravity * dt;
     p.Velocity *= (1.0f / (1.0f + drag * dt));
     p.Position += p.Velocity * dt;
@@ -127,6 +136,25 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     if (p.Kind == 2)
     {
         p.Color = ColorRampSpark(t, p.Color);
+    }
+    else if (p.Kind == 3)
+    {
+        float life01 = saturate(t);
+
+        float3 startC = float3(0.35f, 0.33f, 0.30f);
+        float3 endC = float3(0.24f, 0.25f, 0.27f);
+        float3 c = lerp(startC, endC, life01);
+
+        float a;
+        if (life01 < 0.2f)
+            a = smoothstep(0.0f, 0.2f, life01);
+        else if (life01 > 0.8f)
+            a = smoothstep(1.0f, 0.8f, life01);
+        else
+            a = 1.0f;
+
+        a *= SmokeIntensity;
+        p.Color = float4(c, a);
     }
     else if (p.Kind == 4)
     {
@@ -158,6 +186,8 @@ struct VSOut
 {
     float4 Position : SV_Position;
     float4 Color    : COLOR0;
+    float2 UV       : TEXCOORD0;
+    uint   Kind     : TEXCOORD1;
 };
 
 VSOut VSParticle(uint vid : SV_VertexID)
@@ -174,8 +204,27 @@ VSOut VSParticle(uint vid : SV_VertexID)
     {
         o.Position = float4(0, 0, 0, 0);
         o.Color = float4(0, 0, 0, 0);
+        o.UV = float2(0, 0);
+        o.Kind = 0;
         return o;
     }
+
+    // Smoke must be alpha blended only: drop it from additive pass.
+    if (p.Kind == 3 && ParticlePass == 0)
+    {
+        o.Position = float4(0, 0, 0, 0);
+        o.Color = float4(0, 0, 0, 0);
+        o.UV = float2(0, 0);
+        o.Kind = 0;
+        return o;
+    }
+
+    // Pass control: additive pass uses Color.a < 0 via CPU-set blend (we can't read it here).
+    // Instead, encode a simple rule: smoke (Kind==3) should not contribute to additive; it will
+    // still render correctly in the alpha-blended pass.
+    // We approximate by making smoke fully transparent when the pixel shader is used in additive pass.
+    // (The CPU draws two passes; we distinguish by relying on the additive pass being first and
+    // using a weaker alpha for smoke overall.)
 
     float2 offsets[6] = {
         float2(-1,-1), float2( 1,-1), float2(-1, 1),
@@ -185,6 +234,14 @@ VSOut VSParticle(uint vid : SV_VertexID)
     float2 uv = offsets[corner];
 
     float size = (p.Kind == 2) ? 0.10f : 0.20f;
+    if (p.Kind == 3)
+    {
+        float life01 = (p.Lifetime > 1e-5f) ? saturate(p.Age / p.Lifetime) : 1.0f;
+        float baseRadius = 0.4f;
+        float maxRadius = 4.0f;
+        float g = pow(life01, 0.7f);
+        size = lerp(baseRadius, maxRadius, g);
+    }
     if (p.Kind == 4)
     {
         // Use alpha as pulse indicator (set in CS). Flash size during peaks.
@@ -195,10 +252,41 @@ VSOut VSParticle(uint vid : SV_VertexID)
     float3 worldPos = p.Position + (CameraRightWS * (uv.x * size)) + (CameraUpWS * (uv.y * size));
     o.Position = mul(float4(worldPos, 1.0f), ViewProjection);
     o.Color = p.Color;
+    o.UV = uv;
+    o.Kind = p.Kind;
     return o;
 }
 
 float4 PSParticle(VSOut input) : SV_Target
 {
-    return input.Color;
+    float4 c = input.Color;
+
+    // Soft radial falloff for smoke only (cheap billboard).
+    // Applying this to sparks/crackle made the burst effectively vanish.
+    if (input.Kind == 3)
+    {
+        float2 p = input.UV;
+        float r2 = dot(p, p);
+        // Lower exponent => softer / more diffuse smoke edge
+        float soft = exp(-r2 * 1.35f);
+        // Make the corners die off faster so the quad boundary doesn't build up when many overlap.
+        soft = soft * soft;
+        // Fade both alpha and RGB so the quad doesn't look like a tinted rectangle
+        // when multiple smoke particles overlap.
+        c.rgb *= soft;
+        c.a *= soft;
+
+        // Hard cut extremely low contribution so quads don't stack into visible rectangles.
+        // (Keeps the interior soft while zeroing the corners.)
+        if (c.a < 0.01f)
+            discard;
+
+        // Alpha pass uses premultiplied blending; make sure smoke output is actually premultiplied.
+        if (ParticlePass == 1)
+        {
+            c.rgb *= c.a;
+        }
+    }
+
+    return c;
 }
