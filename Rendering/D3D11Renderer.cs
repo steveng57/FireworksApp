@@ -77,6 +77,11 @@ public sealed class D3D11Renderer : IDisposable
     private long _lastTick;
     private readonly System.Random _rng = new();
 
+    // Shell trail tuning
+    private static int ShellTrailParticlesPerSecond = 220;
+    private static float ShellTrailLifetimeSeconds = 0.37f;
+    private static float ShellTrailSpeed = 0.23f;
+
     // GPU particles (sparks)
     private ID3D11Buffer? _particleBuffer;
     private ID3D11Buffer? _particleUploadBuffer;
@@ -419,11 +424,20 @@ public sealed class D3D11Renderer : IDisposable
 
         Vector3 gravity = new(0.0f, -9.81f, 0.0f);
 
+        int trailCountPerShell = (int)System.Math.Clamp(ShellTrailParticlesPerSecond * dt, 0.0f, 128.0f);
+
         for (int i = 0; i < _shells.Count; i++)
         {
             var s = _shells[i];
             if (!s.Alive)
                 continue;
+
+            // Spawn a small trailing streak behind the rising shell.
+            // Use existing spark particles with short lifetime so they look like a light trail.
+            if (trailCountPerShell > 0)
+            {
+                SpawnShellTrail(s.Position, s.Velocity, trailCountPerShell);
+            }
 
             float prevVy = s.Velocity.Y;
 
@@ -454,6 +468,112 @@ public sealed class D3D11Renderer : IDisposable
 
             _shells[i] = s;
         }
+    }
+
+    private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
+    {
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        count = System.Math.Clamp(count, 1, _particleCapacity);
+
+        // Trail is a slightly warm white and additive blended in the first particle pass.
+        Vector4 color = new(1.0f, 0.92f, 0.55f, 1.0f);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+
+        Vector3 dir = velocity.LengthSquared() > 1e-6f ? Vector3.Normalize(velocity) : Vector3.UnitY;
+        Vector3 back = -dir;
+        Vector3 right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
+        if (right.LengthSquared() < 1e-6f)
+            right = Vector3.UnitX;
+        Vector3 up = Vector3.Normalize(Vector3.Cross(right, dir));
+
+        for (int i = 0; i < count; i++)
+        {
+            float jitterR = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
+            float jitterU = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
+            float alongBack = ((float)_rng.NextDouble()) * 0.12f;
+
+            Vector3 pos = position + (back * alongBack) + (right * jitterR) + (up * jitterU);
+
+            // Slight backward drift to form a continuous streak.
+            Vector3 vel = (back * ShellTrailSpeed) + (right * jitterR * 0.5f) + (up * jitterU * 0.5f);
+
+            staging[i] = new GpuParticle
+            {
+                Position = pos,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = ShellTrailLifetimeSeconds,
+                Color = color,
+                Kind = (uint)ParticleKind.Spark
+            };
+        }
+
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     public void SpawnShell()
