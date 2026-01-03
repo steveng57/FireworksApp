@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 
-namespace FireworksSkeleton.Math;
+namespace FireworksApp.Math;
 
 public sealed class Camera
 {

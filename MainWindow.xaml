@@ -1,9 +1,11 @@
-﻿<Window x:Class="FireworksSkeleton.MainWindow"
+﻿<Window x:Class="FireworksApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Fireworks Skeleton"
-        Width="1280"
-        Height="800"
-        Background="Black">
-    <Grid />
+        xmlns:local="clr-namespace:FireworksApp"
+        Title="FireworksApp" Height="450" Width="800">
+    <Grid>
+        <!-- Hosted Direct3D view -->
+        <local:D3DHost x:Name="DxView" />
+    </Grid>
 </Window>
+

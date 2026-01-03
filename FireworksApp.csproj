@@ -21,4 +21,13 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Shaders\Pad.hlsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Shaders\Ground.hlsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
