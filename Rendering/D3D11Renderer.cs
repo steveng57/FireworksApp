@@ -117,7 +117,8 @@ public sealed class D3D11Renderer : IDisposable
         Dead = 0,
         Shell = 1,
         Spark = 2,
-        Smoke = 3
+        Smoke = 3,
+        Crackle = 4
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -142,7 +143,22 @@ public sealed class D3D11Renderer : IDisposable
         public float DeltaTime;
         public Vector3 CameraUpWS;
         public float Time;
+
+        public Vector3 CrackleBaseColor;
+        public float CrackleBaseSize;
+        public Vector3 CracklePeakColor;
+        public float CrackleFlashSizeMul;
+        public Vector3 CrackleFadeColor;
+        public float CrackleTau;
     }
+
+    // Crackling spark tuning (world meters / HDR-ish colors)
+    private static readonly Vector3 CrackleBaseColor = new(2.2f, 2.0f, 1.6f);
+    private static readonly Vector3 CracklePeakColor = new(3.5f, 3.2f, 2.4f);
+    private static readonly Vector3 CrackleFadeColor = new(1.2f, 1.0f, 0.6f);
+    private const float CrackleBaseSize = 0.010f;
+    private const float CrackleFlashSizeMul = 2.3f;
+    private const float CrackleTau = 0.035f;
 
     // Simple orbit camera (around origin)
     private float _cameraYaw = 0.0f;
@@ -638,7 +654,18 @@ public sealed class D3D11Renderer : IDisposable
             float speed = 6.0f + (u * u) * 12.0f;
             Vector3 vel = dir * speed;
 
-            float lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+            bool crackle = (_rng.NextDouble() < 0.22);
+
+            float lifetime;
+            if (crackle)
+            {
+                // 30–90ms per micro-spark
+                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+            }
+            else
+            {
+                lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+            }
 
             staging[i] = new GpuParticle
             {
@@ -647,7 +674,11 @@ public sealed class D3D11Renderer : IDisposable
                 Age = 0.0f,
                 Lifetime = lifetime,
                 Color = baseColor,
-                Kind = (uint)ParticleKind.Spark
+                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
+                // Use padding as deterministic per-particle randomness for crackle.
+                _pad0 = (uint)_rng.Next(),
+                _pad1 = (uint)_rng.Next(),
+                _pad2 = (uint)_rng.Next()
             };
         }
 
@@ -885,7 +916,14 @@ public sealed class D3D11Renderer : IDisposable
             CameraRightWS = right,
             DeltaTime = dt,
             CameraUpWS = up,
-            Time = (float)(Environment.TickCount64 / 1000.0)
+            Time = (float)(Environment.TickCount64 / 1000.0),
+
+            CrackleBaseColor = CrackleBaseColor,
+            CrackleBaseSize = CrackleBaseSize,
+            CracklePeakColor = CracklePeakColor,
+            CrackleFlashSizeMul = CrackleFlashSizeMul,
+            CrackleFadeColor = CrackleFadeColor,
+            CrackleTau = CrackleTau
         };
 
         var mapped = _context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
