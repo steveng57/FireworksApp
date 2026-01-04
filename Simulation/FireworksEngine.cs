@@ -86,6 +86,14 @@ public sealed class FireworksEngine
             }
         }
 
+        // Provide canister + shell positions to renderer.
+        var canisterStates = _canisters
+            .Select(c => new D3D11Renderer.CanisterRenderState(
+                Position: new Vector3(c.Profile.Position.X, 0.0f, c.Profile.Position.Y),
+                Direction: c.Profile.LaunchDirection))
+            .ToArray();
+        renderer.SetCanisters(canisterStates);
+
         // Provide shell positions to renderer.
         var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
         renderer.SetShells(shellStates);
@@ -107,19 +115,27 @@ public sealed class FireworksEngine
 
         Vector3 launchPos = new(canister.Profile.Position.X, 0.30f, canister.Profile.Position.Y);
 
-        // Small random deviation from vertical to avoid identical trajectories.
+        Vector3 baseDir = canister.Profile.LaunchDirection;
+        if (baseDir.LengthSquared() < 1e-6f)
+            baseDir = Vector3.UnitY;
+        else
+            baseDir = Vector3.Normalize(baseDir);
+
+        // Small random deviation around the aimed direction to avoid identical trajectories.
         // Keep deviation modest so shows remain predictable.
         float maxAngle = (float)(3.5 * System.Math.PI / 180.0); // degrees -> radians
         float yaw = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
         float pitch = (float)(_rng.NextDouble() * maxAngle);
 
-        float sinP = MathF.Sin(pitch);
-        float cosP = MathF.Cos(pitch);
+        Vector3 axis = Vector3.Cross(baseDir, Vector3.UnitY);
+        if (axis.LengthSquared() < 1e-6f)
+            axis = Vector3.UnitX;
+        else
+            axis = Vector3.Normalize(axis);
 
-        Vector3 dir = new(
-            sinP * MathF.Cos(yaw),
-            cosP,
-            sinP * MathF.Sin(yaw));
+        var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+        var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+        Vector3 dir = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
 
         Vector3 launchVel = dir * muzzle;
 
@@ -145,13 +161,16 @@ public sealed class FireworksEngine
         // Convert Color to HDR-ish Vector4 expected by current particle shader.
         Vector4 baseColor = explosion.BaseColor;
 
-        // For now we keep particle speed derived from radius/lifetime.
-        float speed = explosion.ExplosionRadius / MathF.Max(0.01f, explosion.ParticleLifetimeSeconds);
+        // Match the renderer's original burst look: speed is not derived from radius/lifetime.
+        // Keep a characteristic base speed and let the renderer apply per-particle variance.
+        float speed = 10.0f;
 
-        // Use renderer burst spawner, but customize velocities by spawning individual particles in a loop:
-        // (Minimal change: approximate by a single SpawnBurst call. Engine style affects direction distribution only
-        // when/if renderer offers per-particle injection. For now, use base burst and rely on shader randomness.)
-        renderer.SpawnBurst(explosion.Position, baseColor, explosion.ParticleCount);
+        renderer.SpawnBurstDirected(
+            explosion.Position,
+            baseColor,
+            speed,
+            dirs,
+            particleLifetimeSeconds: explosion.ParticleLifetimeSeconds);
         renderer.SpawnSmoke(explosion.Position);
     }
 }

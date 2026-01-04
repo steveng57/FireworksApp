@@ -73,6 +73,8 @@ public sealed class D3D11Renderer : IDisposable
     private ID3D11Buffer? _shellVB;
     private int _shellVertexCount;
 
+    private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _canisters = Array.Empty<CanisterRenderState>();
+
     private System.Collections.Generic.IReadOnlyList<ShellRenderState> _shells = Array.Empty<ShellRenderState>();
     private long _lastTick;
     private readonly System.Random _rng = new();
@@ -104,6 +106,8 @@ public sealed class D3D11Renderer : IDisposable
     public int ShellSpawnCount { get; set; }
 
     public readonly record struct ShellRenderState(Vector3 Position);
+
+    public readonly record struct CanisterRenderState(Vector3 Position, Vector3 Direction);
 
     // Shell simulation moved to Simulation layer; renderer only needs positions.
 
@@ -149,11 +153,16 @@ public sealed class D3D11Renderer : IDisposable
         public Vector3 CrackleFadeColor;
         public float CrackleTau;
 
+        public Vector3 SchemeTint;
+        public float _stpad0;
+
         public uint ParticlePass;
         public uint _ppad0;
         public uint _ppad1;
         public uint _ppad2;
     }
+
+    private Vector3 _schemeTint = Vector3.One;
 
     // Crackling spark tuning (world meters / HDR-ish colors)
     private static readonly Vector3 CrackleBaseColor = new(2.2f, 2.0f, 1.6f);
@@ -340,7 +349,7 @@ public sealed class D3D11Renderer : IDisposable
         // Draw the simple launch pad
         DrawLaunchPad();
 
-        DrawCanister();
+        DrawCanisters();
 
         DrawShells();
 
@@ -356,14 +365,139 @@ public sealed class D3D11Renderer : IDisposable
         _shells = shells ?? Array.Empty<ShellRenderState>();
     }
 
+    public void SetCanisters(System.Collections.Generic.IReadOnlyList<CanisterRenderState> canisters)
+    {
+        _canisters = canisters ?? Array.Empty<CanisterRenderState>();
+    }
+
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
     {
         SpawnBurstInternal(position, baseColor, count);
     }
 
+    public void SpawnBurstDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    {
+        _schemeTint = new Vector3(baseColor.X, baseColor.Y, baseColor.Z);
+        SpawnBurstDirectedInternal(position, baseColor, speed, directions, particleLifetimeSeconds);
+    }
+
     public void SpawnSmoke(Vector3 burstCenter)
     {
         SpawnSmokeInternal(burstCenter);
+    }
+
+    private void SpawnBurstDirectedInternal(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    {
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = directions[i];
+            if (dir.LengthSquared() < 1e-8f)
+                dir = Vector3.UnitY;
+            else
+                dir = Vector3.Normalize(dir);
+
+            // Match the original "nice" look: varied speeds and lifetimes, plus crackle.
+            float u = (float)_rng.NextDouble();
+            float speedMul = 0.65f + (u * u) * 0.85f;
+            Vector3 vel = dir * (speed * speedMul);
+
+            bool crackle = (_rng.NextDouble() < 0.22);
+
+            float lifetime;
+            if (crackle)
+            {
+                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+            }
+            else
+            {
+                // Center around the requested lifetime but keep some variation.
+                float j = (float)(_rng.NextDouble() * 2.0 - 1.0);
+                lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * (1.0f + 0.35f * j));
+            }
+
+            staging[i] = new GpuParticle
+            {
+                Position = position,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = baseColor,
+                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
+                _pad0 = (uint)_rng.Next(),
+                _pad1 = (uint)_rng.Next(),
+                _pad2 = (uint)_rng.Next()
+            };
+        }
+
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     private void CreateShellGeometry()
@@ -978,6 +1112,8 @@ public sealed class D3D11Renderer : IDisposable
             CrackleFadeColor = CrackleFadeColor,
             CrackleTau = CrackleTau,
 
+            SchemeTint = _schemeTint,
+
             // Default to additive pass unless overridden right before drawing.
             ParticlePass = 0u
         };
@@ -1028,6 +1164,8 @@ public sealed class D3D11Renderer : IDisposable
                 CrackleFlashSizeMul = CrackleFlashSizeMul,
                 CrackleFadeColor = CrackleFadeColor,
                 CrackleTau = CrackleTau,
+
+                SchemeTint = _schemeTint,
 
                 ParticlePass = additive ? 0u : 1u
             };
@@ -1213,7 +1351,7 @@ public sealed class D3D11Renderer : IDisposable
             });
     }
 
-    private void DrawCanister()
+    private void DrawCanisters()
     {
         if (_context is null || _canisterVS is null || _canisterPS is null || _canisterVB is null || _canisterInputLayout is null)
             return;
@@ -1239,7 +1377,71 @@ public sealed class D3D11Renderer : IDisposable
             _context.PSSetConstantBuffer(1, _lightingCB);
         }
 
-        _context.Draw((uint)_canisterVertexCount, 0);
+        // Draw each canister at its world-space position.
+        // If none provided, draw a single default at origin for backward compatibility.
+        if (_canisters.Count == 0)
+        {
+            if (_objectCB != null)
+            {
+                var world0 = Matrix4x4.Identity;
+                var wvp0 = Matrix4x4.Transpose(world0 * _view * _proj);
+                var obj0 = new SceneCBData { WorldViewProjection = wvp0, World = Matrix4x4.Transpose(world0) };
+                var mapped0 = _context.Map(_objectCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                Marshal.StructureToPtr(obj0, mapped0.DataPointer, false);
+                _context.Unmap(_objectCB, 0);
+                _context.VSSetConstantBuffer(0, _objectCB);
+            }
+            _context.Draw((uint)_canisterVertexCount, 0);
+            return;
+        }
+
+        static Matrix4x4 CreateAlignYToDirection(Vector3 direction)
+        {
+            if (direction.LengthSquared() < 1e-8f)
+                return Matrix4x4.Identity;
+
+            var dir = Vector3.Normalize(direction);
+            var from = Vector3.UnitY;
+            float dot = Vector3.Dot(from, dir);
+
+            // 180-degree flip: pick any orthogonal axis.
+            if (dot <= -0.9999f)
+            {
+                return Matrix4x4.CreateFromAxisAngle(Vector3.UnitX, MathF.PI);
+            }
+
+            // Already aligned.
+            if (dot >= 0.9999f)
+            {
+                return Matrix4x4.Identity;
+            }
+
+            var axis = Vector3.Normalize(Vector3.Cross(from, dir));
+            float angle = MathF.Acos((float)System.Math.Clamp(dot, -1.0f, 1.0f));
+            return Matrix4x4.CreateFromAxisAngle(axis, angle);
+        }
+
+        for (int i = 0; i < _canisters.Count; i++)
+        {
+            var c = _canisters[i];
+            if (_objectCB != null)
+            {
+                var world = CreateAlignYToDirection(c.Direction) * Matrix4x4.CreateTranslation(c.Position);
+                var wvp = Matrix4x4.Transpose(world * _view * _proj);
+                var obj = new SceneCBData { WorldViewProjection = wvp, World = Matrix4x4.Transpose(world) };
+                var mapped = _context.Map(_objectCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                Marshal.StructureToPtr(obj, mapped.DataPointer, false);
+                _context.Unmap(_objectCB, 0);
+                _context.VSSetConstantBuffer(0, _objectCB);
+            }
+            _context.Draw((uint)_canisterVertexCount, 0);
+        }
+
+        // Restore scene constants for subsequent draws
+        if (_sceneCB != null)
+        {
+            _context.VSSetConstantBuffer(0, _sceneCB);
+        }
     }
 
     private void CreateDeviceAndSwapChain(int width, int height)

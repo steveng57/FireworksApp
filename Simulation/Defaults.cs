@@ -13,6 +13,7 @@ public static class DefaultProfiles
             ["c1"] = new CanisterProfile(
                 Id: "c1",
                 Position: new Vector2(0, 0),
+                LaunchDirection: Vector3.UnitY,
                 MuzzleVelocity: 55.0f,
                 ReloadTimeSeconds: 2.5f,
                 DefaultShellProfileId: "basic"),
@@ -20,6 +21,15 @@ public static class DefaultProfiles
             ["c2"] = new CanisterProfile(
                 Id: "c2",
                 Position: new Vector2(-2.5f, 0),
+                LaunchDirection: Vector3.Normalize(new Vector3(0.0f, MathF.Cos(25.0f * MathF.PI / 180.0f), MathF.Sin(25.0f * MathF.PI / 180.0f))),
+                MuzzleVelocity: 58.0f,
+                ReloadTimeSeconds: 3.0f,
+                DefaultShellProfileId: "donut"),
+
+            ["c3"] = new CanisterProfile(
+                Id: "c3",
+                Position: new Vector2(2.5f, 0),
+                LaunchDirection: Vector3.Normalize(new Vector3(0.0f, MathF.Cos(25.0f * MathF.PI / 180.0f), -MathF.Sin(25.0f * MathF.PI / 180.0f))),
                 MuzzleVelocity: 58.0f,
                 ReloadTimeSeconds: 3.0f,
                 DefaultShellProfileId: "donut")
@@ -28,7 +38,10 @@ public static class DefaultProfiles
         var schemes = new Dictionary<string, ColorScheme>
         {
             ["warm"] = new ColorScheme("warm", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
-            ["cool"] = new ColorScheme("cool", new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f)
+            ["cool"] = new ColorScheme("cool", new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
+            ["mixed"] = new ColorScheme("mixed", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
+            ["neon"] = new ColorScheme("neon", new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
+            ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f)
         };
 
         var shells = new Dictionary<string, FireworkShellProfile>
@@ -40,7 +53,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
                 ParticleCount: 6000,
-                ParticleLifetimeSeconds: 3.2f),
+                ParticleLifetimeSeconds: 5.2f),
 
             ["donut"] = new FireworkShellProfile(
                 Id: "donut",
@@ -66,11 +79,15 @@ public static class DefaultShow
         float t = 0;
         for (int i = 0; i < 60; i++)
         {
-            string canisterId = i % 2 == 0 ? "c1" : "c2";
+            string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
             string shellId = i % 2 == 0 ? "basic" : "donut";
 
+            //string canisterId = "c2";
+            //string shellId = "basic";
             float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
-            string colorSchemeId = i % 2 == 0 ? "warm" : "cool";
+            string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt(i % profiles.ColorSchemes.Count);
+            //string colorSchemeId = "cool";
+
 
             var showEvent = new ShowEvent(
                 TimeSeconds: t,
@@ -79,7 +96,9 @@ public static class DefaultShow
                 ColorSchemeId: colorSchemeId,
                 MuzzleVelocity: muzzleVelocity);
             events.Add(showEvent);
-            t += 1.0f;
+            // Respect canister reload so scheduled events actually fire.
+            // Otherwise, most events are skipped by the engine's CanFire gating.
+            t += 1f;
         }
 
         var showScript = new ShowScript(events);

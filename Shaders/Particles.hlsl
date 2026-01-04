@@ -16,6 +16,9 @@ cbuffer FrameCB : register(b0)
     float3   CrackleFadeColor;
     float    CrackleTau;
 
+    float3   SchemeTint;
+    float    _stpad0;
+
     uint     ParticlePass; // 0=additive, 1=alpha
     uint3    _ppad;
 };
@@ -40,8 +43,9 @@ float4 ColorRampSpark(float t, float4 baseColor)
 {
     t = saturate(t);
 
-    float3 whiteHot = baseColor.rgb * 4.0f + 1.5f;
-    float3 mid = baseColor.rgb;
+    float3 scheme = max(SchemeTint, 0.001f);
+    float3 whiteHot = baseColor.rgb * scheme * 4.0f + 1.5f;
+    float3 mid = baseColor.rgb * scheme;
     float3 ember = float3(1.0f, 0.35f, 0.08f);
 
     float early = smoothstep(0.00f, 0.20f, t);

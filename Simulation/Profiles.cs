@@ -8,6 +8,7 @@ namespace FireworksApp.Simulation;
 public sealed record class CanisterProfile(
     string Id,
     Vector2 Position,
+    Vector3 LaunchDirection,
     float MuzzleVelocity,
     float ReloadTimeSeconds,
     string DefaultShellProfileId);
