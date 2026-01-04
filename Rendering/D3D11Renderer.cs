@@ -25,7 +25,7 @@ public struct PadVertex
 
 // ...existing code...
 
-    public int ShellSpawnCount { get; private set; }
+    public int ShellSpawnCount { get; set; }
 }
 
 public sealed class D3D11Renderer : IDisposable
@@ -73,7 +73,7 @@ public sealed class D3D11Renderer : IDisposable
     private ID3D11Buffer? _shellVB;
     private int _shellVertexCount;
 
-    private readonly System.Collections.Generic.List<ShellState> _shells = new();
+    private System.Collections.Generic.IReadOnlyList<ShellRenderState> _shells = Array.Empty<ShellRenderState>();
     private long _lastTick;
     private readonly System.Random _rng = new();
 
@@ -101,17 +101,11 @@ public sealed class D3D11Renderer : IDisposable
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
-    public int ShellSpawnCount { get; private set; }
+    public int ShellSpawnCount { get; set; }
 
-    private struct ShellState
-    {
-        public Vector3 Position;
-        public Vector3 Velocity;
-        public float Age;
-        public float Fuse;
-        public bool Alive;
-        public bool Bursted;
-    }
+    public readonly record struct ShellRenderState(Vector3 Position);
+
+    // Shell simulation moved to Simulation layer; renderer only needs positions.
 
     private enum ParticleKind : uint
     {
@@ -312,7 +306,6 @@ public sealed class D3D11Renderer : IDisposable
             return;
 
         float dt = GetDeltaTimeSeconds();
-        UpdateShells(dt);
         UpdateParticles(dt);
 
         if (_cameraDirty)
@@ -356,6 +349,21 @@ public sealed class D3D11Renderer : IDisposable
 
         // Present
         _swapChain.Present(1, PresentFlags.None);
+    }
+
+    public void SetShells(System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
+    {
+        _shells = shells ?? Array.Empty<ShellRenderState>();
+    }
+
+    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
+    {
+        SpawnBurstInternal(position, baseColor, count);
+    }
+
+    public void SpawnSmoke(Vector3 burstCenter)
+    {
+        SpawnSmokeInternal(burstCenter);
     }
 
     private void CreateShellGeometry()
@@ -442,61 +450,9 @@ public sealed class D3D11Renderer : IDisposable
         return (float)dt;
     }
 
-    private void UpdateShells(float dt)
-    {
-        if (dt <= 0)
-            return;
 
-        Vector3 gravity = new(0.0f, -9.81f, 0.0f);
 
-        int trailCountPerShell = (int)System.Math.Clamp(ShellTrailParticlesPerSecond * dt, 0.0f, 128.0f);
-
-        for (int i = 0; i < _shells.Count; i++)
-        {
-            var s = _shells[i];
-            if (!s.Alive)
-                continue;
-
-            // Spawn a small trailing streak behind the rising shell.
-            // Use existing spark particles with short lifetime so they look like a light trail.
-            if (trailCountPerShell > 0)
-            {
-                SpawnShellTrail(s.Position, s.Velocity, trailCountPerShell);
-            }
-
-            float prevVy = s.Velocity.Y;
-
-            s.Velocity += gravity * dt;
-            s.Position += s.Velocity * dt;
-            s.Age += dt;
-
-            // Burst trigger: apex (vy crosses 0) OR fuse timer.
-            bool crossedApex = (prevVy > 0.0f && s.Velocity.Y <= 0.0f);
-            bool fuseExpired = (s.Age >= s.Fuse);
-            if (!s.Bursted && (crossedApex || fuseExpired))
-            {
-                SpawnBurst(s.Position, RandomBurstColor(), count: 6000);
-                SpawnSmoke(s.Position);
-                s.Bursted = true;
-
-                // IMPORTANT: shells are purely a launcher; after bursting they should not be
-                // subject to further lifetime/ground-kill logic in this pass.
-                s.Alive = false;
-                _shells[i] = s;
-                continue;
-            }
-
-            // kill if it hits the ground or too old (placeholder)
-            if (s.Position.Y <= 0.0f || s.Age > 20.0f)
-            {
-                s.Alive = false;
-            }
-
-            _shells[i] = s;
-        }
-    }
-
-    private void SpawnSmoke(Vector3 burstCenter)
+    private void SpawnSmokeInternal(Vector3 burstCenter)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;
@@ -709,51 +665,9 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
-    public void SpawnShell()
-    {
-        // Spawn at canister mouth (center of pad)
-        Vector3 spawn = new(0.0f, 0.30f, 0.0f);
+    // Shell spawning is managed by Simulation/Show controller.
 
-        // Choose desired apex height in meters
-        float apex = 150.0f + (float)_rng.NextDouble() * 50.0f; // 150-200
-        float vy = (float)System.Math.Sqrt(2.0 * 9.81 * apex);
-
-        // Small random deviation from vertical (radians)
-        float maxAngle = (float)(5.0 * System.Math.PI / 180.0); // 5 degrees
-        float yaw = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
-        float pitch = (float)(_rng.NextDouble() * maxAngle);
-        float sinP = (float)System.Math.Sin(pitch);
-        float cosP = (float)System.Math.Cos(pitch);
-
-        Vector3 dir = new(
-            sinP * (float)System.Math.Cos(yaw),
-            cosP,
-            sinP * (float)System.Math.Sin(yaw));
-
-        // Scale so vertical component matches vy
-        float speed = vy / System.Math.Max(0.001f, dir.Y);
-        Vector3 vel = dir * speed;
-
-        // Fuse is a backup in case numerical conditions miss apex.
-        float fuse = 3.0f + (float)_rng.NextDouble() * 2.0f;
-        _shells.Add(new ShellState { Position = spawn, Velocity = vel, Age = 0.0f, Fuse = fuse, Alive = true, Bursted = false });
-    }
-
-    private Vector4 RandomBurstColor()
-    {
-        // gold, blue, red, green, magenta, white
-        return _rng.Next(6) switch
-        {
-            0 => new Vector4(1.0f, 0.80f, 0.25f, 1.0f),
-            1 => new Vector4(0.25f, 0.55f, 1.00f, 1.0f),
-            2 => new Vector4(1.00f, 0.20f, 0.15f, 1.0f),
-            3 => new Vector4(0.20f, 1.00f, 0.35f, 1.0f),
-            4 => new Vector4(1.00f, 0.20f, 1.00f, 1.0f),
-            _ => new Vector4(1.00f, 1.00f, 1.00f, 1.0f)
-        };
-    }
-
-    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
+    private void SpawnBurstInternal(Vector3 position, Vector4 baseColor, int count)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;
@@ -1175,9 +1089,6 @@ public sealed class D3D11Renderer : IDisposable
         for (int i = 0; i < _shells.Count; i++)
         {
             var s = _shells[i];
-            if (!s.Alive)
-                continue;
-
             var world = Matrix4x4.CreateTranslation(s.Position);
             var wvp = Matrix4x4.Transpose(world * _view * _proj);
 

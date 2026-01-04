@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using FireworksApp.Rendering;
+using FireworksApp.Simulation;
 
 namespace FireworksApp;
 
@@ -18,6 +19,8 @@ public sealed class D3DHost : HwndHost
 
     private IntPtr _hwnd;
     private D3D11Renderer? _renderer;
+    private FireworksEngine? _engine;
+    private ShowScript? _defaultShow;
     private bool _started;
     private bool _isDragging;
     private bool _isPanning;
@@ -138,6 +141,10 @@ public sealed class D3DHost : HwndHost
 
         _renderer.Initialize(width, height);
 
+        _engine = new FireworksEngine(global::FireworksApp.Simulation.DefaultProfiles.Create());
+        _defaultShow = global::FireworksApp.Simulation.DefaultShow.Create();
+        _engine.LoadShow(_defaultShow);
+
         // Basic input for simulation testing
         var window = Window.GetWindow(this);
         window?.KeyDown += OnWindowKeyDown;
@@ -151,6 +158,12 @@ public sealed class D3DHost : HwndHost
         if (!_started)
             return;
 
+        // Reset back to the default show when stopping/restarting.
+        if (_engine != null && _defaultShow != null)
+        {
+            _engine.LoadShow(_defaultShow);
+        }
+
         CompositionTarget.Rendering -= OnRendering;
 
         var window = Window.GetWindow(this);
@@ -163,7 +176,7 @@ public sealed class D3DHost : HwndHost
     {
         if (e.Key == Key.Space)
         {
-            _renderer?.SpawnShell();
+            _engine?.Launch("c1", "basic", _renderer!);
             e.Handled = true;
         }
     }
@@ -210,7 +223,10 @@ public sealed class D3DHost : HwndHost
                     case WM_KEYDOWN:
                         if ((int)wParam == VK_SPACE)
                         {
-                            host._renderer?.SpawnShell();
+                            if (host._engine != null && host._renderer != null)
+                            {
+                                host._engine.Launch("c1", "basic", host._renderer);
+                            }
                             return IntPtr.Zero;
                         }
                         break;
@@ -295,7 +311,15 @@ public sealed class D3DHost : HwndHost
 
     private void OnRendering(object? sender, EventArgs e)
     {
-        _renderer?.Render();
+        if (_renderer is null)
+            return;
+
+        // Renderer owns its own dt for GPU particle sim; engine uses same dt for show timing.
+        // Use a conservative fixed timestep derived from composition frame pacing.
+        const float dt = 1.0f / 60.0f;
+        _engine?.Update(dt, _renderer);
+
+        _renderer.Render();
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)

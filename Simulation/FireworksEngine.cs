@@ -1,0 +1,322 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using FireworksApp.Rendering;
+
+namespace FireworksApp.Simulation;
+
+using Math = System.Math;
+
+public sealed class FireworksEngine
+{
+    private readonly FireworksProfileSet _profiles;
+    private readonly List<Canister> _canisters;
+    private readonly List<FireworkShell> _shells = new();
+    private readonly Random _rng = new();
+
+    private ShowScript _show = ShowScript.Empty;
+    private int _nextEventIndex;
+
+    public float ShowTimeSeconds { get; private set; }
+
+    public FireworksEngine(FireworksProfileSet profiles)
+    {
+        _profiles = profiles;
+        _canisters = profiles.Canisters.Values.Select(cp => new Canister(cp)).ToList();
+    }
+
+    public void Launch(string canisterId, string shellProfileId, D3D11Renderer renderer, string? colorSchemeId = null, float? muzzleVelocity = null)
+    {
+        TriggerEvent(new ShowEvent(ShowTimeSeconds, canisterId, shellProfileId, colorSchemeId, muzzleVelocity), renderer);
+    }
+
+    public IReadOnlyList<Canister> Canisters => _canisters;
+    public IReadOnlyList<FireworkShell> Shells => _shells;
+
+    public void LoadShow(ShowScript show)
+    {
+        _show = show ?? ShowScript.Empty;
+        _nextEventIndex = 0;
+        ShowTimeSeconds = 0;
+
+        // Ensure chronological ordering.
+        if (_show.Events is List<ShowEvent> list)
+            list.Sort((a, b) => a.TimeSeconds.CompareTo(b.TimeSeconds));
+        else
+            _show = new ShowScript(_show.Events.OrderBy(e => e.TimeSeconds).ToArray());
+    }
+
+    public void Update(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0)
+            return;
+
+        ShowTimeSeconds += dt;
+
+        // Update canister reload timers.
+        foreach (var c in _canisters)
+            c.Update(dt);
+
+        // Fire show events.
+        var events = _show.Events;
+        while (_nextEventIndex < events.Count && events[_nextEventIndex].TimeSeconds <= ShowTimeSeconds)
+        {
+            TriggerEvent(events[_nextEventIndex], renderer);
+            _nextEventIndex++;
+        }
+
+        // Update shells.
+        for (int i = _shells.Count - 1; i >= 0; i--)
+        {
+            var shell = _shells[i];
+            shell.Update(dt);
+
+            // trail
+            shell.EmitTrail(renderer, dt);
+
+            if (shell.TryExplode(out var explosion))
+            {
+                Explode(explosion, renderer);
+                _shells.RemoveAt(i);
+            }
+            else if (!shell.Alive)
+            {
+                _shells.RemoveAt(i);
+            }
+        }
+
+        // Provide shell positions to renderer.
+        var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
+        renderer.SetShells(shellStates);
+    }
+
+    private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)
+    {
+        var canister = _canisters.FirstOrDefault(c => c.Profile.Id == ev.CanisterId);
+        if (canister is null)
+            return;
+
+        if (!_profiles.Shells.TryGetValue(ev.ShellProfileId, out var shellProfile))
+            return;
+
+        var muzzle = ev.MuzzleVelocity ?? canister.Profile.MuzzleVelocity;
+
+        if (!canister.CanFire)
+            return;
+
+        Vector3 launchPos = new(canister.Profile.Position.X, 0.30f, canister.Profile.Position.Y);
+
+        // Small random deviation from vertical to avoid identical trajectories.
+        // Keep deviation modest so shows remain predictable.
+        float maxAngle = (float)(3.5 * System.Math.PI / 180.0); // degrees -> radians
+        float yaw = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
+        float pitch = (float)(_rng.NextDouble() * maxAngle);
+
+        float sinP = MathF.Sin(pitch);
+        float cosP = MathF.Cos(pitch);
+
+        Vector3 dir = new(
+            sinP * MathF.Cos(yaw),
+            cosP,
+            sinP * MathF.Sin(yaw));
+
+        Vector3 launchVel = dir * muzzle;
+
+        var colorSchemeId = ev.ColorSchemeId ?? shellProfile.ColorSchemeId;
+        if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var scheme))
+            scheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+
+        var shell = new FireworkShell(shellProfile, scheme, launchPos, launchVel);
+        _shells.Add(shell);
+        canister.OnFired();
+
+        renderer.ShellSpawnCount++;
+    }
+
+    private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
+    {
+        var dirs = explosion.Style switch
+        {
+            "donut" => EmissionStyles.EmitDonut(explosion.ParticleCount, explosion.ExplosionRadius, axis: Vector3.UnitY),
+            _ => EmissionStyles.EmitSphere(explosion.ParticleCount)
+        };
+
+        // Convert Color to HDR-ish Vector4 expected by current particle shader.
+        Vector4 baseColor = explosion.BaseColor;
+
+        // For now we keep particle speed derived from radius/lifetime.
+        float speed = explosion.ExplosionRadius / MathF.Max(0.01f, explosion.ParticleLifetimeSeconds);
+
+        // Use renderer burst spawner, but customize velocities by spawning individual particles in a loop:
+        // (Minimal change: approximate by a single SpawnBurst call. Engine style affects direction distribution only
+        // when/if renderer offers per-particle injection. For now, use base burst and rely on shader randomness.)
+        renderer.SpawnBurst(explosion.Position, baseColor, explosion.ParticleCount);
+        renderer.SpawnSmoke(explosion.Position);
+    }
+}
+
+public sealed class Canister
+{
+    private float _cooldown;
+
+    public CanisterProfile Profile { get; }
+
+    public bool CanFire => _cooldown <= 0;
+
+    public Canister(CanisterProfile profile) => Profile = profile;
+
+    public void Update(float dt) => _cooldown = MathF.Max(0, _cooldown - dt);
+
+    public void OnFired() => _cooldown = MathF.Max(0, Profile.ReloadTimeSeconds);
+}
+
+public sealed class FireworkShell
+{
+    private const float GroundY = 0.0f;
+    private static readonly Vector3 Gravity = new(0, -9.81f, 0);
+
+    public FireworkShellProfile Profile { get; }
+    public ColorScheme ColorScheme { get; }
+
+    public Vector3 Position { get; private set; }
+    public Vector3 Velocity { get; private set; }
+    public float AgeSeconds { get; private set; }
+    public bool Alive { get; private set; } = true;
+
+    public FireworkShell(FireworkShellProfile profile, ColorScheme colorScheme, Vector3 position, Vector3 velocity)
+    {
+        Profile = profile;
+        ColorScheme = colorScheme;
+        Position = position;
+        Velocity = velocity;
+    }
+
+    public void Update(float dt)
+    {
+        if (!Alive)
+            return;
+
+        Velocity += Gravity * dt;
+        Position += Velocity * dt;
+        AgeSeconds += dt;
+
+        if (Position.Y <= GroundY)
+            Alive = false;
+    }
+
+    public void EmitTrail(D3D11Renderer renderer, float dt)
+    {
+        // Keep using existing renderer trail logic by approximating it as smoke-less burst? Not available.
+        // This placeholder leaves trail generation to existing GPU particle evolution.
+        _ = renderer;
+        _ = dt;
+    }
+
+    public bool TryExplode(out ShellExplosion explosion)
+    {
+        if (!Alive)
+        {
+            explosion = default;
+            return false;
+        }
+
+        if (AgeSeconds < Profile.FuseTimeSeconds)
+        {
+            explosion = default;
+            return false;
+        }
+
+        explosion = new ShellExplosion(
+            Position,
+            Style: Profile.Style,
+            ExplosionRadius: Profile.ExplosionRadius,
+            ParticleCount: Profile.ParticleCount,
+            ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
+            BaseColor: ColorUtil.PickBaseColor(ColorScheme));
+
+        Alive = false;
+        return true;
+    }
+}
+
+public readonly record struct ShellExplosion(
+    Vector3 Position,
+    string Style,
+    float ExplosionRadius,
+    int ParticleCount,
+    float ParticleLifetimeSeconds,
+    Vector4 BaseColor);
+
+internal static class ColorUtil
+{
+    private static readonly Random s_rng = new();
+
+    public static Vector4 PickBaseColor(ColorScheme scheme)
+    {
+        if (scheme.BaseColors.Length == 0)
+            return new Vector4(1, 1, 1, 1);
+
+        var c = scheme.BaseColors[s_rng.Next(scheme.BaseColors.Length)];
+
+        // Apply simple RGB variation.
+        float v = (float)(s_rng.NextDouble() * 2.0 - 1.0) * scheme.ColorVariation;
+
+        float r = Clamp01(c.R / 255.0f + v);
+        float g = Clamp01(c.G / 255.0f + v);
+        float b = Clamp01(c.B / 255.0f + v);
+
+        // upscale a bit for additive HDR-ish look
+        float boost = 2.2f;
+        return new Vector4(r * boost, g * boost, b * boost, 1.0f);
+    }
+
+    private static float Clamp01(float x) => x < 0 ? 0 : (x > 1 ? 1 : x);
+}
+
+internal static class EmissionStyles
+{
+    private static readonly Random s_rng = new();
+
+    public static Vector3[] EmitSphere(int count)
+    {
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+            dirs[i] = RandomUnitVector();
+        return dirs;
+    }
+
+    public static Vector3[] EmitDonut(int count, float radius, Vector3 axis)
+    {
+        // Torus/ring: pick direction mostly perpendicular to axis with some thickness.
+        axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
+
+        Vector3 basis1 = Vector3.Normalize(Vector3.Cross(axis, Vector3.UnitX));
+        if (basis1.LengthSquared() < 1e-6f)
+            basis1 = Vector3.Normalize(Vector3.Cross(axis, Vector3.UnitZ));
+        Vector3 basis2 = Vector3.Normalize(Vector3.Cross(axis, basis1));
+
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            float a = (float)(s_rng.NextDouble() * System.Math.PI * 2.0);
+            // thickness: small tilt toward axis
+            float tilt = (float)(s_rng.NextDouble() * 2.0 - 1.0) * 0.15f;
+
+            Vector3 ring = (basis1 * MathF.Cos(a) + basis2 * MathF.Sin(a));
+            Vector3 d = Vector3.Normalize(ring + axis * tilt);
+            dirs[i] = d;
+        }
+
+        _ = radius;
+        return dirs;
+    }
+
+    private static Vector3 RandomUnitVector()
+    {
+        float z = (float)(s_rng.NextDouble() * 2.0 - 1.0);
+        float a = (float)(s_rng.NextDouble() * System.Math.PI * 2.0);
+        float r = MathF.Sqrt(MathF.Max(0.0f, 1.0f - z * z));
+        return new Vector3(r * MathF.Cos(a), z, r * MathF.Sin(a));
+    }
+}
