@@ -29,7 +29,9 @@ public sealed record class FireworkShellProfile(
     float FuseTimeSeconds,
     float ExplosionRadius,
     int ParticleCount,
-    float ParticleLifetimeSeconds);
+    float ParticleLifetimeSeconds,
+    Vector3? RingAxis = null,
+    float RingAxisRandomTiltDegrees = 0.0f);
 
 public sealed record class ColorScheme(
     string Id,

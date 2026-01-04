@@ -89,7 +89,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 14.0f,
                 ParticleCount: 7000,
-                ParticleLifetimeSeconds: 3.2f)
+                ParticleLifetimeSeconds: 3.2f,
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 25.0f)
         };
 
         return new FireworksProfileSet(canisters, shells, schemes);
@@ -112,7 +114,7 @@ public static class DefaultShow
             float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
 
             // debug variations
-            //shellId = "willow";
+            // shellId = "donut";
             //canisterId = "c2";
             //colorSchemeId = "debug";
 

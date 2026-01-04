@@ -152,13 +152,37 @@ public sealed class FireworksEngine
 
     private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
     {
+        Vector3 ringAxis = Vector3.UnitY;
+        if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
+            ringAxis = Vector3.Normalize(configuredRingAxis);
+
+        if (explosion.RingAxisRandomTiltDegrees > 0.0f)
+        {
+            float maxTiltRadians = explosion.RingAxisRandomTiltDegrees * (MathF.PI / 180.0f);
+
+            // Randomize the axis within a cone centered on the configured axis.
+            // This produces variation in *all* directions (not just a single world-space axis).
+            float yaw = (float)(_rng.NextDouble() * MathF.Tau);
+            float u = (float)_rng.NextDouble();
+            float tilt = maxTiltRadians * MathF.Sqrt(u);
+
+            Vector3 tangent1 = Vector3.Cross(ringAxis, Vector3.UnitY);
+            if (tangent1.LengthSquared() < 1e-6f)
+                tangent1 = Vector3.Cross(ringAxis, Vector3.UnitX);
+            tangent1 = Vector3.Normalize(tangent1);
+            Vector3 tangent2 = Vector3.Normalize(Vector3.Cross(ringAxis, tangent1));
+
+            Vector3 offset = (tangent1 * MathF.Cos(yaw) + tangent2 * MathF.Sin(yaw)) * MathF.Sin(tilt);
+            ringAxis = Vector3.Normalize(ringAxis * MathF.Cos(tilt) + offset);
+        }
+
         var dirs = explosion.BurstShape switch
         {
             FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
             FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount),
             FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
             FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
-            FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: Vector3.UnitY),
+            FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
@@ -268,6 +292,8 @@ public sealed class FireworkShell
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
+            RingAxis: Profile.RingAxis,
+            RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme));
 
         Alive = false;
@@ -281,6 +307,8 @@ public readonly record struct ShellExplosion(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    Vector3? RingAxis,
+    float RingAxisRandomTiltDegrees,
     Vector4 BaseColor);
 
 internal static class ColorUtil
