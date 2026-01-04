@@ -14,12 +14,22 @@ public enum FireworkBurstShape
     Ring
 }
 
+public sealed record CanisterType(
+    string Id,
+    float CaliberInches,
+    float InnerDiameterMm,
+    float TubeLengthMm,
+    float MuzzleVelocityMin,
+    float MuzzleVelocityMax,
+    float NominalBurstHeightM,
+    float ReloadSeconds
+);
+
 public sealed record class CanisterProfile(
     string Id,
+    string CanisterTypeId,
     Vector2 Position,
     Vector3 LaunchDirection,
-    float MuzzleVelocity,
-    float ReloadTimeSeconds,
     string DefaultShellProfileId);
 
 public sealed record class FireworkShellProfile(

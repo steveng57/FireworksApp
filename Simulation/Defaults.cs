@@ -10,29 +10,35 @@ public static class DefaultProfiles
     {
         var canisters = new Dictionary<string, CanisterProfile>
         {
-            ["c1"] = new CanisterProfile(
-                Id: "c1",
-                Position: new Vector2(0, 0),
-                LaunchDirection: Vector3.UnitY,
-                MuzzleVelocity: 55.0f,
-                ReloadTimeSeconds: 2.5f,
-                DefaultShellProfileId: "basic"),
+            ["c01"] = new CanisterProfile("c01", "M2", new Vector2(-4.0f, -4.0f), Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), "basic"),
+            ["c02"] = new CanisterProfile("c02", "M3", new Vector2(-2.0f, -4.0f), Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), "basic"),
+            ["c03"] = new CanisterProfile("c03", "M4", new Vector2(0.0f, -4.0f), Vector3.Normalize(new Vector3(0.0f, 0.9659258f, -0.25881904f)), "basic"),
+            ["c04"] = new CanisterProfile("c04", "M5", new Vector2(2.0f, -4.0f), Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, -0.26790532f)), "basic"),
+            ["c05"] = new CanisterProfile("c05", "M6", new Vector2(4.0f, -4.0f), Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, -0.29883623f)), "basic"),
 
-            ["c2"] = new CanisterProfile(
-                Id: "c2",
-                Position: new Vector2(-2.5f, 0),
-                LaunchDirection: Vector3.Normalize(new Vector3(0.0f, MathF.Cos(25.0f * MathF.PI / 180.0f), MathF.Sin(25.0f * MathF.PI / 180.0f))),
-                MuzzleVelocity: 58.0f,
-                ReloadTimeSeconds: 3.0f,
-                DefaultShellProfileId: "donut"),
+            ["c06"] = new CanisterProfile("c06", "M8", new Vector2(-4.0f, -2.0f), Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, -0.13395266f)), "basic"),
+            ["c07"] = new CanisterProfile("c07", "M10", new Vector2(-2.0f, -2.0f), Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, -0.1648116f)), "basic"),
+            ["c08"] = new CanisterProfile("c08", "M2", new Vector2(0.0f, -2.0f), Vector3.Normalize(new Vector3(0.0f, 0.9914449f, -0.13052619f)), "donut"),
+            ["c09"] = new CanisterProfile("c09", "M3", new Vector2(2.0f, -2.0f), Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, -0.1648116f)), "donut"),
+            ["c10"] = new CanisterProfile("c10", "M4", new Vector2(4.0f, -2.0f), Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, -0.13395266f)), "donut"),
 
-            ["c3"] = new CanisterProfile(
-                Id: "c3",
-                Position: new Vector2(2.5f, 0),
-                LaunchDirection: Vector3.Normalize(new Vector3(0.0f, MathF.Cos(25.0f * MathF.PI / 180.0f), -MathF.Sin(25.0f * MathF.PI / 180.0f))),
-                MuzzleVelocity: 58.0f,
-                ReloadTimeSeconds: 3.0f,
-                DefaultShellProfileId: "donut")
+            ["c11"] = new CanisterProfile("c11", "M5", new Vector2(-4.0f, 0.0f), Vector3.Normalize(new Vector3(-0.25881904f, 0.9659258f, 0.0f)), "donut"),
+            ["c12"] = new CanisterProfile("c12", "M6", new Vector2(-2.0f, 0.0f), Vector3.Normalize(new Vector3(-0.13052619f, 0.9914449f, 0.0f)), "donut"),
+            ["c13"] = new CanisterProfile("c13", "M8", new Vector2(0.0f, 0.0f), Vector3.UnitY, "donut"),
+            ["c14"] = new CanisterProfile("c14", "M10", new Vector2(2.0f, 0.0f), Vector3.Normalize(new Vector3(0.13052619f, 0.9914449f, 0.0f)), "donut"),
+            ["c15"] = new CanisterProfile("c15", "M2", new Vector2(4.0f, 0.0f), Vector3.Normalize(new Vector3(0.25881904f, 0.9659258f, 0.0f)), "chrys"),
+
+            ["c16"] = new CanisterProfile("c16", "M3", new Vector2(-4.0f, 2.0f), Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, 0.13395266f)), "chrys"),
+            ["c17"] = new CanisterProfile("c17", "M4", new Vector2(-2.0f, 2.0f), Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, 0.1648116f)), "chrys"),
+            ["c18"] = new CanisterProfile("c18", "M5", new Vector2(0.0f, 2.0f), Vector3.Normalize(new Vector3(0.0f, 0.9914449f, 0.13052619f)), "chrys"),
+            ["c19"] = new CanisterProfile("c19", "M6", new Vector2(2.0f, 2.0f), Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, 0.1648116f)), "chrys"),
+            ["c20"] = new CanisterProfile("c20", "M8", new Vector2(4.0f, 2.0f), Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, 0.13395266f)), "chrys"),
+
+            ["c21"] = new CanisterProfile("c21", "M10", new Vector2(-4.0f, 4.0f), Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, 0.29883623f)), "chrys"),
+            ["c22"] = new CanisterProfile("c22", "M4", new Vector2(-2.0f, 4.0f), Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, 0.26790532f)), "willow"),
+            ["c23"] = new CanisterProfile("c23", "M5", new Vector2(0.0f, 4.0f), Vector3.Normalize(new Vector3(0.0f, 0.9659258f, 0.25881904f)), "willow"),
+            ["c24"] = new CanisterProfile("c24", "M6", new Vector2(2.0f, 4.0f), Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), "willow"),
+            ["c25"] = new CanisterProfile("c25", "M8", new Vector2(4.0f, 4.0f), Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), "willow")
         };
 
         var schemes = new Dictionary<string, ColorScheme>
@@ -111,7 +117,7 @@ public static class DefaultShow
             string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
             string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
             string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt(i % profiles.ColorSchemes.Count);
-            float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
+            float? muzzleVelocity = null;
 
             // debug variations
             // shellId = "donut";

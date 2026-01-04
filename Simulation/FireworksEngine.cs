@@ -108,7 +108,8 @@ public sealed class FireworksEngine
         if (!_profiles.Shells.TryGetValue(ev.ShellProfileId, out var shellProfile))
             return;
 
-        var muzzle = ev.MuzzleVelocity ?? canister.Profile.MuzzleVelocity;
+        var muzzle = ev.MuzzleVelocity ??
+            (canister.Type.MuzzleVelocityMin + (float)_rng.NextDouble() * (canister.Type.MuzzleVelocityMax - canister.Type.MuzzleVelocityMin));
 
         if (!canister.CanFire)
             return;
@@ -219,15 +220,24 @@ public sealed class Canister
 {
     private float _cooldown;
 
+    private readonly CanisterType _type;
+
     public CanisterProfile Profile { get; }
+
+    public CanisterType Type => _type;
 
     public bool CanFire => _cooldown <= 0;
 
-    public Canister(CanisterProfile profile) => Profile = profile;
+    public Canister(CanisterProfile profile)
+    {
+        Profile = profile;
+        _type = DefaultCanisterTypes.All.FirstOrDefault(t => t.Id == profile.CanisterTypeId)
+            ?? throw new InvalidOperationException($"Unknown canister type '{profile.CanisterTypeId}' for canister '{profile.Id}'.");
+    }
 
     public void Update(float dt) => _cooldown = MathF.Max(0, _cooldown - dt);
 
-    public void OnFired() => _cooldown = MathF.Max(0, Profile.ReloadTimeSeconds);
+    public void OnFired() => _cooldown = MathF.Max(0, _type.ReloadSeconds);
 }
 
 public sealed class FireworkShell
