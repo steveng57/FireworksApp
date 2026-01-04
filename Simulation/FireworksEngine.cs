@@ -152,10 +152,14 @@ public sealed class FireworksEngine
 
     private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
     {
-        var dirs = explosion.Style switch
+        var dirs = explosion.BurstShape switch
         {
-            "donut" => EmissionStyles.EmitDonut(explosion.ParticleCount, explosion.ExplosionRadius, axis: Vector3.UnitY),
-            _ => EmissionStyles.EmitSphere(explosion.ParticleCount)
+            FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
+            FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount),
+            FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
+            FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
+            FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: Vector3.UnitY),
+            _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
         // Convert Color to HDR-ish Vector4 expected by current particle shader.
@@ -163,14 +167,26 @@ public sealed class FireworksEngine
 
         // Match the renderer's original burst look: speed is not derived from radius/lifetime.
         // Keep a characteristic base speed and let the renderer apply per-particle variance.
-        float speed = 10.0f;
+        float speed = explosion.BurstShape switch
+        {
+            FireworkBurstShape.Willow => 7.0f,
+            FireworkBurstShape.Palm => 13.0f,
+            _ => 10.0f
+        };
+
+        float lifetime = explosion.BurstShape switch
+        {
+            FireworkBurstShape.Willow => explosion.ParticleLifetimeSeconds * 1.6f,
+            FireworkBurstShape.Palm => explosion.ParticleLifetimeSeconds * 1.2f,
+            _ => explosion.ParticleLifetimeSeconds
+        };
 
         renderer.SpawnBurstDirected(
             explosion.Position,
             baseColor,
             speed,
             dirs,
-            particleLifetimeSeconds: explosion.ParticleLifetimeSeconds);
+            particleLifetimeSeconds: lifetime);
         renderer.SpawnSmoke(explosion.Position);
     }
 }
@@ -248,7 +264,7 @@ public sealed class FireworkShell
 
         explosion = new ShellExplosion(
             Position,
-            Style: Profile.Style,
+            BurstShape: Profile.BurstShape,
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
@@ -261,7 +277,7 @@ public sealed class FireworkShell
 
 public readonly record struct ShellExplosion(
     Vector3 Position,
-    string Style,
+    FireworkBurstShape BurstShape,
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
@@ -297,7 +313,10 @@ internal static class EmissionStyles
 {
     private static readonly Random s_rng = new();
 
-    public static Vector3[] EmitSphere(int count)
+    /// <summary>
+    /// Peony: soft, roughly uniform spherical burst. Equivalent to the old "sphere".
+    /// </summary>
+    public static Vector3[] EmitPeony(int count)
     {
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
@@ -305,9 +324,93 @@ internal static class EmissionStyles
         return dirs;
     }
 
-    public static Vector3[] EmitDonut(int count, float radius, Vector3 axis)
+    /// <summary>
+    /// Chrysanthemum: spherical burst with a slightly more structured "spiky" look.
+    /// We bias particles toward a set of "spokes" distributed over the full sphere,
+    /// then apply isotropic 3D jitter around each spoke so each cluster is a narrow cone (not a plane).
+    /// </summary>
+    public static Vector3[] EmitChrysanthemum(int count)
     {
-        // Torus/ring: pick direction mostly perpendicular to axis with some thickness.
+        // More spokes => more distinct "radial streaks" without looking like only a few sheets.
+        const int spokeCount = 24;
+
+        // How wide each spoke's cone is (bigger => less spiky / more peony-like).
+        const float spokeJitter = 0.12f;
+
+        // Precompute spoke directions across the *full* sphere (not locked to a plane).
+        var spokes = new Vector3[spokeCount];
+        for (int s = 0; s < spokeCount; s++)
+            spokes[s] = RandomUnitVector();
+
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            // Deterministic index gives a more even distribution of particles per spoke.
+            Vector3 baseSpoke = spokes[i % spokeCount];
+
+            // Isotropic jitter around the spoke (3D), then renormalize.
+            Vector3 jitterDir = RandomUnitVector();
+            Vector3 d = baseSpoke + (jitterDir * spokeJitter);
+            if (d.LengthSquared() < 1e-8f)
+                d = baseSpoke;
+            dirs[i] = Vector3.Normalize(d);
+        }
+
+        return dirs;
+    }
+
+    /// <summary>
+    /// Willow: start spherical but add a small downward bias so trails "weep" as gravity acts.
+    /// </summary>
+    public static Vector3[] EmitWillow(int count)
+    {
+        const float downwardBias = 0.22f; // tweak: higher = more droop
+
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 d = RandomUnitVector();
+            d += new Vector3(0, -downwardBias, 0);
+            if (d.LengthSquared() < 1e-8f)
+                d = Vector3.UnitY;
+            dirs[i] = Vector3.Normalize(d);
+        }
+        return dirs;
+    }
+
+    /// <summary>
+    /// Palm: a small number of strong "fronds" (directions on a cone), with many particles per frond.
+    /// </summary>
+    public static Vector3[] EmitPalm(int count)
+    {
+        const int fronds = 6;
+        const float coneAngle = 0.55f; // radians from +Y
+        const float jitterAngle = 0.12f;
+
+        var frondDirs = new Vector3[fronds];
+        for (int i = 0; i < fronds; i++)
+        {
+            float a = (float)(i * (System.Math.PI * 2.0) / fronds);
+            float s = MathF.Sin(coneAngle);
+            float c = MathF.Cos(coneAngle);
+            frondDirs[i] = Vector3.Normalize(new Vector3(s * MathF.Cos(a), c, s * MathF.Sin(a)));
+        }
+
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 baseDir = frondDirs[s_rng.Next(fronds)];
+            dirs[i] = JitterDirection(baseDir, maxAngleRadians: jitterAngle);
+        }
+        return dirs;
+    }
+
+    /// <summary>
+    /// Ring: directions around a circle perpendicular to the given axis (default +Y).
+    /// Equivalent to the old "donut" direction pattern.
+    /// </summary>
+    public static Vector3[] EmitRing(int count, Vector3 axis)
+    {
         axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
 
         Vector3 basis1 = Vector3.Normalize(Vector3.Cross(axis, Vector3.UnitX));
@@ -315,20 +418,41 @@ internal static class EmissionStyles
             basis1 = Vector3.Normalize(Vector3.Cross(axis, Vector3.UnitZ));
         Vector3 basis2 = Vector3.Normalize(Vector3.Cross(axis, basis1));
 
+        const float thickness = 0.15f;
+
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
         {
             float a = (float)(s_rng.NextDouble() * System.Math.PI * 2.0);
-            // thickness: small tilt toward axis
-            float tilt = (float)(s_rng.NextDouble() * 2.0 - 1.0) * 0.15f;
+            float tilt = (float)(s_rng.NextDouble() * 2.0 - 1.0) * thickness;
 
             Vector3 ring = (basis1 * MathF.Cos(a) + basis2 * MathF.Sin(a));
             Vector3 d = Vector3.Normalize(ring + axis * tilt);
             dirs[i] = d;
         }
 
-        _ = radius;
         return dirs;
+    }
+
+    private static Vector3 JitterDirection(Vector3 baseDir, float maxAngleRadians)
+    {
+        if (baseDir.LengthSquared() < 1e-8f)
+            return Vector3.UnitY;
+
+        baseDir = Vector3.Normalize(baseDir);
+        float yaw = (float)(s_rng.NextDouble() * System.Math.PI * 2.0);
+        float pitch = (float)(s_rng.NextDouble() * maxAngleRadians);
+
+        // Use a stable axis perpendicular to baseDir.
+        Vector3 axis = Vector3.Cross(baseDir, Vector3.UnitY);
+        if (axis.LengthSquared() < 1e-6f)
+            axis = Vector3.UnitX;
+        else
+            axis = Vector3.Normalize(axis);
+
+        var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+        var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+        return Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
     }
 
     private static Vector3 RandomUnitVector()

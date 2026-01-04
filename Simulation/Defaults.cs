@@ -48,16 +48,43 @@ public static class DefaultProfiles
         {
             ["basic"] = new FireworkShellProfile(
                 Id: "basic",
-                Style: "sphere",
+                BurstShape: FireworkBurstShape.Peony,
                 ColorSchemeId: "warm",
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
                 ParticleCount: 6000,
                 ParticleLifetimeSeconds: 5.2f),
 
+            ["chrys"] = new FireworkShellProfile(
+                Id: "chrys",
+                BurstShape: FireworkBurstShape.Chrysanthemum,
+                ColorSchemeId: "mixed",
+                FuseTimeSeconds: 3.9f,
+                ExplosionRadius: 13.0f,
+                ParticleCount: 6500,
+                ParticleLifetimeSeconds: 5.0f),
+
+            ["willow"] = new FireworkShellProfile(
+                Id: "willow",
+                BurstShape: FireworkBurstShape.Willow,
+                ColorSchemeId: "pastel",
+                FuseTimeSeconds: 4.2f,
+                ExplosionRadius: 15.0f,
+                ParticleCount: 7000,
+                ParticleLifetimeSeconds: 6.0f),
+
+            ["palm"] = new FireworkShellProfile(
+                Id: "palm",
+                BurstShape: FireworkBurstShape.Palm,
+                ColorSchemeId: "warm",
+                FuseTimeSeconds: 4.0f,
+                ExplosionRadius: 16.0f,
+                ParticleCount: 5000,
+                ParticleLifetimeSeconds: 5.5f),
+
             ["donut"] = new FireworkShellProfile(
                 Id: "donut",
-                Style: "donut",
+                BurstShape: FireworkBurstShape.Ring,
                 ColorSchemeId: "cool",
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 14.0f,
@@ -77,11 +104,11 @@ public static class DefaultShow
         var events = new List<ShowEvent>();
         var profiles = DefaultProfiles.Create();
         float t = 0;
-        for (int i = 0; i < 60; i++)
+        for (int i = 0; i < 80; i++)
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
-            string shellId = i % 2 == 0 ? "basic" : "donut";
-
+            //string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
+            string shellId = "basic";
             //string canisterId = "c2";
             //string shellId = "basic";
             float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;

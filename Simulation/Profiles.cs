@@ -5,6 +5,15 @@ using System.Windows.Media;
 
 namespace FireworksApp.Simulation;
 
+public enum FireworkBurstShape
+{
+    Peony,
+    Chrysanthemum,
+    Willow,
+    Palm,
+    Ring
+}
+
 public sealed record class CanisterProfile(
     string Id,
     Vector2 Position,
@@ -15,7 +24,7 @@ public sealed record class CanisterProfile(
 
 public sealed record class FireworkShellProfile(
     string Id,
-    string Style,
+    FireworkBurstShape BurstShape,
     string ColorSchemeId,
     float FuseTimeSeconds,
     float ExplosionRadius,

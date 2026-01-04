@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
@@ -176,9 +177,49 @@ public sealed class D3DHost : HwndHost
     {
         if (e.Key == Key.Space)
         {
-            _engine?.Launch("c1", "basic", _renderer!);
+            if (_engine != null && _renderer != null)
+            {
+                string shellId = IsShowFinished() ? "willow" : "basic";
+                if (IsShowFinished())
+                    LogShellColors(shellId);
+                _engine.Launch("c1", shellId, _renderer);
+            }
             e.Handled = true;
         }
+    }
+
+    private bool IsShowFinished()
+    {
+        if (_engine is null || _defaultShow is null)
+            return false;
+
+        if (_defaultShow.Events.Count == 0)
+            return true;
+
+        // Consider the show finished once time is past the last scheduled event.
+        // Shells may still be in-flight; this just toggles which shell Space spawns.
+        float lastTime = _defaultShow.Events[^1].TimeSeconds;
+        return _engine.ShowTimeSeconds >= lastTime;
+    }
+
+    private static void LogShellColors(string shellId)
+    {
+        var profiles = DefaultProfiles.Create();
+        if (!profiles.Shells.TryGetValue(shellId, out var shell))
+        {
+            Debug.WriteLine($"[Fireworks] Shell '{shellId}' not found.");
+            return;
+        }
+
+        if (!profiles.ColorSchemes.TryGetValue(shell.ColorSchemeId, out var scheme))
+        {
+            Debug.WriteLine($"[Fireworks] Shell '{shellId}' uses unknown color scheme '{shell.ColorSchemeId}'.");
+            return;
+        }
+
+        Debug.WriteLine($"[Fireworks] Shell '{shellId}' colorscheme '{scheme.Id}' base colors:");
+        foreach (var c in scheme.BaseColors)
+            Debug.WriteLine($"[Fireworks]   {c}  (A={c.A} R={c.R} G={c.G} B={c.B})");
     }
 
     private static Point GetMousePointFromLParam(IntPtr lParam)
@@ -225,7 +266,10 @@ public sealed class D3DHost : HwndHost
                         {
                             if (host._engine != null && host._renderer != null)
                             {
-                                host._engine.Launch("c1", "basic", host._renderer);
+                                string shellId = host.IsShowFinished() ? "willow" : "basic";
+                                if (host.IsShowFinished())
+                                    LogShellColors(shellId);
+                                host._engine.Launch("c1", shellId, host._renderer);
                             }
                             return IntPtr.Zero;
                         }
