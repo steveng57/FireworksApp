@@ -107,14 +107,14 @@ public static class DefaultShow
         for (int i = 0; i < 80; i++)
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
-            //string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
-            string shellId = "willow";
-            //string canisterId = "c2";
-            //string shellId = "basic";
-            float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
+            string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
             string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt(i % profiles.ColorSchemes.Count);
-            //string colorSchemeId = "cool";
+            float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
 
+            // debug variations
+            shellId = "willow";
+            //canisterId = "c2";
+            //colorSchemeId = "debug";
 
             var showEvent = new ShowEvent(
                 TimeSeconds: t,
