@@ -43,20 +43,26 @@ float4 ColorRampSpark(float t, float4 baseColor)
 {
     t = saturate(t);
 
+    // Time shaping: keep sparks visually "younger" for longer
+    float tColor = pow(t, 0.7f); // 0.7 < 1 => stretches out early/mid phases
+
     float3 scheme = max(SchemeTint, 0.001f);
     float3 whiteHot = baseColor.rgb * scheme * 4.0f + 1.5f;
     float3 mid = baseColor.rgb * scheme;
     float3 ember = float3(1.0f, 0.35f, 0.08f);
 
-    float early = smoothstep(0.00f, 0.20f, t);
-    float midW = smoothstep(0.20f, 0.70f, t);
+    float early = smoothstep(0.00f, 0.20f, tColor);
+    float midW = smoothstep(0.20f, 0.70f, tColor);
 
     float3 c = lerp(whiteHot, mid, early);
     c = lerp(c, ember, midW);
 
-    float a = 1.0f - smoothstep(0.70f, 1.00f, t);
+    float a = 1.0f - smoothstep(0.70f, 1.00f, tColor);
+
     return float4(c, a);
 }
+
+
 
 float Hash01(uint x)
 {

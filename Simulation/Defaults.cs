@@ -112,7 +112,7 @@ public static class DefaultShow
             float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
 
             // debug variations
-            shellId = "willow";
+            //shellId = "willow";
             //canisterId = "c2";
             //colorSchemeId = "debug";
 

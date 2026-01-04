@@ -360,66 +360,86 @@ internal static class EmissionStyles
     }
 
     /// <summary>
-    /// Willow: start spherical but add a small downward bias so trails "weep" as gravity acts.
+    /// Willow: still roughly spherical, but each direction is gently blended toward "down"
+    /// so gravity + extended lifetime produce long drooping arcs.
     /// </summary>
     public static Vector3[] EmitWillow(int count)
     {
-        // Heavier / slower than Peony:
-        // - We still start from a spherical distribution,
-        // - but we bias the launch directions downward strongly so gravity dominates quickly.
-        // Speed and lifetime are handled in the Explode() switch.
-
-        // Tweaks:
-        // Higher values => more droop (more downward velocity component).
-        const float downwardBias = 0.70f;
-
-        // Reduce upward shots so it doesn't look like a Peony at the start.
-        const float maxUpwardY = 0.55f;
+        const float downwardBlend = 0.35f; // 0 = peony-like, 1 = straight down
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
         {
-            // Start from a random direction like Peony.
+            // Start from a random spherical direction (same as Peony).
             Vector3 d = RandomUnitVector();
 
-            // Clamp upward component and push downward so the net direction is "heavier".
-            float y = System.Math.Min(d.Y, maxUpwardY);
-            d = new Vector3(d.X, y, d.Z);
-            d += new Vector3(0, -downwardBias, 0);
+            // Gently bias toward down.
+            Vector3 down = new(0f, -1f, 0f);
+            d = Vector3.Normalize(Vector3.Lerp(d, down, downwardBlend));
 
-            if (d.LengthSquared() < 1e-8f)
-                d = new Vector3(0, -1, 0);
-
-            dirs[i] = Vector3.Normalize(d);
+            dirs[i] = d;
         }
 
         return dirs;
     }
 
     /// <summary>
-    /// Palm: a small number of strong "fronds" (directions on a cone), with many particles per frond.
+    /// Palm: a small number of strong comet-like "fronds" radiating from near the zenith.
+    /// Each frond is a narrow cone so it reads as a streak rather than a fuzzy blob.
     /// </summary>
     public static Vector3[] EmitPalm(int count)
     {
-        const int fronds = 6;
-        const float coneAngle = 0.55f; // radians from +Y
-        const float jitterAngle = 0.12f;
+        // Fewer, stronger fronds = clearer palm shape.
+        const int frondCount = 7;
 
-        var frondDirs = new Vector3[fronds];
-        for (int i = 0; i < fronds; i++)
+        // Angle of fronds away from +Y (0 = straight up, pi/2 = horizontal).
+        // ~35–40° feels very palm-like.
+        const float frondConeAngle = 0.65f; // radians
+
+        // How much we let each particle deviate from its frond direction.
+        // Smaller => tighter fronds.
+        const float frondJitterAngle = 0.08f; // radians
+
+        var frondDirs = new Vector3[frondCount];
+
+        // Precompute frond directions around a cone centered on +Y.
+        for (int i = 0; i < frondCount; i++)
         {
-            float a = (float)(i * (System.Math.PI * 2.0) / fronds);
-            float s = MathF.Sin(coneAngle);
-            float c = MathF.Cos(coneAngle);
-            frondDirs[i] = Vector3.Normalize(new Vector3(s * MathF.Cos(a), c, s * MathF.Sin(a)));
+            float azimuth = (float)(i * (Math.PI * 2.0) / frondCount);
+            float s = MathF.Sin(frondConeAngle);
+            float c = MathF.Cos(frondConeAngle);
+
+            // Cone around +Y.
+            frondDirs[i] = Vector3.Normalize(new Vector3(
+                s * MathF.Cos(azimuth),
+                c,
+                s * MathF.Sin(azimuth)));
         }
 
         var dirs = new Vector3[count];
-        for (int i = 0; i < count; i++)
+
+        // Spread particles evenly across fronds so each frond is clearly visible.
+        int perFrond = Math.Max(1, count / frondCount);
+        int idx = 0;
+
+        for (int f = 0; f < frondCount; f++)
         {
-            Vector3 baseDir = frondDirs[s_rng.Next(fronds)];
-            dirs[i] = JitterDirection(baseDir, maxAngleRadians: jitterAngle);
+            Vector3 baseDir = frondDirs[f];
+
+            for (int j = 0; j < perFrond && idx < count; j++, idx++)
+            {
+                dirs[idx] = JitterDirection(baseDir, maxAngleRadians: frondJitterAngle);
+            }
         }
+
+        // If count isn't perfectly divisible, fill any remaining particles
+        // by sampling random fronds with the same jitter.
+        while (idx < count)
+        {
+            Vector3 baseDir = frondDirs[s_rng.Next(frondCount)];
+            dirs[idx++] = JitterDirection(baseDir, maxAngleRadians: frondJitterAngle);
+        }
+
         return dirs;
     }
 
