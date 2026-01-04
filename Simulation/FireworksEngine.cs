@@ -176,7 +176,7 @@ public sealed class FireworksEngine
 
         float lifetime = explosion.BurstShape switch
         {
-            FireworkBurstShape.Willow => explosion.ParticleLifetimeSeconds * 1.6f,
+            FireworkBurstShape.Willow => explosion.ParticleLifetimeSeconds * 2.2f,
             FireworkBurstShape.Palm => explosion.ParticleLifetimeSeconds * 1.2f,
             _ => explosion.ParticleLifetimeSeconds
         };
@@ -364,17 +364,35 @@ internal static class EmissionStyles
     /// </summary>
     public static Vector3[] EmitWillow(int count)
     {
-        const float downwardBias = 0.22f; // tweak: higher = more droop
+        // Heavier / slower than Peony:
+        // - We still start from a spherical distribution,
+        // - but we bias the launch directions downward strongly so gravity dominates quickly.
+        // Speed and lifetime are handled in the Explode() switch.
+
+        // Tweaks:
+        // Higher values => more droop (more downward velocity component).
+        const float downwardBias = 0.70f;
+
+        // Reduce upward shots so it doesn't look like a Peony at the start.
+        const float maxUpwardY = 0.55f;
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
         {
+            // Start from a random direction like Peony.
             Vector3 d = RandomUnitVector();
+
+            // Clamp upward component and push downward so the net direction is "heavier".
+            float y = System.Math.Min(d.Y, maxUpwardY);
+            d = new Vector3(d.X, y, d.Z);
             d += new Vector3(0, -downwardBias, 0);
+
             if (d.LengthSquared() < 1e-8f)
-                d = Vector3.UnitY;
+                d = new Vector3(0, -1, 0);
+
             dirs[i] = Vector3.Normalize(d);
         }
+
         return dirs;
     }
 

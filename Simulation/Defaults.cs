@@ -108,7 +108,7 @@ public static class DefaultShow
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
             //string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
-            string shellId = "basic";
+            string shellId = "willow";
             //string canisterId = "c2";
             //string shellId = "basic";
             float muzzleVelocity = profiles.Canisters[canisterId].MuzzleVelocity;
