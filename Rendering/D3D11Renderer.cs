@@ -179,6 +179,10 @@ public sealed class D3D11Renderer : IDisposable
     private bool _cameraDirty = true;
 
     private Vector3 _cameraTarget = Vector3.Zero;
+    
+    // Smoothed camera state for nicer motion
+    private Vector3 _cameraTargetSmoothed = Vector3.Zero;
+    private float _cameraDistanceSmoothed = 35.0f;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SceneCBData
@@ -235,7 +239,7 @@ public sealed class D3D11Renderer : IDisposable
         LoadShellShaders();
         CreateShellGeometry();
         CreateSceneConstants();
-        UpdateSceneConstants();
+        UpdateSceneConstants(0.0f);
 
         CreateParticleSystem();
 
@@ -306,7 +310,8 @@ public sealed class D3D11Renderer : IDisposable
         CreateRenderTarget();
         CreateDepthStencil(width, height);
         SetViewport(width, height);
-        UpdateSceneConstants();
+        UpdateSceneConstants(0.0f);
+
     }
 
     public void Render(float scaledDt)
@@ -321,9 +326,16 @@ public sealed class D3D11Renderer : IDisposable
 
         UpdateParticles(scaledDt);
 
+        // Always update camera + scene constants; smoothing uses scaledDt.
+        UpdateSceneConstants(scaledDt);
+
+        // Explicit per-frame state (avoid state leakage as the frame grows)
+        _context.RSSetViewport(new Viewport(0, 0, _width, _height, 0.0f, 1.0f));
+
+
         if (_cameraDirty)
         {
-            UpdateSceneConstants();
+            UpdateSceneConstants(0.0f);
             _cameraDirty = false;
         }
 
@@ -1556,7 +1568,7 @@ public sealed class D3D11Renderer : IDisposable
         });
     }
 
-    private void UpdateSceneConstants()
+    private void UpdateSceneConstants(float dt)
     {
         if (_context is null || _sceneCB is null)
             return;
@@ -1565,15 +1577,40 @@ public sealed class D3D11Renderer : IDisposable
 
         var up = Vector3.UnitY;
 
+        // Smooth follow of target and distance so camera motion is less jerky.
+        // When dt <= 0 (e.g., during initialization / resize) snap directly.
+        if (dt <= 0.0f)
+        {
+            _cameraTargetSmoothed = _cameraTarget;
+            _cameraDistanceSmoothed = _cameraDistance;
+        }
+        else
+        {
+            const float followSpeed = 5.0f;
+            const float zoomSpeed = 5.0f;
+
+            float followT = 1.0f - (float)System.Math.Exp(-followSpeed * dt);
+            float zoomT = 1.0f - (float)System.Math.Exp(-zoomSpeed * dt);
+
+            // Clamp interpolation factors into [0,1] in case of extreme dt values.
+            if (followT < 0.0f) followT = 0.0f;
+            if (followT > 1.0f) followT = 1.0f;
+            if (zoomT < 0.0f) zoomT = 0.0f;
+            if (zoomT > 1.0f) zoomT = 1.0f;
+
+            _cameraTargetSmoothed = Vector3.Lerp(_cameraTargetSmoothed, _cameraTarget, followT);
+            _cameraDistanceSmoothed = _cameraDistanceSmoothed + (_cameraDistance - _cameraDistanceSmoothed) * zoomT;
+        }
+
         float cy = (float)System.Math.Cos(_cameraYaw);
         float sy = (float)System.Math.Sin(_cameraYaw);
         float cp = (float)System.Math.Cos(_cameraPitch);
         float sp = (float)System.Math.Sin(_cameraPitch);
 
         // Spherical coordinates: forward is +Z
-        var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistance;
+        var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistanceSmoothed;
 
-        var target = _cameraTarget;
+        var target = _cameraTargetSmoothed;
         var eye = target + eyeOffset;
 
         _view = Matrix4x4.CreateLookAt(eye, target, up);
@@ -1609,6 +1646,7 @@ public sealed class D3D11Renderer : IDisposable
             _context.Unmap(_lightingCB, 0);
         }
     }
+
 
     private void SetViewport(int width, int height)
     {
