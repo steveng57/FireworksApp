@@ -372,7 +372,112 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
     {
-        SpawnBurstInternal(position, baseColor, count);
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        count = System.Math.Clamp(count, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            float u = (float)_rng.NextDouble();
+            float speed = 6.0f + (u * u) * 12.0f;
+            Vector3 vel = dir * speed;
+
+            bool crackle = (_rng.NextDouble() < 0.22);
+
+            float lifetime;
+            if (crackle)
+            {
+                // 30–90ms per micro-spark
+                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+            }
+            else
+            {
+                lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+            }
+
+            staging[i] = new GpuParticle
+            {
+                Position = position,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = baseColor,
+                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
+                // Use padding as deterministic per-particle randomness for crackle.
+                _pad0 = (uint)_rng.Next(),
+                _pad1 = (uint)_rng.Next(),
+                _pad2 = (uint)_rng.Next()
+            };
+        }
+
+        // Write into a rotating region. Wrap with a split update when needed.
+        // Use `Map` + memcpy because Vortice's `UpdateSubresource` overloads vary by version.
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     public void SpawnBurstDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
@@ -383,10 +488,112 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnSmoke(Vector3 burstCenter)
     {
-        SpawnSmokeInternal(burstCenter);
+        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
+            return;
+
+        int count = _rng.Next(200, 601);
+        count = System.Math.Clamp(count, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var staging = new GpuParticle[count];
+
+        // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
+        Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            Vector3 pos = burstCenter + dir * 0.5f;
+
+            float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
+            Vector3 outward = dir * outwardSpeed;
+
+            float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
+            Vector3 up = new(0.0f, upSpeed, 0.0f);
+
+            Vector3 vel = outward * 0.7f + up;
+
+            float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
+
+            staging[i] = new GpuParticle
+            {
+                Position = pos,
+                Velocity = vel,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = startColor,
+                Kind = (uint)ParticleKind.Smoke,
+                _pad0 = (uint)_rng.Next(),
+                _pad1 = (uint)_rng.Next(),
+                _pad2 = (uint)_rng.Next()
+            };
+        }
+
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(_particleUploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
-    private void SpawnBurstDirectedInternal(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    public void SpawnBurstDirectedInternal(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;
@@ -586,113 +793,6 @@ public sealed class D3D11Renderer : IDisposable
 
 
 
-    private void SpawnSmokeInternal(Vector3 burstCenter)
-    {
-        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
-            return;
-
-        int count = _rng.Next(200, 601);
-        count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
-
-        var staging = new GpuParticle[count];
-
-        // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
-        Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
-
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 dir = RandomUnitVector();
-            Vector3 pos = burstCenter + dir * 0.5f;
-
-            float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
-            Vector3 outward = dir * outwardSpeed;
-
-            float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
-            Vector3 up = new(0.0f, upSpeed, 0.0f);
-
-            Vector3 vel = outward * 0.7f + up;
-
-            float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
-
-            staging[i] = new GpuParticle
-            {
-                Position = pos,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = lifetime,
-                Color = startColor,
-                Kind = (uint)ParticleKind.Smoke,
-                _pad0 = (uint)_rng.Next(),
-                _pad1 = (uint)_rng.Next(),
-                _pad2 = (uint)_rng.Next()
-            };
-        }
-
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
-
-        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            nint basePtr = mapped.DataPointer;
-            if (firstCount > 0)
-            {
-                nint dst = basePtr + (start * stride);
-                for (int i = 0; i < firstCount; i++)
-                {
-                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
-                }
-            }
-
-            if (remaining > 0)
-            {
-                for (int i = 0; i < remaining; i++)
-                {
-                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
-                }
-            }
-        }
-        finally
-        {
-            _context.Unmap(_particleUploadBuffer, 0);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = 0,
-                Right = (int)(remaining * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
-        }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
-    }
-
     private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
@@ -737,118 +837,6 @@ public sealed class D3D11Renderer : IDisposable
             };
         }
 
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
-
-        var mapped = _context.Map(_particleUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            nint basePtr = mapped.DataPointer;
-            if (firstCount > 0)
-            {
-                nint dst = basePtr + (start * stride);
-                for (int i = 0; i < firstCount; i++)
-                {
-                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
-                }
-            }
-
-            if (remaining > 0)
-            {
-                for (int i = 0; i < remaining; i++)
-                {
-                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
-                }
-            }
-        }
-        finally
-        {
-            _context.Unmap(_particleUploadBuffer, 0);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(_particleBuffer, 0, (uint)(start * stride), 0, 0, _particleUploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = 0,
-                Right = (int)(remaining * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(_particleBuffer, 0, 0, 0, 0, _particleUploadBuffer, 0, srcBox);
-        }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
-    }
-
-    // Shell spawning is managed by Simulation/Show controller.
-
-    private void SpawnBurstInternal(Vector3 position, Vector4 baseColor, int count)
-    {
-        if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
-            return;
-
-        count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
-
-        var staging = new GpuParticle[count];
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 dir = RandomUnitVector();
-            float u = (float)_rng.NextDouble();
-            float speed = 6.0f + (u * u) * 12.0f;
-            Vector3 vel = dir * speed;
-
-            bool crackle = (_rng.NextDouble() < 0.22);
-
-            float lifetime;
-            if (crackle)
-            {
-                // 30–90ms per micro-spark
-                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
-            }
-            else
-            {
-                lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
-            }
-
-            staging[i] = new GpuParticle
-            {
-                Position = position,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = lifetime,
-                Color = baseColor,
-                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                // Use padding as deterministic per-particle randomness for crackle.
-                _pad0 = (uint)_rng.Next(),
-                _pad1 = (uint)_rng.Next(),
-                _pad2 = (uint)_rng.Next()
-            };
-        }
-
-        // Write into a rotating region. Wrap with a split update when needed.
-        // Use `Map` + memcpy because Vortice's `UpdateSubresource` overloads vary by version.
         int firstCount = System.Math.Min(count, _particleCapacity - start);
         int remaining = count - firstCount;
 

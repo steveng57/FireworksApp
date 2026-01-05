@@ -244,6 +244,7 @@ public sealed class FireworkShell
 {
     private const float GroundY = 0.0f;
     private static readonly Vector3 Gravity = new(0, -9.81f, 0);
+    private static readonly Random _rng = new(); // <-- Add this line
 
     public FireworkShellProfile Profile { get; }
     public ColorScheme ColorScheme { get; }
@@ -276,10 +277,50 @@ public sealed class FireworkShell
 
     public void EmitTrail(D3D11Renderer renderer, float dt)
     {
-        // Keep using existing renderer trail logic by approximating it as smoke-less burst? Not available.
-        // This placeholder leaves trail generation to existing GPU particle evolution.
-        _ = renderer;
-        _ = dt;
+        //_ = renderer;
+        //_ = dt;
+        //return;
+        if (!Alive || Velocity.LengthSquared() < 1e-4f)
+            return;
+
+        Vector3 dir = Vector3.Normalize(Velocity);
+
+        Span<Vector3> dirs = stackalloc Vector3[12];
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 baseDir = -dir;
+
+            // tiny cone around baseDir
+            float angle = 5f * (MathF.PI / 180f);
+            float yaw = (float)(_rng.NextDouble() * MathF.PI * 2f);
+            float pitch = (float)(_rng.NextDouble() * angle);
+
+            Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
+            if (axis.LengthSquared() < 1e-6f)
+                axis = Vector3.UnitX;
+
+            var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+            var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+            dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
+        }
+
+        // LOCAL trail color, not stored anywhere else
+        var trailColor = new Vector4(1.0f, 0.85f, 0.5f, 1.0f);
+        trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green
+
+        // This should *only* write this color into the spawned particles
+        renderer.SpawnBurstDirectedInternal(
+            Position,
+            trailColor,
+            speed: 5.0f,
+            directions: dirs,
+            particleLifetimeSeconds: 0.6f);
+
+        // Optional smoke – same idea, no global color changes
+        if (_rng.NextDouble() < 0.2)
+        {
+            renderer.SpawnSmoke(Position);
+        }
     }
 
     public bool TryExplode(out ShellExplosion explosion)
