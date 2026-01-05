@@ -495,6 +495,15 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
+    public void SpawnGroundEffectDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds, float gravityFactor)
+    {
+        // Current GPU shader uses a single global gravity; we keep gravityFactor for forward compatibility.
+        // For now, modulate speed slightly to approximate different “weight”.
+        float g = System.Math.Clamp(gravityFactor, 0.0f, 2.0f);
+        float speedMul = 1.0f - 0.15f * (g - 1.0f);
+        SpawnBurstDirected(position, baseColor, speed * speedMul, directions, particleLifetimeSeconds);
+    }
+
     public void SpawnBurstDirectedExplode(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
     {
         _schemeTint = new Vector3(baseColor.X, baseColor.Y, baseColor.Z);

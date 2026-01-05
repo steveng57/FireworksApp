@@ -141,7 +141,68 @@ public static class DefaultProfiles
 
         };
 
-        return new FireworksProfileSet(canisters, shells, schemes);
+        var groundEffects = new Dictionary<string, GroundEffectProfile>
+        {
+            ["fountain_warm"] = new GroundEffectProfile(
+                Id: "fountain_warm",
+                Type: GroundEffectType.Fountain,
+                ColorSchemeId: "warm",
+                DurationSeconds: 5.0f,
+                EmissionRate: 1800.0f,
+                ParticleVelocityRange: new Vector2(6.0f, 12.0f),
+                ParticleLifetimeSeconds: 1.6f,
+                GravityFactor: 0.55f,
+                BrightnessScalar: 1.2f,
+                ConeAngleDegrees: 40.0f,
+                FlickerIntensity: 0.10f,
+                SmokeAmount: 0.2f),
+
+            ["spinner_neon"] = new GroundEffectProfile(
+                Id: "spinner_neon",
+                Type: GroundEffectType.Spinner,
+                ColorSchemeId: "neon",
+                DurationSeconds: 6.5f,
+                EmissionRate: 1400.0f,
+                ParticleVelocityRange: new Vector2(5.0f, 9.0f),
+                ParticleLifetimeSeconds: 1.4f,
+                GravityFactor: 0.35f,
+                BrightnessScalar: 1.1f,
+                AngularVelocityRadiansPerSec: 9.0f,
+                EmissionRadius: 0.22f,
+                SmokeAmount: 0.1f),
+
+            ["strobe_cool"] = new GroundEffectProfile(
+                Id: "strobe_cool",
+                Type: GroundEffectType.Strobe,
+                ColorSchemeId: "cool",
+                DurationSeconds: 4.5f,
+                EmissionRate: 250.0f,
+                ParticleVelocityRange: new Vector2(0.5f, 1.6f),
+                ParticleLifetimeSeconds: 0.45f,
+                GravityFactor: 0.05f,
+                BrightnessScalar: 2.0f,
+                FlashIntervalSeconds: 0.18f,
+                FlashDutyCycle: 0.28f,
+                FlashBrightness: 2.8f,
+                ResidualSparkDensity: 0.22f),
+
+            ["mine_mixed"] = new GroundEffectProfile(
+                Id: "mine_mixed",
+                Type: GroundEffectType.Mine,
+                ColorSchemeId: "mixed",
+                DurationSeconds: 3.0f,
+                EmissionRate: 0.0f,
+                ParticleVelocityRange: new Vector2(10.0f, 18.0f),
+                ParticleLifetimeSeconds: 1.3f,
+                GravityFactor: 0.85f,
+                BrightnessScalar: 1.3f,
+                ConeAngleDegrees: 30.0f,
+                BurstRate: 2.2f,
+                ParticlesPerBurst: 1600,
+                SmokeAmount: 0.35f),
+        };
+
+        return new FireworksProfileSet(canisters, shells, groundEffects, schemes);
     }
 }
 
@@ -154,6 +215,14 @@ public static class DefaultShow
         var profiles = DefaultProfiles.Create();
         float t = 0;
         int gridSize = 5;
+
+        // Kick off a few overlapping ground effects near the start.
+        // Use the outer ring of canisters so effects appear around the launch pad perimeter.
+        events.Add(new ShowEvent(TimeSeconds: 0.0f, CanisterId: "c01", GroundEffectProfileId: "fountain_warm"));
+        events.Add(new ShowEvent(TimeSeconds: 0.6f, CanisterId: "c05", GroundEffectProfileId: "spinner_neon"));
+        events.Add(new ShowEvent(TimeSeconds: 1.2f, CanisterId: "c21", GroundEffectProfileId: "strobe_cool"));
+        events.Add(new ShowEvent(TimeSeconds: 1.8f, CanisterId: "c25", GroundEffectProfileId: "mine_mixed"));
+
         for (int i = 0; i < 200; i+= gridSize)
         {
             for (int j = 0; j < gridSize; j++)

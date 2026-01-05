@@ -15,6 +15,14 @@ public enum FireworkBurstShape
     Horsetail
 }
 
+public enum GroundEffectType
+{
+    Fountain,
+    Spinner,
+    Strobe,
+    Mine
+}
+
 public sealed record CanisterType(
     string Id,
     float CaliberInches,
@@ -44,6 +52,75 @@ public sealed record class FireworkShellProfile(
     Vector3? RingAxis = null,
     float RingAxisRandomTiltDegrees = 0.0f);
 
+public sealed record class GroundEffectProfile(
+    string Id,
+    GroundEffectType Type,
+    string ColorSchemeId,
+    float DurationSeconds,
+    float EmissionRate,
+    Vector2 ParticleVelocityRange,
+    float ParticleLifetimeSeconds,
+    float GravityFactor,
+    float BrightnessScalar,
+    float ConeAngleDegrees = 35.0f,
+    float FlickerIntensity = 0.08f,
+    float AngularVelocityRadiansPerSec = 6.0f,
+    float EmissionRadius = 0.15f,
+    float FlashIntervalSeconds = 0.22f,
+    float FlashDutyCycle = 0.35f,
+    float FlashBrightness = 1.8f,
+    float ResidualSparkDensity = 0.18f,
+    float BurstRate = 2.0f,
+    int ParticlesPerBurst = 1200,
+    float SmokeAmount = 0.0f);
+
+public sealed class GroundEffectInstance
+{
+    public GroundEffectProfile Profile { get; }
+    public Canister Canister { get; }
+    public ColorScheme ColorScheme { get; }
+
+    public float StartTimeSeconds { get; }
+    public float DurationSeconds { get; }
+
+    public float ElapsedSeconds { get; private set; }
+    public float EmissionAccumulator { get; private set; }
+    public int BurstCounter { get; private set; }
+
+    public bool Alive => ElapsedSeconds < DurationSeconds;
+
+    public GroundEffectInstance(GroundEffectProfile profile, Canister canister, ColorScheme colorScheme, float startTimeSeconds)
+    {
+        Profile = profile;
+        Canister = canister;
+        ColorScheme = colorScheme;
+        StartTimeSeconds = startTimeSeconds;
+        DurationSeconds = System.Math.Max(0.0f, profile.DurationSeconds);
+    }
+
+    public void Update(float dt)
+    {
+        if (dt <= 0.0f)
+            return;
+
+        ElapsedSeconds += dt;
+    }
+
+    public void AddEmission(float particlesToSpawn)
+    {
+        EmissionAccumulator += particlesToSpawn;
+    }
+
+    public int ConsumeWholeParticles()
+    {
+        int n = (int)EmissionAccumulator;
+        EmissionAccumulator -= n;
+        return n;
+    }
+
+    public int NextBurstIndex() => BurstCounter++;
+}
+
 public sealed record class ColorScheme(
     string Id,
     Color[] BaseColors,
@@ -59,4 +136,5 @@ public sealed record class ColorScheme(
 public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
+    IReadOnlyDictionary<string, GroundEffectProfile> GroundEffects,
     IReadOnlyDictionary<string, ColorScheme> ColorSchemes);

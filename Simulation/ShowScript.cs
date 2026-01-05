@@ -6,7 +6,8 @@ namespace FireworksApp.Simulation;
 public sealed record class ShowEvent(
     float TimeSeconds,
     string CanisterId,
-    string ShellProfileId,
+    string? ShellProfileId = null,
+    string? GroundEffectProfileId = null,
     string? ColorSchemeId = null,
     float? MuzzleVelocity = null);
 

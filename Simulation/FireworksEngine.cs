@@ -13,6 +13,7 @@ public sealed class FireworksEngine
     private readonly FireworksProfileSet _profiles;
     private readonly List<Canister> _canisters;
     private readonly List<FireworkShell> _shells = new();
+    private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly Random _rng = new();
 
     private ShowScript _show = ShowScript.Empty;
@@ -34,11 +35,12 @@ public sealed class FireworksEngine
 
     public void Launch(string canisterId, string shellProfileId, D3D11Renderer renderer, string? colorSchemeId = null, float? muzzleVelocity = null)
     {
-        TriggerEvent(new ShowEvent(ShowTimeSeconds, canisterId, shellProfileId, colorSchemeId, muzzleVelocity), renderer);
+        TriggerEvent(new ShowEvent(TimeSeconds: ShowTimeSeconds, CanisterId: canisterId, ShellProfileId: shellProfileId, GroundEffectProfileId: null, ColorSchemeId: colorSchemeId, MuzzleVelocity: muzzleVelocity), renderer);
     }
 
     public IReadOnlyList<Canister> Canisters => _canisters;
     public IReadOnlyList<FireworkShell> Shells => _shells;
+    public IReadOnlyList<GroundEffectInstance> GroundEffects => _groundEffects;
 
     public void LoadShow(ShowScript show)
     {
@@ -52,7 +54,6 @@ public sealed class FireworksEngine
         else
             _show = new ShowScript(_show.Events.OrderBy(e => e.TimeSeconds).ToArray());
     }
-
     public void Update(float dt, D3D11Renderer renderer)
     {
         if (dt <= 0)
@@ -97,6 +98,22 @@ public sealed class FireworksEngine
             }
         }
 
+        // Update ground effects and emit particles.
+        for (int i = _groundEffects.Count - 1; i >= 0; i--)
+        {
+            var ge = _groundEffects[i];
+            ge.Update(scaledDt);
+
+            if (ge.Alive)
+            {
+                EmitGroundEffect(ge, scaledDt, ShowTimeSeconds, renderer);
+            }
+            else
+            {
+                _groundEffects.RemoveAt(i);
+            }
+        }
+
         // Provide canister + shell positions to renderer.
         var canisterStates = _canisters
             .Select(c => new D3D11Renderer.CanisterRenderState(
@@ -116,7 +133,28 @@ public sealed class FireworksEngine
         if (canister is null)
             return;
 
-        if (!_profiles.Shells.TryGetValue(ev.ShellProfileId, out var shellProfile))
+        // Ground effect start (scheduled like shells).
+        if (!string.IsNullOrWhiteSpace(ev.GroundEffectProfileId))
+        {
+            if (!_profiles.GroundEffects.TryGetValue(ev.GroundEffectProfileId!, out var geProfile))
+                return;
+
+            string schemeId = ev.ColorSchemeId ?? geProfile.ColorSchemeId;
+            if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var geScheme))
+                geScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+
+            if (geScheme is null)
+                return;
+
+            _groundEffects.Add(new GroundEffectInstance(geProfile, canister, geScheme, startTimeSeconds: ShowTimeSeconds));
+            return;
+        }
+
+        // Shell launch (existing behavior).
+        if (string.IsNullOrWhiteSpace(ev.ShellProfileId))
+            return;
+
+        if (!_profiles.Shells.TryGetValue(ev.ShellProfileId!, out var shellProfile))
             return;
 
         var muzzle = ev.MuzzleVelocity ??
@@ -190,13 +228,13 @@ public sealed class FireworksEngine
         launchVel = tunedVel;
 
         var colorSchemeId = ev.ColorSchemeId ?? shellProfile.ColorSchemeId;
-        if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var scheme))
-            scheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+        if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var shellScheme))
+            shellScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
 
         // *** CHANGED: pass drag and fuse override (burst slightly before apex)
         var shell = new FireworkShell(
             shellProfile,
-            scheme,
+            shellScheme,
             launchPos,
             launchVel,
             dragK: ShellDragK,
@@ -206,6 +244,158 @@ public sealed class FireworksEngine
         canister.OnFired();
 
         renderer.ShellSpawnCount++;
+    }
+
+    private void EmitGroundEffect(GroundEffectInstance ge, float dt, float showTimeSeconds, D3D11Renderer renderer)
+    {
+        // Ground origin near canister top (visual-only).
+        Vector3 origin = new(ge.Canister.Profile.Position.X, 0.30f, ge.Canister.Profile.Position.Y);
+        origin.Y = System.Math.Max(0.05f, origin.Y);
+
+        var profile = ge.Profile;
+
+        // Pick base HDR-ish color from scheme.
+        Vector4 baseColor = ColorUtil.PickBaseColor(ge.ColorScheme) * profile.BrightnessScalar;
+
+        // Time-based brightness shaping.
+        float t = ge.ElapsedSeconds;
+        float lifeT = profile.DurationSeconds > 1e-4f ? (t / profile.DurationSeconds) : 1.0f;
+        lifeT = System.Math.Clamp(lifeT, 0.0f, 1.0f);
+        float envelope = 1.0f - 0.6f * lifeT;
+
+        switch (profile.Type)
+        {
+            case GroundEffectType.Fountain:
+                EmitFountain(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.Spinner:
+                EmitSpinner(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.Strobe:
+                EmitStrobe(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.Mine:
+                EmitMine(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+        }
+    }
+
+    private void EmitFountain(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        float flicker = 1.0f + profile.FlickerIntensity * (0.5f - (float)_rng.NextDouble());
+        baseColor *= envelope * flicker;
+
+        float rate = System.Math.Max(0.0f, profile.EmissionRate);
+        ge.AddEmission(rate * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count <= 0)
+            return;
+
+        float coneRad = profile.ConeAngleDegrees * (MathF.PI / 180.0f);
+        var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+        renderer.SpawnGroundEffectDirected(
+            origin,
+            baseColor,
+            speed,
+            dirs,
+            particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+            gravityFactor: profile.GravityFactor);
+
+        if (profile.SmokeAmount > 0.01f && _rng.NextDouble() < profile.SmokeAmount * 0.15f)
+        {
+            renderer.SpawnSmoke(origin);
+        }
+    }
+
+    private void EmitSpinner(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        baseColor *= envelope;
+
+        float rate = System.Math.Max(0.0f, profile.EmissionRate);
+        ge.AddEmission(rate * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count <= 0)
+            return;
+
+        float omega = profile.AngularVelocityRadiansPerSec;
+        float phase = omega * ge.ElapsedSeconds;
+
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+        var dirs = GroundEmissionStyles.EmitSpinnerTangents(count, phase, rng: _rng);
+
+        Vector3 jitter = new(
+            ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.03f,
+            0.0f,
+            ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.03f);
+
+        renderer.SpawnGroundEffectDirected(
+            origin + jitter,
+            baseColor,
+            speed,
+            dirs,
+            particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+            gravityFactor: profile.GravityFactor);
+    }
+
+    private void EmitStrobe(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        float interval = System.Math.Max(0.02f, profile.FlashIntervalSeconds);
+        float duty = System.Math.Clamp(profile.FlashDutyCycle, 0.05f, 0.95f);
+
+        float phase = (ge.ElapsedSeconds % interval) / interval;
+        bool on = phase < duty;
+
+        float baseRate = System.Math.Max(0.0f, profile.EmissionRate);
+        float onMul = on ? profile.FlashBrightness : profile.ResidualSparkDensity;
+
+        ge.AddEmission(baseRate * onMul * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count <= 0)
+            return;
+
+        baseColor *= envelope * (on ? profile.FlashBrightness : 0.35f);
+
+        var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: 12.0f * (MathF.PI / 180.0f), rng: _rng);
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+
+        renderer.SpawnGroundEffectDirected(
+            origin,
+            baseColor,
+            speed,
+            dirs,
+            particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+            gravityFactor: profile.GravityFactor);
+    }
+
+    private void EmitMine(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        float burstRate = System.Math.Max(0.1f, profile.BurstRate);
+        int expectedBurst = (int)MathF.Floor(ge.ElapsedSeconds * burstRate);
+
+        while (ge.BurstCounter <= expectedBurst)
+        {
+            ge.NextBurstIndex();
+
+            int count = System.Math.Clamp(profile.ParticlesPerBurst, 1, 250000);
+            float coneRad = profile.ConeAngleDegrees * (MathF.PI / 180.0f);
+            var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+
+            float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+            renderer.SpawnGroundEffectDirected(
+                origin,
+                baseColor * envelope,
+                speed,
+                dirs,
+                particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+                gravityFactor: profile.GravityFactor);
+
+            if (profile.SmokeAmount > 0.01f)
+            {
+                renderer.SpawnSmoke(origin);
+            }
+        }
     }
 
     private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
