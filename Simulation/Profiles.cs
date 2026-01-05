@@ -20,7 +20,15 @@ public enum GroundEffectType
     Fountain,
     Spinner,
     Strobe,
-    Mine
+    Mine,
+
+    // New ground effect families
+    BengalFlare,
+    LanceworkPanel,
+    WaterfallCurtain,
+    ChaserLine,
+    GroundBloom,
+    PulsingGlitterFountain
 }
 
 public sealed record CanisterType(
@@ -74,7 +82,50 @@ public sealed record class GroundEffectProfile(
     float ResidualSparkDensity = 0.18f,
     float BurstRate = 2.0f,
     int ParticlesPerBurst = 1200,
-    float SmokeAmount = 0.0f);
+    float SmokeAmount = 0.0f,
+
+    // --- Extended parameters used by newer GroundEffectTypes ---
+    // Bengal flare / flame pot
+    float FlameHeightMeters = 1.2f,
+    float FlameNoiseAmplitude = 0.15f,
+    float LocalLightRadiusMeters = 5.0f,
+    float LocalLightIntensity = 1.0f,
+    float OccasionalSparkRate = 0.0f,
+
+    // Lancework / set piece panel
+    int GridWidth = 0,
+    int GridHeight = 0,
+    ulong[]? PatternFrames = null,
+    float PatternFrameDurationSeconds = 0.25f,
+    float CellFlameHeightMeters = 0.35f,
+    float CellFlickerAmount = 0.10f,
+
+    // Waterfall / curtain
+    int EmitterCount = 0,
+    float CurtainWidthMeters = 8.0f,
+    float EmitterHeightMeters = 4.0f,
+    float SparkFallSpeed = 4.0f,
+    float DensityOverTime = 1.0f,
+
+    // Ground chaser line
+    int PointCount = 0,
+    float PointSpacingMeters = 0.5f,
+    float ChaseSpeed = 4.0f,
+    GroundEffectType? EffectPerPoint = null,
+    int BurstParticlesPerPoint = 900,
+    float BurstVelocity = 8.0f,
+    bool ReverseOrBounce = false,
+
+    // Ground bloom flower variant
+    float SpinRateOverTime = 0.0f,
+    Vector3 GroundDriftVelocity = default,
+    Vector4[]? ColorPhases = null,
+
+    // Pulsing glitter fountain
+    float PulseFrequencyHz = 6.0f,
+    float PulseDepth = 0.7f,
+    float GlitterParticleRatio = 0.35f,
+    float GlowDecayTimeSeconds = 0.12f);
 
 public sealed class GroundEffectInstance
 {

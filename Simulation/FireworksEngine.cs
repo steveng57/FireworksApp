@@ -280,6 +280,324 @@ public sealed class FireworksEngine
             case GroundEffectType.Mine:
                 EmitMine(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
                 break;
+            case GroundEffectType.BengalFlare:
+                EmitBengalFlare(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.LanceworkPanel:
+                EmitLanceworkPanel(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.WaterfallCurtain:
+                EmitWaterfallCurtain(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.ChaserLine:
+                EmitChaserLine(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.GroundBloom:
+                EmitGroundBloom(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+            case GroundEffectType.PulsingGlitterFountain:
+                EmitPulsingGlitterFountain(profile, origin, baseColor, envelope, dt, showTimeSeconds, renderer, ge);
+                break;
+        }
+    }
+
+    private void EmitBengalFlare(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        // Ragged flame edge + gentle intensity flicker
+        float noise = 1.0f + profile.FlameNoiseAmplitude * (0.5f - (float)_rng.NextDouble());
+        float flicker = 1.0f + profile.FlickerIntensity * (0.5f - (float)_rng.NextDouble());
+        Vector4 flameColor = baseColor * envelope * (1.8f * noise * flicker);
+
+        // Core flame column
+        float flameHeight = MathF.Max(0.1f, profile.FlameHeightMeters);
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+        speed = MathF.Max(speed, flameHeight * 3.0f);
+
+        float rate = MathF.Max(0.0f, profile.EmissionRate);
+        ge.AddEmission(rate * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count > 0)
+        {
+            float coneRad = MathF.Max(4.0f, profile.ConeAngleDegrees * 0.35f) * (MathF.PI / 180.0f);
+            var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+
+            renderer.SpawnGroundEffectDirected(
+                origin,
+                flameColor,
+                speed,
+                dirs,
+                particleLifetimeSeconds: MathF.Max(0.15f, profile.ParticleLifetimeSeconds),
+                gravityFactor: MathF.Min(profile.GravityFactor, 0.35f));
+        }
+
+        // Occasional sparks
+        float sparkRate = MathF.Max(0.0f, profile.OccasionalSparkRate);
+        if (sparkRate > 0.0f)
+        {
+            ge.AddEmission(sparkRate * dt);
+            int sparks = ge.ConsumeWholeParticles();
+            if (sparks > 0)
+            {
+                var dirs = GroundEmissionStyles.EmitCone(sparks, axis: Vector3.UnitY, coneAngleRadians: 20.0f * (MathF.PI / 180.0f), rng: _rng);
+                renderer.SpawnGroundEffectDirected(
+                    origin,
+                    flameColor * 1.2f,
+                    speed * 1.2f,
+                    dirs,
+                    particleLifetimeSeconds: MathF.Min(1.1f, profile.ParticleLifetimeSeconds),
+                    gravityFactor: 0.9f);
+            }
+        }
+
+        // Halo / "stage lighting" (approximated with low-speed, longer-lived particles)
+        float haloRate = MathF.Max(0.0f, profile.LocalLightIntensity) * 220.0f;
+        float haloRadius = MathF.Max(0.5f, profile.LocalLightRadiusMeters);
+        if (haloRate > 0.0f)
+        {
+            ge.AddEmission(haloRate * dt);
+            int haloCount = ge.ConsumeWholeParticles();
+            if (haloCount > 0)
+            {
+                float jitter = haloRadius * 0.08f;
+                Vector3 haloOrigin = origin + new Vector3(
+                    ((float)_rng.NextDouble() * 2.0f - 1.0f) * jitter,
+                    0.0f,
+                    ((float)_rng.NextDouble() * 2.0f - 1.0f) * jitter);
+                var dirs = GroundEmissionStyles.EmitCone(haloCount, axis: Vector3.UnitY, coneAngleRadians: 75.0f * (MathF.PI / 180.0f), rng: _rng);
+
+                renderer.SpawnGroundEffectDirected(
+                    haloOrigin,
+                    flameColor * 0.22f,
+                    speed: 0.6f,
+                    dirs,
+                    particleLifetimeSeconds: 0.55f,
+                    gravityFactor: 0.15f);
+            }
+        }
+    }
+
+    private void EmitLanceworkPanel(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        int w = profile.GridWidth;
+        int h = profile.GridHeight;
+        if (w <= 0 || h <= 0 || profile.PatternFrames is null || profile.PatternFrames.Length == 0)
+            return;
+
+        float frameDur = MathF.Max(0.02f, profile.PatternFrameDurationSeconds);
+        int frameIndex = (int)MathF.Floor(ge.ElapsedSeconds / frameDur) % profile.PatternFrames.Length;
+        ulong mask = profile.PatternFrames[frameIndex];
+
+        // panel is placed behind the canister in +Z with a small tilt (visual-only)
+        float cellSpacing = 0.35f;
+        Vector3 panelOrigin = origin + new Vector3(0.0f, 0.25f, 2.2f);
+
+        float cellHeight = MathF.Max(0.05f, profile.CellFlameHeightMeters);
+        float speed = MathF.Max(0.4f, cellHeight * 2.2f);
+        float flicker = 1.0f + profile.CellFlickerAmount * (0.5f - (float)_rng.NextDouble());
+        Vector4 col = baseColor * envelope * flicker;
+
+        int onCells = 0;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int bit = y * w + x;
+                if (bit >= 64)
+                    continue;
+                if (((mask >> bit) & 1UL) == 0UL)
+                    continue;
+
+                onCells++;
+                Vector3 cellPos = panelOrigin + new Vector3(
+                    (x - (w - 1) * 0.5f) * cellSpacing,
+                    (h - 1 - y) * cellSpacing,
+                    0.0f);
+
+                // each cell uses a small steady "flame" made of a few particles each frame
+                const int particlesPerCellPerFrame = 8;
+                var dirs = GroundEmissionStyles.EmitCone(particlesPerCellPerFrame, axis: Vector3.UnitY, coneAngleRadians: 10.0f * (MathF.PI / 180.0f), rng: _rng);
+                renderer.SpawnGroundEffectDirected(
+                    cellPos,
+                    col,
+                    speed,
+                    dirs,
+                    particleLifetimeSeconds: MathF.Max(0.2f, profile.ParticleLifetimeSeconds),
+                    gravityFactor: 0.18f);
+            }
+        }
+
+        // Keep a light amount of smoke for large patterns
+        if (onCells >= (w * h) / 4 && profile.SmokeAmount > 0.01f && _rng.NextDouble() < profile.SmokeAmount * 0.10f)
+        {
+            renderer.SpawnSmoke(panelOrigin);
+        }
+    }
+
+    private void EmitWaterfallCurtain(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        int emitters = profile.EmitterCount > 0 ? profile.EmitterCount : 24;
+        float width = MathF.Max(0.5f, profile.CurtainWidthMeters);
+        float height = profile.EmitterHeightMeters;
+        if (height <= 0.01f)
+            height = 4.0f;
+
+        float density = MathF.Max(0.0f, profile.DensityOverTime);
+
+        // a "curtain" behind the pad (+Z)
+        Vector3 lineCenter = new(origin.X, height, origin.Z + 10.0f);
+        float speed = MathF.Max(0.5f, profile.SparkFallSpeed);
+        float lifetime = MathF.Max(0.2f, profile.ParticleLifetimeSeconds);
+
+        // Per-update spawn a small batch per emitter
+        float perEmitterRate = MathF.Max(0.0f, profile.EmissionRate);
+        if (perEmitterRate <= 0.0f)
+            perEmitterRate = 380.0f;
+
+        float totalRate = perEmitterRate * emitters * density;
+        ge.AddEmission(totalRate * dt);
+        int totalCount = ge.ConsumeWholeParticles();
+        if (totalCount <= 0)
+            return;
+
+        Vector4 col = baseColor * envelope;
+        float lateralJitter = 8.0f * (MathF.PI / 180.0f);
+        var dirs = GroundEmissionStyles.EmitDownwardJitter(totalCount, lateralJitterRadians: lateralJitter, rng: _rng);
+
+        // Spread particles along the emitter line by jittering origin per spawn call chunk.
+        // Keep it simple: one call but we jitter the emitter-center a bit.
+        float half = width * 0.5f;
+        Vector3 o = lineCenter + new Vector3(
+            ((float)_rng.NextDouble() * 2.0f - 1.0f) * half,
+            0.0f,
+            0.0f);
+
+        renderer.SpawnGroundEffectDirected(
+            o,
+            col,
+            speed,
+            dirs,
+            particleLifetimeSeconds: lifetime,
+            gravityFactor: 1.25f);
+    }
+
+    private void EmitChaserLine(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        int points = profile.PointCount > 0 ? profile.PointCount : 18;
+        float spacing = MathF.Max(0.1f, profile.PointSpacingMeters);
+        float chaseSpeed = MathF.Max(0.1f, profile.ChaseSpeed);
+
+        // line across pad in X at ground level
+        float totalLen = (points - 1) * spacing;
+        Vector3 start = origin + new Vector3(-totalLen * 0.5f, 0.0f, 0.0f);
+
+        // Determine the active point index
+        float pos = ge.ElapsedSeconds * chaseSpeed;
+        int idx = (int)MathF.Floor(pos) % points;
+        if (profile.ReverseOrBounce)
+        {
+            int period = System.Math.Max(1, points - 1) * 2;
+            int tIdx = (int)MathF.Floor(pos) % period;
+            idx = tIdx <= (points - 1) ? tIdx : (period - tIdx);
+        }
+
+        Vector3 p = start + new Vector3(idx * spacing, 0.0f, 0.0f);
+
+        int burstCount = profile.BurstParticlesPerPoint > 0 ? profile.BurstParticlesPerPoint : 900;
+        burstCount = System.Math.Clamp(burstCount, 1, 250000);
+
+        float spread = 25.0f * (MathF.PI / 180.0f);
+        var dirs = GroundEmissionStyles.EmitUpwardPuff(burstCount, spreadRadians: spread, rng: _rng);
+        Vector4 col = baseColor * envelope * 1.1f;
+        renderer.SpawnGroundEffectDirected(
+            p,
+            col,
+            speed: MathF.Max(0.5f, profile.BurstVelocity),
+            dirs,
+            particleLifetimeSeconds: MathF.Max(0.25f, profile.ParticleLifetimeSeconds),
+            gravityFactor: MathF.Max(0.4f, profile.GravityFactor));
+    }
+
+    private void EmitGroundBloom(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        Vector4 col = baseColor * envelope;
+
+        float baseOmega = profile.AngularVelocityRadiansPerSec;
+        float omega = baseOmega;
+        if (MathF.Abs(profile.SpinRateOverTime) > 1e-4f)
+            omega = baseOmega + profile.SpinRateOverTime * ge.ElapsedSeconds;
+
+        float phase = omega * ge.ElapsedSeconds;
+
+        float rate = MathF.Max(0.0f, profile.EmissionRate);
+        ge.AddEmission(rate * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count <= 0)
+            return;
+
+        // Slight drift along ground
+        Vector3 drift = profile.GroundDriftVelocity;
+        Vector3 driftedOrigin = origin + new Vector3(drift.X, 0.0f, drift.Z) * ge.ElapsedSeconds;
+
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+        speed = MathF.Max(speed, 6.0f);
+        var dirs = GroundEmissionStyles.EmitSpinnerTangents(count, phase, axis: profile.SpinnerAxis ?? Vector3.UnitY, rng: _rng);
+
+        renderer.SpawnGroundEffectDirected(
+            driftedOrigin,
+            col,
+            speed,
+            dirs,
+            particleLifetimeSeconds: MathF.Max(0.2f, profile.ParticleLifetimeSeconds),
+            gravityFactor: profile.GravityFactor);
+    }
+
+    private void EmitPulsingGlitterFountain(GroundEffectProfile profile, Vector3 origin, Vector4 baseColor, float envelope, float dt, float time, D3D11Renderer renderer, GroundEffectInstance ge)
+    {
+        float hz = MathF.Max(0.1f, profile.PulseFrequencyHz);
+        float pulse = 0.5f + 0.5f * MathF.Sin(MathF.Tau * hz * ge.ElapsedSeconds);
+        float depth = System.Math.Clamp(profile.PulseDepth, 0.0f, 1.0f);
+        float mul = (1.0f - depth) + depth * pulse;
+
+        // Use fountain logic but with pulsing emission and occasional "glitter" spikes.
+        float flicker = 1.0f + profile.FlickerIntensity * (0.5f - (float)_rng.NextDouble());
+        Vector4 col = baseColor * envelope * flicker;
+
+        float rate = MathF.Max(0.0f, profile.EmissionRate) * (0.4f + 1.6f * mul);
+        ge.AddEmission(rate * dt);
+        int count = ge.ConsumeWholeParticles();
+        if (count <= 0)
+            return;
+
+        float coneRad = profile.ConeAngleDegrees * (MathF.PI / 180.0f);
+        var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+        float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+
+        // Split into base + glitter
+        float glitterRatio = System.Math.Clamp(profile.GlitterParticleRatio, 0.0f, 1.0f);
+        int glitter = (int)(count * glitterRatio);
+        int baseCount = count - glitter;
+
+        if (baseCount > 0)
+        {
+            renderer.SpawnGroundEffectDirected(
+                origin,
+                col,
+                speed,
+                dirs.AsSpan(0, baseCount),
+                particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+                gravityFactor: profile.GravityFactor);
+        }
+
+        if (glitter > 0)
+        {
+            float glow = 1.0f + 1.5f * mul;
+            renderer.SpawnGroundEffectDirected(
+                origin,
+                col * glow,
+                speed * 1.15f,
+                dirs.AsSpan(baseCount, glitter),
+                particleLifetimeSeconds: MathF.Max(0.12f, profile.GlowDecayTimeSeconds),
+                gravityFactor: profile.GravityFactor);
         }
     }
 

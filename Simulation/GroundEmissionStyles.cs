@@ -71,4 +71,38 @@ public static class GroundEmissionStyles
 
         return dirs;
     }
+
+    public static Vector3[] EmitDownwardJitter(int count, float lateralJitterRadians, Random rng)
+    {
+        if (count <= 0)
+            return Array.Empty<Vector3>();
+
+        float cone = System.Math.Clamp(lateralJitterRadians, 0.0f, MathF.PI * 0.5f);
+        float cosMax = MathF.Cos(cone);
+
+        Vector3 axis = -Vector3.UnitY;
+        Vector3 t1 = Vector3.UnitX;
+        Vector3 t2 = Vector3.UnitZ;
+
+        var dirs = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            float u = (float)rng.NextDouble();
+            float v = (float)rng.NextDouble();
+
+            float cosTheta = 1.0f - u * (1.0f - cosMax);
+            float sinTheta = MathF.Sqrt(MathF.Max(0.0f, 1.0f - cosTheta * cosTheta));
+            float phi = MathF.Tau * v;
+
+            Vector3 d = axis * cosTheta + (t1 * MathF.Cos(phi) + t2 * MathF.Sin(phi)) * sinTheta;
+            dirs[i] = Vector3.Normalize(d);
+        }
+
+        return dirs;
+    }
+
+    public static Vector3[] EmitUpwardPuff(int count, float spreadRadians, Random rng)
+    {
+        return EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: spreadRadians, rng: rng);
+    }
 }
