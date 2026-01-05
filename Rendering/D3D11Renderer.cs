@@ -174,16 +174,15 @@ public sealed class D3D11Renderer : IDisposable
 
     // Simple orbit camera (around origin)
     private float _cameraYaw = 0.0f;
-    private float _cameraPitch = 0.55f;
-    private float _cameraDistance = 35.0f;
+    private float _cameraPitch = 0.15f;
+    private float _cameraDistance = 200.0f;
     private bool _cameraDirty = true;
 
-    private Vector3 _cameraTarget = Vector3.Zero;
+    private Vector3 _cameraTarget = new(0.0f, 80.0f, 0.0f);
     
     // Smoothed camera state for nicer motion
     private Vector3 _cameraTargetSmoothed = Vector3.Zero;
-    private float _cameraDistanceSmoothed = 35.0f;
-
+    private float _cameraDistanceSmoothed = 200.0f;
     [StructLayout(LayoutKind.Sequential)]
     private struct SceneCBData
     {
