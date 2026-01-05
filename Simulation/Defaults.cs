@@ -239,6 +239,114 @@ public static class DefaultProfiles
                 BurstRate: 1.9f,
                 ParticlesPerBurst: 5200,
                 SmokeAmount: 0.55f),
+
+            ["bengal_warm"] = new GroundEffectProfile(
+                Id: "bengal_warm",
+                Type: GroundEffectType.BengalFlare,
+                ColorSchemeId: "warm",
+                DurationSeconds: 8.0f,
+                EmissionRate: 900.0f,
+                ParticleVelocityRange: new Vector2(1.2f, 2.6f),
+                ParticleLifetimeSeconds: 0.55f,
+                GravityFactor: 0.20f,
+                BrightnessScalar: 2.0f,
+                FlameHeightMeters: 1.6f,
+                FlameNoiseAmplitude: 0.22f,
+                LocalLightRadiusMeters: 7.0f,
+                LocalLightIntensity: 1.3f,
+                OccasionalSparkRate: 60.0f,
+                SmokeAmount: 0.15f),
+
+            ["lance_heart"] = new GroundEffectProfile(
+                Id: "lance_heart",
+                Type: GroundEffectType.LanceworkPanel,
+                ColorSchemeId: "neon",
+                DurationSeconds: 7.0f,
+                EmissionRate: 0.0f,
+                ParticleVelocityRange: new Vector2(0.5f, 1.2f),
+                ParticleLifetimeSeconds: 0.55f,
+                GravityFactor: 0.12f,
+                BrightnessScalar: 1.5f,
+                GridWidth: 8,
+                GridHeight: 8,
+                PatternFrameDurationSeconds: 0.30f,
+                CellFlameHeightMeters: 0.30f,
+                CellFlickerAmount: 0.18f,
+                PatternFrames: new ulong[]
+                {
+                    // simple heart-ish 8x8, two-frame "beat" by toggling center pixels
+                    0b_00000000_01100110_11111111_11111111_01111110_00111100_00011000_00000000UL,
+                    0b_00000000_01100110_11111111_11111111_01111110_00011000_00000000_00000000UL,
+                },
+                SmokeAmount: 0.05f),
+
+            ["waterfall_gold"] = new GroundEffectProfile(
+                Id: "waterfall_gold",
+                Type: GroundEffectType.WaterfallCurtain,
+                ColorSchemeId: "gold",
+                DurationSeconds: 10.0f,
+                EmissionRate: 420.0f,
+                ParticleVelocityRange: new Vector2(2.5f, 4.0f),
+                ParticleLifetimeSeconds: 2.8f,
+                GravityFactor: 1.20f,
+                BrightnessScalar: 1.4f,
+                EmitterCount: 28,
+                EmitterHeightMeters: 6.0f,
+                SparkFallSpeed: 3.6f,
+                CurtainWidthMeters: 16.0f,
+                DensityOverTime: 1.0f,
+                SmokeAmount: 0.20f),
+
+            ["chaser_zipper"] = new GroundEffectProfile(
+                Id: "chaser_zipper",
+                Type: GroundEffectType.ChaserLine,
+                ColorSchemeId: "neon",
+                DurationSeconds: 6.0f,
+                EmissionRate: 0.0f,
+                ParticleVelocityRange: new Vector2(6.0f, 10.0f),
+                ParticleLifetimeSeconds: 0.65f,
+                GravityFactor: 0.70f,
+                BrightnessScalar: 1.3f,
+                PointCount: 22,
+                PointSpacingMeters: 0.65f,
+                ChaseSpeed: 8.5f,
+                BurstParticlesPerPoint: 950,
+                BurstVelocity: 9.5f,
+                ReverseOrBounce: true,
+                SmokeAmount: 0.12f),
+
+            ["bloom_brocade"] = new GroundEffectProfile(
+                Id: "bloom_brocade",
+                Type: GroundEffectType.GroundBloom,
+                ColorSchemeId: "brocadegold",
+                DurationSeconds: 7.0f,
+                EmissionRate: 1600.0f,
+                ParticleVelocityRange: new Vector2(5.0f, 9.0f),
+                ParticleLifetimeSeconds: 1.25f,
+                GravityFactor: 0.35f,
+                BrightnessScalar: 1.2f,
+                AngularVelocityRadiansPerSec: 14.0f,
+                SpinRateOverTime: -0.8f,
+                GroundDriftVelocity: new Vector3(0.15f, 0.0f, -0.10f),
+                SmokeAmount: 0.10f),
+
+            ["glitter_pulse"] = new GroundEffectProfile(
+                Id: "glitter_pulse",
+                Type: GroundEffectType.PulsingGlitterFountain,
+                ColorSchemeId: "cool",
+                DurationSeconds: 7.5f,
+                EmissionRate: 1600.0f,
+                ParticleVelocityRange: new Vector2(5.5f, 10.5f),
+                ParticleLifetimeSeconds: 1.35f,
+                GravityFactor: 0.52f,
+                BrightnessScalar: 1.35f,
+                ConeAngleDegrees: 36.0f,
+                FlickerIntensity: 0.08f,
+                PulseFrequencyHz: 6.5f,
+                PulseDepth: 0.75f,
+                GlitterParticleRatio: 0.40f,
+                GlowDecayTimeSeconds: 0.16f,
+                SmokeAmount: 0.18f),
         };
 
         return new FireworksProfileSet(canisters, shells, groundEffects, schemes);
@@ -261,6 +369,14 @@ public static class DefaultShow
         events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "g03", GroundEffectProfileId: "spinner_neon"));
         events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "spinner_neon_v"));
         events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "g07", GroundEffectProfileId: "mine_mixed"));
+
+        // New ground effects showcase
+        events.Add(new ShowEvent(TimeSeconds: 30f, CanisterId: "g02", GroundEffectProfileId: "bengal_warm"));
+        events.Add(new ShowEvent(TimeSeconds: 33f, CanisterId: "g04", GroundEffectProfileId: "glitter_pulse"));
+        events.Add(new ShowEvent(TimeSeconds: 36f, CanisterId: "g06", GroundEffectProfileId: "bloom_brocade"));
+        events.Add(new ShowEvent(TimeSeconds: 39f, CanisterId: "g08", GroundEffectProfileId: "chaser_zipper"));
+        events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
+        events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
 
         for (int i = 0; i < 200; i+= gridSize)
         {
