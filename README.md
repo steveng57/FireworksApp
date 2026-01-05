@@ -294,4 +294,4 @@ Keep validation strict so invalid IDs fail fast with clear errors.
 
 ## License
 
-This repository’s license is defined by the [MIT LICENSE](/LICENSE) file.
+This repository’s license is defined by the [MIT LICENSE](/LICENSE.md) file.
