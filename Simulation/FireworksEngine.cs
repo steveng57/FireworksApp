@@ -23,6 +23,9 @@ public sealed class FireworksEngine
 
     public float ShowTimeSeconds { get; private set; }
 
+    // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
+    public float TimeScale { get; set; } = 0.80f;
+
     public FireworksEngine(FireworksProfileSet profiles)
     {
         _profiles = profiles;
@@ -55,11 +58,16 @@ public sealed class FireworksEngine
         if (dt <= 0)
             return;
 
-        ShowTimeSeconds += dt;
+        // Apply global timescale
+        float scaledDt = dt * TimeScale;
+        if (scaledDt <= 0)
+            return;
+
+        ShowTimeSeconds += scaledDt;
 
         // Update canister reload timers.
         foreach (var c in _canisters)
-            c.Update(dt);
+            c.Update(scaledDt);
 
         // Fire show events.
         var events = _show.Events;
@@ -73,10 +81,10 @@ public sealed class FireworksEngine
         for (int i = _shells.Count - 1; i >= 0; i--)
         {
             var shell = _shells[i];
-            shell.Update(dt);
+            shell.Update(scaledDt);
 
             // trail
-            shell.EmitTrail(renderer, dt);
+            shell.EmitTrail(renderer, scaledDt);
 
             if (shell.TryExplode(out var explosion))
             {

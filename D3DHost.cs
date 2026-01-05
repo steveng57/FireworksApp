@@ -343,18 +343,22 @@ public sealed class D3DHost : HwndHost
         return NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
-    private void OnRendering(object? sender, EventArgs e)
+    void OnRendering(object? sender, EventArgs e)
     {
         if (_renderer is null)
             return;
 
-        // Renderer owns its own dt for GPU particle sim; engine uses same dt for show timing.
-        // Use a conservative fixed timestep derived from composition frame pacing.
         const float dt = 1.0f / 60.0f;
-        _engine?.Update(dt, _renderer);
+
+        if (_engine is not null)
+        {
+            _engine.Update(dt, _renderer);
+            _renderer.TimeScale = _engine.TimeScale; // keep GPU sim in sync
+        }
 
         _renderer.Render();
     }
+
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
