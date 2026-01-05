@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -207,7 +207,7 @@ public sealed class FireworksEngine
             float currentHeight = peakY - launchPos.Y;
             if (currentHeight <= 0.1f)
             {
-                // Not really going up � nudge speed a bit and try again.
+                // Not really going up – nudge speed a bit and try again.
                 tunedVel *= 1.1f;
                 continue;
             }
@@ -753,6 +753,8 @@ public sealed class FireworksEngine
             FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
             FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount),
+            FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(explosion.ParticleCount, axis: ringAxis),
+            FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
@@ -824,7 +826,7 @@ public sealed class FireworksEngine
                 timeAtPeak = time;
             }
 
-            // Once vertical velocity is going down for a bit, we�ve passed the apex
+            // Once vertical velocity is going down for a bit, we’ve passed the apex
             if (v.Y <= 0f && time > 0.1f)
                 break;
         }
@@ -1110,7 +1112,7 @@ internal static class EmissionStyles
         const int frondCount = 7;
 
         // Angle of fronds away from +Y (0 = straight up, pi/2 = horizontal).
-        // ~35�40� feels very palm-like.
+        // ~35–40° feels very palm-like.
         const float frondConeAngle = 0.65f; // radians
 
         // How much we let each particle deviate from its frond direction.
@@ -1228,6 +1230,103 @@ internal static class EmissionStyles
 
         return dirs;
     }
+
+    public static Vector3[] EmitDoubleRing(int count, Vector3 axis)
+    {
+        if (count <= 0)
+            return Array.Empty<Vector3>();
+
+        // Normalize axis or default to +Y if degenerate.
+        axis = axis.LengthSquared() > 1e-6f ? Vector3.Normalize(axis) : Vector3.UnitY;
+
+        // Build an orthonormal basis {basis1, basis2, axis}.
+        Vector3 tmp = MathF.Abs(axis.Y) < 0.99f ? Vector3.UnitY : Vector3.UnitX;
+        Vector3 basis1 = Vector3.Normalize(Vector3.Cross(axis, tmp));
+        Vector3 basis2 = Vector3.Normalize(Vector3.Cross(axis, basis1));
+
+        var dirs = new Vector3[count];
+
+        int half = Math.Max(1, count / 2);
+        float twoPi = (float)(Math.PI * 2.0);
+
+        // Two latitudes measured from the axis:
+        // innerRing ≈ equator, outerRing closer to the axis.
+        float innerPhi = 80.0f * (MathF.PI / 180.0f); // near equator
+        float outerPhi = 40.0f * (MathF.PI / 180.0f); // “inner” ring, more vertical
+
+        for (int i = 0; i < count; i++)
+        {
+            bool outer = i >= half;
+            int idxInRing = outer ? (i - half) : i;
+            int ringCount = outer ? Math.Max(1, count - half) : half;
+
+            float t = ringCount > 1 ? idxInRing / (ringCount - 1.0f) : 0.0f;
+            float angle = t * twoPi;
+
+            float phi = outer ? outerPhi : innerPhi;
+            float sinPhi = MathF.Sin(phi);
+            float cosPhi = MathF.Cos(phi);
+
+            Vector3 inPlane = basis1 * MathF.Cos(angle) + basis2 * MathF.Sin(angle);
+            Vector3 dir = axis * cosPhi + inPlane * sinPhi;
+
+            // Tiny random jitter so it feels organic.
+            const float jitter = 0.03f;
+            dir += new Vector3(
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter,
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter,
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter);
+
+            dirs[i] = Vector3.Normalize(dir);
+        }
+
+        return dirs;
+    }
+
+    public static Vector3[] EmitSpiral(
+    int count,
+    int armCount = 5,
+    float twistCount = 2.5f,
+    float pitch = 1.2f)
+    {
+        if (count <= 0)
+            return Array.Empty<Vector3>();
+
+        var dirs = new Vector3[count];
+        float twoPi = (float)(Math.PI * 2.0);
+
+        // Random phase per arm so it’s not perfectly symmetrical.
+        var armPhase = new float[armCount];
+        for (int a = 0; a < armCount; a++)
+            armPhase[a] = (float)(s_rng.NextDouble() * twoPi);
+
+        for (int i = 0; i < count; i++)
+        {
+            int arm = i % armCount;
+            float t = (float)i / Math.Max(1, count - 1); // 0..1
+            float angle = t * twistCount * twoPi + armPhase[arm];
+
+            // Height sweeps from -pitch..+pitch
+            float height = (t - 0.5f) * pitch * 2.0f;
+
+            Vector3 dir = new Vector3(
+                MathF.Cos(angle),
+                height,
+                MathF.Sin(angle));
+
+            // Slight jitter so arms look fiery, not geometric.
+            const float jitter = 0.15f;
+            dir += new Vector3(
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter,
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter * 0.5f,
+                (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter);
+
+            dirs[i] = Vector3.Normalize(dir);
+        }
+
+        return dirs;
+    }
+
 
 
     private static Vector3 JitterDirection(Vector3 baseDir, float maxAngleRadians)

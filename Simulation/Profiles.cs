@@ -12,7 +12,9 @@ public enum FireworkBurstShape
     Willow,
     Palm,
     Ring,
-    Horsetail
+    Horsetail,
+    DoubleRing,
+    Spiral
 }
 
 public enum GroundEffectType

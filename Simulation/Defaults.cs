@@ -158,7 +158,27 @@ public static class DefaultProfiles
                 RingAxis: null,
                 RingAxisRandomTiltDegrees: 0.0f
             ),
+            ["double_ring"] = new FireworkShellProfile(
+                Id: "double_ring",
+                BurstShape: FireworkBurstShape.DoubleRing,
+                ColorSchemeId: "gold",   // nice classy gold rings
+                FuseTimeSeconds: 4.1f,
+                ExplosionRadius: 16.0f,
+                ParticleCount: 6500,
+                ParticleLifetimeSeconds: 5.5f,
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 18.0f
+            ),
 
+            ["spiral"] = new FireworkShellProfile(
+                Id: "spiral",
+                BurstShape: FireworkBurstShape.Spiral,
+                ColorSchemeId: "neon",   // loud & colorful
+                FuseTimeSeconds: 4.0f,
+                ExplosionRadius: 14.0f,
+                ParticleCount: 6200,
+                ParticleLifetimeSeconds: 5.0f
+            ),
         };
 
         var groundEffects = new Dictionary<string, GroundEffectProfile>
