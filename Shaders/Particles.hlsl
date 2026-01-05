@@ -173,6 +173,16 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         p.Position += p.Velocity * dt;
     }
 
+    // Kill particles that fall below ground (y=0).
+    // Prevents sparks/smoke rendering through the ground plane.
+    if (p.Position.y < 0.0f)
+    {
+        p.Kind = 0;
+        p.Color = float4(0, 0, 0, 0);
+        Particles[i] = p;
+        return;
+    }
+
     if (p.Kind == 2)
     {
         p.Color = ColorRampSpark(t, p.Color);
