@@ -258,7 +258,7 @@ public sealed class D3D11Renderer : IDisposable
     {
         // WPF delta is typically 120 per notch
         _cameraDistance *= (float)System.Math.Pow(0.9, delta / 120.0);
-        _cameraDistance = System.Math.Clamp(_cameraDistance, 5.0f, 300.0f);
+        _cameraDistance = System.Math.Clamp(_cameraDistance, 5.0f, 450.0f);
         _cameraDirty = true;
     }
 

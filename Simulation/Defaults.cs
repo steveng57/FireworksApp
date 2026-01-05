@@ -112,27 +112,31 @@ public static class DefaultShow
         var events = new List<ShowEvent>();
         var profiles = DefaultProfiles.Create();
         float t = 0;
-        for (int i = 0; i < 80; i++)
+        int gridSize = 5;
+        for (int i = 0; i < 200; i+= gridSize)
         {
-            string canisterId = profiles.Canisters.Keys.ElementAt(i % profiles.Canisters.Count);
-            string shellId = profiles.Shells.Keys.ElementAt(i % profiles.Shells.Count);
-            string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt(i % profiles.ColorSchemes.Count);
-            float? muzzleVelocity = null;
+            for (int j = 0; j < gridSize; j++)
+            {
+                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % profiles.Canisters.Count);
+                string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
+                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+                float? muzzleVelocity = null;
 
-            // debug variations
-            // shellId = "donut";
-            //canisterId = "c2";
-            //colorSchemeId = "debug";
+                // debug variations
+                // shellId = "donut";
+                //canisterId = "c2";
+                //colorSchemeId = "debug";
 
-            var showEvent = new ShowEvent(
-                TimeSeconds: t,
-                CanisterId: canisterId,
-                ShellProfileId: shellId,
-                ColorSchemeId: colorSchemeId,
-                MuzzleVelocity: muzzleVelocity);
-            events.Add(showEvent);
-            // Respect canister reload so scheduled events actually fire.
-            // Otherwise, most events are skipped by the engine's CanFire gating.
+                var showEvent = new ShowEvent(
+                    TimeSeconds: t,
+                    CanisterId: canisterId,
+                    ShellProfileId: shellId,
+                    ColorSchemeId: colorSchemeId,
+                    MuzzleVelocity: muzzleVelocity);
+                events.Add(showEvent);
+             
+                t += 0.2f;
+            }
             t += 1f;
         }
 
