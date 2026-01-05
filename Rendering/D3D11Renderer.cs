@@ -480,10 +480,10 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
-    public void SpawnBurstDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    public void SpawnBurstDirectedExplode(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
     {
         _schemeTint = new Vector3(baseColor.X, baseColor.Y, baseColor.Z);
-        SpawnBurstDirectedInternal(position, baseColor, speed, directions, particleLifetimeSeconds);
+        SpawnBurstDirected(position, baseColor, speed, directions, particleLifetimeSeconds);
     }
 
     public void SpawnSmoke(Vector3 burstCenter)
@@ -593,7 +593,7 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
-    public void SpawnBurstDirectedInternal(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    public void SpawnBurstDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;

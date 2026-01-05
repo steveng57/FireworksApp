@@ -206,7 +206,7 @@ public sealed class FireworksEngine
             _ => explosion.ParticleLifetimeSeconds
         };
 
-        renderer.SpawnBurstDirected(
+        renderer.SpawnBurstDirectedExplode(
             explosion.Position,
             baseColor,
             speed,
@@ -309,7 +309,7 @@ public sealed class FireworkShell
         trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green
 
         // This should *only* write this color into the spawned particles
-        renderer.SpawnBurstDirectedInternal(
+        renderer.SpawnBurstDirected(
             Position,
             trailColor,
             speed: 5.0f,
