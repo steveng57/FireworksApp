@@ -177,13 +177,8 @@ public sealed class D3DHost : HwndHost
     {
         if (e.Key == Key.Space)
         {
-            if (_engine != null && _renderer != null)
-            {
-                string shellId = IsShowFinished() ? "willow" : "basic";
-                if (IsShowFinished())
-                    LogShellColors(shellId);
-                _engine.Launch("c1", shellId, _renderer);
-            }
+            if (_engine != null && _defaultShow != null)
+                _engine.LoadShow(_defaultShow);
             e.Handled = true;
         }
     }
@@ -264,13 +259,8 @@ public sealed class D3DHost : HwndHost
                     case WM_KEYDOWN:
                         if ((int)wParam == VK_SPACE)
                         {
-                            if (host._engine != null && host._renderer != null)
-                            {
-                                string shellId = host.IsShowFinished() ? "willow" : "basic";
-                                if (host.IsShowFinished())
-                                    LogShellColors(shellId);
-                                host._engine.Launch("c1", shellId, host._renderer);
-                            }
+                            if (host._engine != null && host._defaultShow != null)
+                                host._engine.LoadShow(host._defaultShow);
                             return IntPtr.Zero;
                         }
                         break;
