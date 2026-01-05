@@ -42,21 +42,6 @@ public static class DefaultProfiles
             ["c25"] = new CanisterProfile("c25", "M8", new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), "willow")
         };
 
-        // Dedicated ground-effect canisters (separate IDs from shell canisters).
-        // Placed around the launch pad perimeter.
-        const float geRadius = 10.0f;
-        var groundEffectCanisters = new Dictionary<string, GroundEffectCanisterProfile>
-        {
-            ["ge01"] = new GroundEffectCanisterProfile("ge01", new Vector2(-geRadius, -geRadius), "fountain_warm"),
-            ["ge02"] = new GroundEffectCanisterProfile("ge02", new Vector2( geRadius, -geRadius), "spinner_neon"),
-            ["ge03"] = new GroundEffectCanisterProfile("ge03", new Vector2(-geRadius,  geRadius), "strobe_cool"),
-            ["ge04"] = new GroundEffectCanisterProfile("ge04", new Vector2( geRadius,  geRadius), "mine_mixed"),
-            ["ge05"] = new GroundEffectCanisterProfile("ge05", new Vector2( 0.0f, -geRadius), "fountain_warm"),
-            ["ge06"] = new GroundEffectCanisterProfile("ge06", new Vector2( 0.0f,  geRadius), "strobe_cool"),
-            ["ge07"] = new GroundEffectCanisterProfile("ge07", new Vector2(-geRadius,  0.0f), "spinner_neon"),
-            ["ge08"] = new GroundEffectCanisterProfile("ge08", new Vector2( geRadius,  0.0f), "mine_mixed"),
-        };
-
         var schemes = new Dictionary<string, ColorScheme>
         {
             ["warm"] = new ColorScheme("warm", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
@@ -217,7 +202,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.55f),
         };
 
-        return new FireworksProfileSet(canisters, shells, groundEffectCanisters, groundEffects, schemes);
+        return new FireworksProfileSet(canisters, shells, groundEffects, schemes);
     }
 }
 
@@ -233,10 +218,10 @@ public static class DefaultShow
 
         // Kick off a few overlapping ground effects near the start.
         // Use the outer ring of canisters so effects appear around the launch pad perimeter.
-        events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "ge01", GroundEffectProfileId: "fountain_warm"));
-        events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "ge02", GroundEffectProfileId: "spinner_neon"));
-        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "ge03", GroundEffectProfileId: "strobe_cool"));
-        events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "ge04", GroundEffectProfileId: "mine_mixed"));
+        events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "c01", GroundEffectProfileId: "fountain_warm"));
+        events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "c05", GroundEffectProfileId: "spinner_neon"));
+        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "c21", GroundEffectProfileId: "strobe_cool"));
+        events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "c25", GroundEffectProfileId: "mine_mixed"));
 
         for (int i = 0; i < 200; i+= gridSize)
         {
