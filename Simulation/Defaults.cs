@@ -8,7 +8,9 @@ public static class DefaultProfiles
 {
     public static FireworksProfileSet Create()
     {
-        const float canisterSpacingScale = 2f;
+        const float canisterSpacingScale = 1.5f;
+
+        // Shell-launch canisters (keep as-is, centered around the pad).
         var canisters = new Dictionary<string, CanisterProfile>
         {
             ["c01"] = new CanisterProfile("c01", "M2", new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), "basic"),
@@ -41,6 +43,24 @@ public static class DefaultProfiles
             ["c24"] = new CanisterProfile("c24", "M6", new Vector2(2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), "willow"),
             ["c25"] = new CanisterProfile("c25", "M8", new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), "willow")
         };
+
+        // Ground-effect canisters: separate set, placed around the pad border.
+        // The pad border spans 8m..10m; use ~9m for the centerline.
+        const float groundHalf = 9.0f;
+        var groundCanisters = new Dictionary<string, CanisterProfile>
+        {
+            ["g01"] = new CanisterProfile("g01", "M2", new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, "basic"),
+            ["g02"] = new CanisterProfile("g02", "M3", new Vector2(0.0f,      -groundHalf), Vector3.UnitY, "basic"),
+            ["g03"] = new CanisterProfile("g03", "M4", new Vector2( groundHalf, -groundHalf), Vector3.UnitY, "basic"),
+            ["g04"] = new CanisterProfile("g04", "M5", new Vector2( groundHalf,  0.0f),      Vector3.UnitY, "basic"),
+            ["g05"] = new CanisterProfile("g05", "M6", new Vector2( groundHalf,  groundHalf), Vector3.UnitY, "basic"),
+            ["g06"] = new CanisterProfile("g06", "M8", new Vector2(0.0f,       groundHalf), Vector3.UnitY, "basic"),
+            ["g07"] = new CanisterProfile("g07", "M10", new Vector2(-groundHalf, groundHalf), Vector3.UnitY, "basic"),
+            ["g08"] = new CanisterProfile("g08", "M6", new Vector2(-groundHalf, 0.0f),      Vector3.UnitY, "basic"),
+        };
+
+        foreach (var kvp in groundCanisters)
+            canisters.Add(kvp.Key, kvp.Value);
 
         var schemes = new Dictionary<string, ColorScheme>
         {
@@ -217,11 +237,11 @@ public static class DefaultShow
         int gridSize = 5;
 
         // Kick off a few overlapping ground effects near the start.
-        // Use the outer ring of canisters so effects appear around the launch pad perimeter.
-        events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "c01", GroundEffectProfileId: "fountain_warm"));
-        events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "c05", GroundEffectProfileId: "spinner_neon"));
-        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "c21", GroundEffectProfileId: "strobe_cool"));
-        events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "c25", GroundEffectProfileId: "mine_mixed"));
+        // Use dedicated ground-effect canisters placed on the pad border.
+        events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "g01", GroundEffectProfileId: "fountain_warm"));
+        events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "g03", GroundEffectProfileId: "spinner_neon"));
+        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "strobe_cool"));
+        events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "g07", GroundEffectProfileId: "mine_mixed"));
 
         for (int i = 0; i < 200; i+= gridSize)
         {
