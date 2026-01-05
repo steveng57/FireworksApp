@@ -129,13 +129,12 @@ public sealed class FireworksEngine
 
     private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)
     {
-        var canister = _canisters.FirstOrDefault(c => c.Profile.Id == ev.CanisterId);
-        if (canister is null)
-            return;
-
         // Ground effect start (scheduled like shells).
         if (!string.IsNullOrWhiteSpace(ev.GroundEffectProfileId))
         {
+            if (!_profiles.GroundEffectCanisters.TryGetValue(ev.CanisterId, out var geCanister))
+                return;
+
             if (!_profiles.GroundEffects.TryGetValue(ev.GroundEffectProfileId!, out var geProfile))
                 return;
 
@@ -146,9 +145,20 @@ public sealed class FireworksEngine
             if (geScheme is null)
                 return;
 
-            _groundEffects.Add(new GroundEffectInstance(geProfile, canister, geScheme, startTimeSeconds: ShowTimeSeconds));
+            // Ground effects do not use reload logic; store a minimal canister-like wrapper.
+            var pseudo = new Canister(new CanisterProfile(
+                Id: geCanister.Id,
+                CanisterTypeId: "M2",
+                Position: geCanister.Position,
+                LaunchDirection: Vector3.UnitY,
+                DefaultShellProfileId: "basic"));
+            _groundEffects.Add(new GroundEffectInstance(geProfile, pseudo, geScheme, startTimeSeconds: ShowTimeSeconds));
             return;
         }
+
+        var canister = _canisters.FirstOrDefault(c => c.Profile.Id == ev.CanisterId);
+        if (canister is null)
+            return;
 
         // Shell launch (existing behavior).
         if (string.IsNullOrWhiteSpace(ev.ShellProfileId))
@@ -347,18 +357,27 @@ public sealed class FireworksEngine
         float phase = (ge.ElapsedSeconds % interval) / interval;
         bool on = phase < duty;
 
+        // Strobe should read mostly as light pulses, not dense spray.
+        // We keep a small ember trickle and a short, bright "pop" on each flash.
         float baseRate = System.Math.Max(0.0f, profile.EmissionRate);
-        float onMul = on ? profile.FlashBrightness : profile.ResidualSparkDensity;
 
-        ge.AddEmission(baseRate * onMul * dt);
+        float emberRate = baseRate * System.Math.Clamp(profile.ResidualSparkDensity, 0.0f, 1.0f);
+        float flashRate = baseRate * (0.15f + 0.20f * System.Math.Clamp(profile.FlashBrightness, 0.5f, 4.0f));
+
+        ge.AddEmission((on ? flashRate : emberRate) * dt);
         int count = ge.ConsumeWholeParticles();
         if (count <= 0)
             return;
 
-        baseColor *= envelope * (on ? profile.FlashBrightness : 0.35f);
+        // Brightness is driven primarily by color scaling.
+        float flashMul = on ? profile.FlashBrightness : 0.25f;
+        baseColor *= envelope * flashMul;
 
-        var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: 12.0f * (MathF.PI / 180.0f), rng: _rng);
+        // Tight cone + very low speed so particles behave like a small glowing pot.
+        var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: 10.0f * (MathF.PI / 180.0f), rng: _rng);
+
         float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+        speed *= on ? 0.35f : 0.20f;
 
         renderer.SpawnGroundEffectDirected(
             origin,
@@ -378,18 +397,49 @@ public sealed class FireworksEngine
         {
             ge.NextBurstIndex();
 
-            int count = System.Math.Clamp(profile.ParticlesPerBurst, 1, 250000);
-            float coneRad = profile.ConeAngleDegrees * (MathF.PI / 180.0f);
-            var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+            // Mine should feel like a punchy upward fan, not a static glow.
+            // Emit a few quick sub-bursts with slight lateral bias + origin lift.
+            int total = System.Math.Clamp(profile.ParticlesPerBurst, 1, 250000);
+            int subBursts = System.Math.Clamp(total / 900, 2, 6);
+            int per = System.Math.Max(1, total / subBursts);
 
-            float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
-            renderer.SpawnGroundEffectDirected(
-                origin,
-                baseColor * envelope,
-                speed,
-                dirs,
-                particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
-                gravityFactor: profile.GravityFactor);
+            float coneRad = profile.ConeAngleDegrees * (MathF.PI / 180.0f);
+            float baseSpeed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
+
+            // Random outward bias direction on the ground plane.
+            float ang = (float)(_rng.NextDouble() * MathF.Tau);
+            Vector3 outDir = new(MathF.Cos(ang), 0.0f, MathF.Sin(ang));
+            const float outBias = 0.28f;
+
+            for (int b = 0; b < subBursts; b++)
+            {
+                int count = (b == subBursts - 1) ? (total - per * (subBursts - 1)) : per;
+                if (count <= 0)
+                    continue;
+
+                var dirs = GroundEmissionStyles.EmitCone(count, axis: Vector3.UnitY, coneAngleRadians: coneRad, rng: _rng);
+
+                // Add some outward component and renormalize.
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    Vector3 d = dirs[i] + outDir * outBias;
+                    if (d.LengthSquared() < 1e-8f)
+                        d = Vector3.UnitY;
+                    dirs[i] = Vector3.Normalize(d);
+                }
+
+                float burstT = subBursts > 1 ? (b / (float)(subBursts - 1)) : 0.0f;
+                float speed = baseSpeed * (0.85f + 0.35f * burstT);
+                float yLift = 0.06f + 0.10f * burstT;
+
+                renderer.SpawnGroundEffectDirected(
+                    origin + new Vector3(0.0f, yLift, 0.0f),
+                    baseColor * envelope,
+                    speed,
+                    dirs,
+                    particleLifetimeSeconds: profile.ParticleLifetimeSeconds,
+                    gravityFactor: profile.GravityFactor);
+            }
 
             if (profile.SmokeAmount > 0.01f)
             {

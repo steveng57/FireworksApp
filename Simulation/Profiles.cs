@@ -41,6 +41,11 @@ public sealed record class CanisterProfile(
     Vector3 LaunchDirection,
     string DefaultShellProfileId);
 
+public sealed record class GroundEffectCanisterProfile(
+    string Id,
+    Vector2 Position,
+    string DefaultGroundEffectProfileId);
+
 public sealed record class FireworkShellProfile(
     string Id,
     FireworkBurstShape BurstShape,
@@ -136,5 +141,6 @@ public sealed record class ColorScheme(
 public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
+    IReadOnlyDictionary<string, GroundEffectCanisterProfile> GroundEffectCanisters,
     IReadOnlyDictionary<string, GroundEffectProfile> GroundEffects,
     IReadOnlyDictionary<string, ColorScheme> ColorSchemes);
