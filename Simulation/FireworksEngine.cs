@@ -18,6 +18,9 @@ public sealed class FireworksEngine
     private ShowScript _show = ShowScript.Empty;
     private int _nextEventIndex;
 
+    // *** CHANGED: drag for shells (must match FireworkShell.Update usage)
+    private const float ShellDragK = 0.020f;
+
     public float ShowTimeSeconds { get; private set; }
 
     public FireworksEngine(FireworksProfileSet profiles)
@@ -138,13 +141,59 @@ public sealed class FireworksEngine
         var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
         Vector3 dir = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
 
+        // *** CHANGED: start from the "vacuum" muzzle, then retune with drag
         Vector3 launchVel = dir * muzzle;
+
+        // We want the shell to roughly reach the canister's nominal burst height.
+        float targetHeight = canister.Type.NominalBurstHeightM;
+        float targetPeakY = launchPos.Y + targetHeight;
+
+        Vector3 gravity = new(0f, -9.81f, 0f); // must match FireworkShell.Gravity magnitude
+        Vector3 tunedVel = launchVel;
+        float timeToPeak = shellProfile.FuseTimeSeconds; // fallback if solver doesn't converge
+
+        // Simple iterative scaling loop to hit the desired peak
+        for (int iter = 0; iter < 6; iter++)
+        {
+            var (peakY, tPeak) = SimulatePeakHeight(launchPos, tunedVel, ShellDragK, gravity);
+            timeToPeak = tPeak;
+
+            float currentHeight = peakY - launchPos.Y;
+            if (currentHeight <= 0.1f)
+            {
+                // Not really going up – nudge speed a bit and try again.
+                tunedVel *= 1.1f;
+                continue;
+            }
+
+            float error = targetPeakY - peakY;
+            if (MathF.Abs(error) < 0.5f)
+            {
+                // Close enough (within ~0.5m)
+                break;
+            }
+
+            // Scale speed based on ratio of desired height to simulated height.
+            float scale = MathF.Sqrt(targetHeight / currentHeight);
+            tunedVel *= scale;
+        }
+
+        // Use tuned velocity from now on.
+        launchVel = tunedVel;
 
         var colorSchemeId = ev.ColorSchemeId ?? shellProfile.ColorSchemeId;
         if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var scheme))
             scheme = _profiles.ColorSchemes.Values.FirstOrDefault();
 
-        var shell = new FireworkShell(shellProfile, scheme, launchPos, launchVel);
+        // *** CHANGED: pass drag and fuse override (burst slightly before apex)
+        var shell = new FireworkShell(
+            shellProfile,
+            scheme,
+            launchPos,
+            launchVel,
+            dragK: ShellDragK,
+            fuseOverrideSeconds: timeToPeak * 0.95f);
+
         _shells.Add(shell);
         canister.OnFired();
 
@@ -215,11 +264,12 @@ public sealed class FireworksEngine
         renderer.SpawnSmoke(explosion.Position);
     }
 
+    // *** ALREADY ADDED: used by TriggerEvent now
     private (float peakY, float timeToPeak) SimulatePeakHeight(
-    Vector3 startPos,
-    Vector3 initialVelocity,
-    float dragK,
-    Vector3 gravity)
+        Vector3 startPos,
+        Vector3 initialVelocity,
+        float dragK,
+        Vector3 gravity)
     {
         Vector3 p = startPos;
         Vector3 v = initialVelocity;
@@ -290,7 +340,7 @@ public sealed class FireworkShell
 {
     private const float GroundY = 0.0f;
     private static readonly Vector3 Gravity = new(0, -9.81f, 0);
-    private static readonly Random _rng = new(); // <-- Add this line
+    private static readonly Random _rng = new();
 
     public FireworkShellProfile Profile { get; }
     public ColorScheme ColorScheme { get; }
@@ -299,14 +349,26 @@ public sealed class FireworkShell
     public Vector3 Velocity { get; private set; }
     public float AgeSeconds { get; private set; }
     public bool Alive { get; private set; } = true;
-    public float DragK { get; init; } = 0.005f; // tune this
 
-    public FireworkShell(FireworkShellProfile profile, ColorScheme colorScheme, Vector3 position, Vector3 velocity)
+    // *** CHANGED: drag comes from engine, fuse can be overridden
+    public float DragK { get; private set; }
+    public float FuseTimeSeconds { get; }
+
+    // *** CHANGED: new constructor signature
+    public FireworkShell(
+        FireworkShellProfile profile,
+        ColorScheme colorScheme,
+        Vector3 position,
+        Vector3 velocity,
+        float dragK,
+        float? fuseOverrideSeconds = null)
     {
         Profile = profile;
         ColorScheme = colorScheme;
         Position = position;
         Velocity = velocity;
+        DragK = dragK;
+        FuseTimeSeconds = fuseOverrideSeconds ?? profile.FuseTimeSeconds;
     }
 
     public void Update(float dt)
@@ -318,7 +380,7 @@ public sealed class FireworkShell
         float speed = Velocity.Length();
         if (speed > 0f)
         {
-            float k = DragK; // pull from a field, not a magic 0.05f
+            float k = DragK;
             Vector3 dragAccel = -Velocity / speed * (k * speed * speed);
             Velocity += dragAccel * dt;
         }
@@ -332,9 +394,6 @@ public sealed class FireworkShell
 
     public void EmitTrail(D3D11Renderer renderer, float dt)
     {
-        //_ = renderer;
-        //_ = dt;
-        //return;
         if (!Alive || Velocity.LengthSquared() < 1e-4f)
             return;
 
@@ -359,11 +418,10 @@ public sealed class FireworkShell
             dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
         }
 
-        // LOCAL trail color, not stored anywhere else
+        // LOCAL trail color
         var trailColor = new Vector4(1.0f, 0.85f, 0.5f, 1.0f);
-        trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green
+        // trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green for debugging
 
-        // This should *only* write this color into the spawned particles
         renderer.SpawnBurstDirected(
             Position,
             trailColor,
@@ -371,7 +429,6 @@ public sealed class FireworkShell
             directions: dirs,
             particleLifetimeSeconds: 0.6f);
 
-        // Optional smoke – same idea, no global color changes
         if (_rng.NextDouble() < 0.2)
         {
             renderer.SpawnSmoke(Position);
@@ -386,7 +443,8 @@ public sealed class FireworkShell
             return false;
         }
 
-        if (AgeSeconds < Profile.FuseTimeSeconds)
+        // *** CHANGED: use per-shell fuse, not profile's fixed value
+        if (AgeSeconds < FuseTimeSeconds)
         {
             explosion = default;
             return false;
@@ -442,6 +500,9 @@ internal static class ColorUtil
 
     private static float Clamp01(float x) => x < 0 ? 0 : (x > 1 ? 1 : x);
 }
+
+// EmissionStyles unchanged...
+
 
 internal static class EmissionStyles
 {
