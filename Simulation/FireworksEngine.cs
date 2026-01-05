@@ -214,6 +214,52 @@ public sealed class FireworksEngine
             particleLifetimeSeconds: lifetime);
         renderer.SpawnSmoke(explosion.Position);
     }
+
+    private (float peakY, float timeToPeak) SimulatePeakHeight(
+    Vector3 startPos,
+    Vector3 initialVelocity,
+    float dragK,
+    Vector3 gravity)
+    {
+        Vector3 p = startPos;
+        Vector3 v = initialVelocity;
+
+        float peakY = p.Y;
+        float time = 0f;
+        float timeAtPeak = 0f;
+
+        const float dt = 1f / 240f;     // tiny step for accuracy
+        const float maxTime = 12f;      // safety cap
+
+        for (int i = 0; i < (int)(maxTime / dt); i++)
+        {
+            // Same integration as FireworkShell.Update
+            v += gravity * dt;
+
+            float speed = v.Length();
+            if (speed > 0f)
+            {
+                Vector3 dragAccel = -v / speed * (dragK * speed * speed);
+                v += dragAccel * dt;
+            }
+
+            p += v * dt;
+            time += dt;
+
+            if (p.Y > peakY)
+            {
+                peakY = p.Y;
+                timeAtPeak = time;
+            }
+
+            // Once vertical velocity is going down for a bit, we’ve passed the apex
+            if (v.Y <= 0f && time > 0.1f)
+                break;
+        }
+
+        return (peakY, timeAtPeak);
+    }
+
 }
 
 public sealed class Canister
@@ -253,6 +299,7 @@ public sealed class FireworkShell
     public Vector3 Velocity { get; private set; }
     public float AgeSeconds { get; private set; }
     public bool Alive { get; private set; } = true;
+    public float DragK { get; init; } = 0.005f; // tune this
 
     public FireworkShell(FireworkShellProfile profile, ColorScheme colorScheme, Vector3 position, Vector3 velocity)
     {
@@ -264,10 +311,18 @@ public sealed class FireworkShell
 
     public void Update(float dt)
     {
-        if (!Alive)
-            return;
+        if (!Alive) return;
 
         Velocity += Gravity * dt;
+
+        float speed = Velocity.Length();
+        if (speed > 0f)
+        {
+            float k = DragK; // pull from a field, not a magic 0.05f
+            Vector3 dragAccel = -Velocity / speed * (k * speed * speed);
+            Velocity += dragAccel * dt;
+        }
+
         Position += Velocity * dt;
         AgeSeconds += dt;
 
