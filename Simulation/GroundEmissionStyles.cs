@@ -39,21 +39,34 @@ public static class GroundEmissionStyles
         return dirs;
     }
 
-    public static Vector3[] EmitSpinnerTangents(int count, float phaseRadians, Random rng)
+    public static Vector3[] EmitSpinnerTangents(int count, float phaseRadians, Vector3 axis, Random rng)
     {
         if (count <= 0)
             return Array.Empty<Vector3>();
+
+        if (axis.LengthSquared() < 1e-8f)
+            axis = Vector3.UnitY;
+        axis = Vector3.Normalize(axis);
+
+        Vector3 t1 = Vector3.Cross(axis, Vector3.UnitY);
+        if (t1.LengthSquared() < 1e-8f)
+            t1 = Vector3.Cross(axis, Vector3.UnitX);
+        t1 = Vector3.Normalize(t1);
+        Vector3 t2 = Vector3.Normalize(Vector3.Cross(axis, t1));
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
         {
             float a = phaseRadians + ((float)rng.NextDouble() * 2.0f - 1.0f) * 0.25f;
 
-            float tx = -MathF.Sin(a);
-            float tz = MathF.Cos(a);
+            // Tangent direction around the chosen axis.
+            Vector3 tangent = (-MathF.Sin(a) * t1) + (MathF.Cos(a) * t2);
 
             float lift = 0.15f + (float)rng.NextDouble() * 0.10f;
-            dirs[i] = Vector3.Normalize(new Vector3(tx, lift, tz));
+
+            // Add a bit of axis-aligned lift so particles don't stay glued to the plane.
+            Vector3 d = tangent + axis * lift;
+            dirs[i] = Vector3.Normalize(d);
         }
 
         return dirs;

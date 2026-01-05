@@ -187,24 +187,43 @@ public static class DefaultProfiles
                 ParticleLifetimeSeconds: 1.4f,
                 GravityFactor: 0.35f,
                 BrightnessScalar: 1.1f,
+                HeightOffsetMeters: 2.0f,
                 AngularVelocityRadiansPerSec: 9.0f,
                 EmissionRadius: 0.22f,
+                SpinnerAxis: Vector3.UnitY,
                 SmokeAmount: 0.1f),
 
-            ["strobe_cool"] = new GroundEffectProfile(
-                Id: "strobe_cool",
-                Type: GroundEffectType.Strobe,
-                ColorSchemeId: "cool",
-                DurationSeconds: 4.5f,
-                EmissionRate: 160.0f,
-                ParticleVelocityRange: new Vector2(0.3f, 1.2f),
-                ParticleLifetimeSeconds: 0.62f,
-                GravityFactor: 0.05f,
-                BrightnessScalar: 2.0f,
-                FlashIntervalSeconds: 0.16f,
-                FlashDutyCycle: 0.18f,
-                FlashBrightness: 3.4f,
-                ResidualSparkDensity: 0.14f),
+            //["strobe_cool"] = new GroundEffectProfile(
+            //    Id: "strobe_cool",
+            //    Type: GroundEffectType.Strobe,
+            //    ColorSchemeId: "cool",
+            //    DurationSeconds: 4.5f,
+            //    EmissionRate: 160.0f,
+            //    ParticleVelocityRange: new Vector2(0.3f, 1.2f),
+            //    ParticleLifetimeSeconds: 0.62f,
+            //    GravityFactor: 0.05f,
+            //    BrightnessScalar: 2.0f,
+            //    FlashIntervalSeconds: 0.16f,
+            //    FlashDutyCycle: 0.18f,
+            //    FlashBrightness: 3.4f,
+            //    ResidualSparkDensity: 0.14f),
+
+
+            ["spinner_neon_v"] = new GroundEffectProfile(
+                Id: "spinner_neon_v",
+                Type: GroundEffectType.Spinner,
+                ColorSchemeId: "neon",
+                DurationSeconds: 6.5f,
+                EmissionRate: 1400.0f,
+                ParticleVelocityRange: new Vector2(5.0f, 9.0f),
+                ParticleLifetimeSeconds: 1.4f,
+                GravityFactor: 0.35f,
+                BrightnessScalar: 1.1f,
+                HeightOffsetMeters: 3.0f,
+                AngularVelocityRadiansPerSec: 9.0f,
+                EmissionRadius: 0.22f,
+                SpinnerAxis: Vector3.UnitX,
+                SmokeAmount: 0.1f),
 
             ["mine_mixed"] = new GroundEffectProfile(
                 Id: "mine_mixed",
@@ -240,7 +259,7 @@ public static class DefaultShow
         // Use dedicated ground-effect canisters placed on the pad border.
         events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "g01", GroundEffectProfileId: "fountain_warm"));
         events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "g03", GroundEffectProfileId: "spinner_neon"));
-        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "strobe_cool"));
+        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "spinner_neon_v"));
         events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "g07", GroundEffectProfileId: "mine_mixed"));
 
         for (int i = 0; i < 200; i+= gridSize)

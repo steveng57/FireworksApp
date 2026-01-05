@@ -252,6 +252,9 @@ public sealed class FireworksEngine
         Vector3 origin = new(ge.Canister.Profile.Position.X, 0.30f, ge.Canister.Profile.Position.Y);
         origin.Y = System.Math.Max(0.05f, origin.Y);
 
+        // Optional per-effect vertical offset (meters).
+        origin.Y += ge.Profile.HeightOffsetMeters;
+
         var profile = ge.Profile;
 
         // Pick base HDR-ish color from scheme.
@@ -323,7 +326,7 @@ public sealed class FireworksEngine
         float phase = omega * ge.ElapsedSeconds;
 
         float speed = 0.5f * (profile.ParticleVelocityRange.X + profile.ParticleVelocityRange.Y);
-        var dirs = GroundEmissionStyles.EmitSpinnerTangents(count, phase, rng: _rng);
+        var dirs = GroundEmissionStyles.EmitSpinnerTangents(count, phase, axis: profile.SpinnerAxis ?? Vector3.UnitY, rng: _rng);
 
         Vector3 jitter = new(
             ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.03f,
