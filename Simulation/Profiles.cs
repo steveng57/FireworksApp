@@ -11,7 +11,8 @@ public enum FireworkBurstShape
     Chrysanthemum,
     Willow,
     Palm,
-    Ring
+    Ring,
+    Horsetail
 }
 
 public sealed record CanisterType(

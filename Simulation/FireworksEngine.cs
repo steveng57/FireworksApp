@@ -233,6 +233,7 @@ public sealed class FireworksEngine
             FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
             FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
+            FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
@@ -245,6 +246,7 @@ public sealed class FireworksEngine
         {
             FireworkBurstShape.Willow => 7.0f,
             FireworkBurstShape.Palm => 13.0f,
+            FireworkBurstShape.Horsetail => 6.0f,
             _ => 10.0f
         };
 
@@ -252,6 +254,7 @@ public sealed class FireworksEngine
         {
             FireworkBurstShape.Willow => explosion.ParticleLifetimeSeconds * 2.2f,
             FireworkBurstShape.Palm => explosion.ParticleLifetimeSeconds * 1.2f,
+            FireworkBurstShape.Horsetail => explosion.ParticleLifetimeSeconds * 2.5f,
             _ => explosion.ParticleLifetimeSeconds
         };
 
@@ -666,6 +669,47 @@ internal static class EmissionStyles
 
         return dirs;
     }
+
+    /// <summary>
+    /// Horsetail: a dense, downward "waterfall" effect.
+    /// Similar to a willow but with much stronger downward bias and
+    /// minimal upward components, so gravity makes a thick drooping tail.
+    /// </summary>
+    public static Vector3[] EmitHorsetail(int count)
+    {
+        var dirs = new Vector3[count];
+
+        const float downwardBlend = 0.75f;   // how hard we pull toward straight down
+        const float minDownY = -0.25f;  // don't let stars start too horizontal/upward
+        const float jitterAngle = 0.15f;   // small cone jitter for variation
+
+        Vector3 down = new(0f, -1f, 0f);
+
+        for (int i = 0; i < count; i++)
+        {
+            // Start from a random direction
+            Vector3 d = RandomUnitVector();
+
+            // Ensure it's at least somewhat downward: clamp Y so it's never near +Y
+            if (d.Y > minDownY)
+            {
+                d.Y = minDownY;
+            }
+
+            d = Vector3.Normalize(d);
+
+            // Strongly bias toward straight down
+            d = Vector3.Normalize(Vector3.Lerp(d, down, downwardBlend));
+
+            // Add a bit of cone jitter so it isn't a razor-thin column
+            d = JitterDirection(d, jitterAngle);
+
+            dirs[i] = d;
+        }
+
+        return dirs;
+    }
+
 
     private static Vector3 JitterDirection(Vector3 baseDir, float maxAngleRadians)
     {

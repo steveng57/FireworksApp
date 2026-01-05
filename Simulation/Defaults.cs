@@ -47,7 +47,35 @@ public static class DefaultProfiles
             ["cool"] = new ColorScheme("cool", new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
             ["mixed"] = new ColorScheme("mixed", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
             ["neon"] = new ColorScheme("neon", new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
-            ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f)
+            ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f),
+
+            ["debug"] = new ColorScheme("debug", new[] { Colors.White, Colors.Red, Colors.Lime, Colors.Blue, Colors.Yellow, Colors.Cyan, Colors.Magenta }, 0.2f, 0.5f),
+            // id, base colors[], variation, boost
+            ["gold"] = new ColorScheme(
+                "gold",
+                new[]
+                {
+                    Color.FromArgb(255, 255, 220, 120),
+                    Color.FromArgb(255, 255, 205, 105),
+                    Color.FromArgb(255, 245, 190,  95),
+                    Color.FromArgb(255, 230, 175,  80)
+                },
+                0.04f,
+                2.2f
+            ),
+
+                        ["brocadegold"] = new ColorScheme(
+                "brocadegold",
+                new[]
+                {
+                    Color.FromArgb(255, 235, 180,  80),
+                    Color.FromArgb(255, 220, 165,  70),
+                    Color.FromArgb(255, 205, 150,  60)
+                },
+                0.03f,
+                2.2f
+            ),
+
         };
 
         var shells = new Dictionary<string, FireworkShellProfile>
@@ -97,7 +125,19 @@ public static class DefaultProfiles
                 ParticleCount: 7000,
                 ParticleLifetimeSeconds: 3.2f,
                 RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f)
+                RingAxisRandomTiltDegrees: 25.0f),
+            ["horsetail_gold"] = new FireworkShellProfile(
+                Id: "horsetail_gold",
+                BurstShape: FireworkBurstShape.Horsetail,
+                ColorSchemeId: "Gold",
+                FuseTimeSeconds: 3.2f,             // whatever works with your canister
+                ExplosionRadius: 45.0f,
+                ParticleCount: 3000,
+                ParticleLifetimeSeconds: 3.5f,
+                RingAxis: null,
+                RingAxisRandomTiltDegrees: 0.0f
+            ),
+
         };
 
         return new FireworksProfileSet(canisters, shells, schemes);
