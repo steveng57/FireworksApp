@@ -17,10 +17,18 @@ namespace FireworksApp.Rendering;
 public struct PadVertex
 {
     public Vector3 Position;
+    public Vector4 Color;
 
     public PadVertex(float x, float y, float z)
     {
         Position = new Vector3(x, y, z);
+        Color = Vector4.One;
+    }
+
+    public PadVertex(float x, float y, float z, Vector4 color)
+    {
+        Position = new Vector3(x, y, z);
+        Color = color;
     }
 
 // ...existing code...
@@ -1724,12 +1732,13 @@ public sealed class D3D11Renderer : IDisposable
         _padVS = _device.CreateVertexShader(vsBytes);
         _padPS = _device.CreatePixelShader(psBytes);
 
-        // Input layout: POSITION (float3)
+        // Input layout: POSITION (float3) + COLOR (float4)
         var elements = new[]
         {
             // ctor signature in your Vortice version is:
             // InputElementDescription(string semanticName, int semanticIndex, Format format, int alignedByteOffset, int slot)
-            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0)
+            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+            new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 12, 0)
         };
 
         _padInputLayout = _device.CreateInputLayout(elements, vsBytes);
@@ -1743,54 +1752,126 @@ public sealed class D3D11Renderer : IDisposable
             DepthClipEnable = true
         });
 
-        // --- Create a 20m x 20m pad with 10cm thickness (a simple box) ---
-        const float half = 10.0f;
+        // --- Create a 20m x 20m pad with 10cm thickness plus a 2m wide border ring ---
+        const float outerHalf = 10.0f;
+        const float borderWidth = 2.0f;
+        const float innerHalf = outerHalf - borderWidth; // 8m
         const float thickness = 0.10f;
         float y0 = 0.0f;
         float y1 = thickness;
 
-        // Top face + 4 sides (no bottom, since it sits on ground)
+        // Colors (RGBA)
+        var padColor = new Vector4(0.10f, 0.30f, 0.90f, 1.0f);   // existing blue
+        var borderColor = new Vector4(0.60f, 0.15f, 0.80f, 1.0f); // purple
+
+        // Top surfaces (as a ring made of 4 rectangles) + outer sides + inner cutout sides.
         PadVertex[] verts =
         {
-            // Top (y1)
-            new PadVertex(-half, y1, -half),
-            new PadVertex( half, y1, -half),
-            new PadVertex(-half, y1,  half),
-            new PadVertex( half, y1, -half),
-            new PadVertex( half, y1,  half),
-            new PadVertex(-half, y1,  half),
+            // Top ring: +Z strip (outer z=+outerHalf, inner z=+innerHalf)
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  innerHalf, borderColor),
 
-            // +Z side (front)
-            new PadVertex(-half, y0,  half),
-            new PadVertex( half, y0,  half),
-            new PadVertex(-half, y1,  half),
-            new PadVertex( half, y0,  half),
-            new PadVertex( half, y1,  half),
-            new PadVertex(-half, y1,  half),
+            // Top ring: -Z strip
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -innerHalf, borderColor),
 
-            // -Z side (back)
-            new PadVertex( half, y0, -half),
-            new PadVertex(-half, y0, -half),
-            new PadVertex( half, y1, -half),
-            new PadVertex(-half, y0, -half),
-            new PadVertex(-half, y1, -half),
-            new PadVertex( half, y1, -half),
+            // Top ring: +X strip
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  outerHalf, borderColor),
 
-            // +X side (right)
-            new PadVertex( half, y0,  half),
-            new PadVertex( half, y0, -half),
-            new PadVertex( half, y1,  half),
-            new PadVertex( half, y0, -half),
-            new PadVertex( half, y1, -half),
-            new PadVertex( half, y1,  half),
+            // Top ring: -X strip
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -outerHalf, borderColor),
 
-            // -X side (left)
-            new PadVertex(-half, y0, -half),
-            new PadVertex(-half, y0,  half),
-            new PadVertex(-half, y1, -half),
-            new PadVertex(-half, y0,  half),
-            new PadVertex(-half, y1,  half),
-            new PadVertex(-half, y1, -half),
+            // Inner pad top (y1) - fills the hole
+            new PadVertex(-innerHalf, y1, -innerHalf, padColor),
+            new PadVertex( innerHalf, y1, -innerHalf, padColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, padColor),
+            new PadVertex( innerHalf, y1, -innerHalf, padColor),
+            new PadVertex( innerHalf, y1,  innerHalf, padColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, padColor),
+
+            // Outer sides of the full 20m square
+            // +Z outer side
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+
+            // -Z outer side
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+
+            // +X outer side
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+
+            // -X outer side
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+
+            // Inner cutout sides (vertical faces along the edge of the inner 16m square).
+            // +Z inner side (faces inward, but culling is off so winding isn't critical)
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+
+            // -Z inner side
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+
+            // +X inner side
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+
+            // -X inner side
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
         };
 
         int stride = Marshal.SizeOf<PadVertex>();

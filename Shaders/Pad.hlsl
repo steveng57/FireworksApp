@@ -9,23 +9,26 @@ cbuffer SceneCB : register(b0)
 struct VSIn
 {
     float3 Position : POSITION;
+    float4 Color    : COLOR;
 };
 
 struct VSOut
 {
     float4 Position : SV_Position;
+    float4 Color    : COLOR;
 };
 
 VSOut VSMain(VSIn input)
 {
     VSOut o;
     o.Position = mul(float4(input.Position, 1.0f), WorldViewProjection);
+    o.Color = input.Color;
     return o;
 }
 
 float4 PSMain(VSOut input) : SV_Target
 {
-    // Pad material (unlit for now; the ground lighting provides context).
-    return float4(0.10f, 0.30f, 0.90f, 1.0f);
+    // Unlit vertex color.
+    return input.Color;
 }
 
