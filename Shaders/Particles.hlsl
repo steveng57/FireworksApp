@@ -4,40 +4,43 @@
 cbuffer FrameCB : register(b0)
 {
     float4x4 ViewProjection;
-    float3   CameraRightWS;
-    float    DeltaTime;
-    float3   CameraUpWS;
-    float    Time;
+    float3 CameraRightWS;
+    float DeltaTime;
+    float3 CameraUpWS;
+    float Time;
 
-    float3   CrackleBaseColor;
-    float    CrackleBaseSize;
-    float3   CracklePeakColor;
-    float    CrackleFlashSizeMul;
-    float3   CrackleFadeColor;
-    float    CrackleTau;
+    float3 CrackleBaseColor;
+    float CrackleBaseSize;
+    float3 CracklePeakColor;
+    float CrackleFlashSizeMul;
+    float3 CrackleFadeColor;
+    float CrackleTau;
 
-    float3   SchemeTint;
-    float    _stpad0;
+    float3 SchemeTint;
+    float _stpad0;
 
-    uint     ParticlePass; // 0=additive, 1=alpha
-    uint3    _ppad;
+    uint ParticlePass; // 0=additive, 1=alpha
+    uint3 _ppad;
 };
 
 struct Particle
 {
     float3 Position;
     float3 Velocity;
-    float  Age;
-    float  Lifetime;
+    float Age;
+    float Lifetime;
     float4 Color;
-    uint   Kind;   // 0=Dead, 1=Shell, 2=Spark, 3=Smoke (reserved), 4=Crackle
-    uint3  _pad;
+    uint Kind; // 0=Dead, 1=Shell, 2=Spark, 3=Smoke (reserved), 4=Crackle
+    uint3 _pad;
 };
 
 RWStructuredBuffer<Particle> Particles : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
+
+// Quadratic drag strength for sparks/crackles (tune visually).
+static const float SparkDragK = 0.015f;
 
 float4 ColorRampSpark(float t, float4 baseColor)
 {
@@ -83,7 +86,7 @@ float2 CrackleFlicker(float age, float lifetime, uint seed)
 
     // 2–5 pulses total.
     float rP = Hash01(seed ^ 0xA2C79u);
-    int pulses = 2 + (int)floor(rP * 4.0f); // 2..5
+    int pulses = 2 + (int) floor(rP * 4.0f); // 2..5
 
     // Pulse timing domain in seconds.
     // On: 5–15ms, Off: 5–12ms, approximate by a per-pulse frequency.
@@ -97,7 +100,7 @@ float2 CrackleFlicker(float age, float lifetime, uint seed)
     // Limit number of pulses by time; each pulse occupies 1/pulses of normalized lifetime.
     float pulseWindow = (pulses > 0) ? (1.0f / pulses) : 1.0f;
     float pulseId = floor(t / pulseWindow);
-    float active = step(pulseId, (float)(pulses - 1));
+    float active = step(pulseId, (float) (pulses - 1));
 
     float pulse01 = on * active;
 
@@ -132,16 +135,43 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         return;
     }
 
-    // Integrate motion (semi-implicit Euler)
-    float drag = 0.02f; // very small (almost vacuum)
-    if (p.Kind == 3)
+    // Integrate motion.
+    // Sparks & crackles: gravity + quadratic drag (like shells, but on GPU).
+    // Smoke / others: keep existing simple linear drag so they stay floaty.
+    if (p.Kind == 2 || p.Kind == 4)
     {
-        // Smoke has much higher drag so it slows quickly.
-        drag = 2.2f;
+        // Spark or crackle
+        float3 v = p.Velocity;
+
+        // Gravity
+        float3 accel = Gravity;
+
+        // Quadratic drag opposite velocity
+        float speed = length(v);
+        if (speed > 1e-4f)
+        {
+            float3 dir = v / speed;
+            float3 dragAccel = -dir * (SparkDragK * speed * speed);
+            accel += dragAccel;
+        }
+
+        v += accel * dt;
+        p.Velocity = v;
+        p.Position += v * dt;
     }
-    p.Velocity += Gravity * dt;
-    p.Velocity *= (1.0f / (1.0f + drag * dt));
-    p.Position += p.Velocity * dt;
+    else
+    {
+        // Shell/smoke/other: old scheme (gravity + simple linear drag)
+        float drag = 0.02f; // very small (almost vacuum)
+        if (p.Kind == 3)
+        {
+            // Smoke has much higher drag so it slows quickly.
+            drag = 2.2f;
+        }
+        p.Velocity += Gravity * dt;
+        p.Velocity *= (1.0f / (1.0f + drag * dt));
+        p.Position += p.Velocity * dt;
+    }
 
     if (p.Kind == 2)
     {
@@ -195,9 +225,9 @@ StructuredBuffer<Particle> ParticlesRO : register(t0);
 struct VSOut
 {
     float4 Position : SV_Position;
-    float4 Color    : COLOR0;
-    float2 UV       : TEXCOORD0;
-    uint   Kind     : TEXCOORD1;
+    float4 Color : COLOR0;
+    float2 UV : TEXCOORD0;
+    uint Kind : TEXCOORD1;
 };
 
 VSOut VSParticle(uint vid : SV_VertexID)
@@ -229,16 +259,10 @@ VSOut VSParticle(uint vid : SV_VertexID)
         return o;
     }
 
-    // Pass control: additive pass uses Color.a < 0 via CPU-set blend (we can't read it here).
-    // Instead, encode a simple rule: smoke (Kind==3) should not contribute to additive; it will
-    // still render correctly in the alpha-blended pass.
-    // We approximate by making smoke fully transparent when the pixel shader is used in additive pass.
-    // (The CPU draws two passes; we distinguish by relying on the additive pass being first and
-    // using a weaker alpha for smoke overall.)
-
-    float2 offsets[6] = {
-        float2(-1,-1), float2( 1,-1), float2(-1, 1),
-        float2( 1,-1), float2( 1, 1), float2(-1, 1)
+    float2 offsets[6] =
+    {
+        float2(-1, -1), float2(1, -1), float2(-1, 1),
+        float2(1, -1), float2(1, 1), float2(-1, 1)
     };
 
     float2 uv = offsets[corner];
