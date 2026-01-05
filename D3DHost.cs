@@ -350,13 +350,15 @@ public sealed class D3DHost : HwndHost
 
         const float dt = 1.0f / 60.0f;
 
+        float scaledDt = dt;
+
         if (_engine is not null)
         {
             _engine.Update(dt, _renderer);
-            _renderer.TimeScale = _engine.TimeScale; // keep GPU sim in sync
+            scaledDt = dt * _engine.TimeScale;
         }
 
-        _renderer.Render();
+        _renderer.Render(scaledDt);
     }
 
 

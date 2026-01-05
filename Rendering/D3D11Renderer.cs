@@ -30,7 +30,6 @@ public struct PadVertex
 
 public sealed class D3D11Renderer : IDisposable
 {
-    public float TimeScale { get; set; } = 0.80f;
     private readonly nint _hwnd;
 
     private ID3D11Device? _device;
@@ -310,13 +309,17 @@ public sealed class D3D11Renderer : IDisposable
         UpdateSceneConstants();
     }
 
-    public void Render()
+    public void Render(float scaledDt)
     {
         if (_context is null || _rtv is null || _swapChain is null)
             return;
 
-        float dt = GetDeltaTimeSeconds();
-        UpdateParticles(dt);
+        if (scaledDt < 0.0f)
+            scaledDt = 0.0f;
+        if (scaledDt > 0.05f)
+            scaledDt = 0.05f;
+
+        UpdateParticles(scaledDt);
 
         if (_cameraDirty)
         {
@@ -1074,13 +1077,12 @@ public sealed class D3D11Renderer : IDisposable
         });
     }
 
-    private void UpdateParticles(float dt)
+    private void UpdateParticles(float scaledDt)
     {
         if (_context is null || _particlesCS is null || _particleUAV is null || _frameCB is null)
             return;
 
-        // Apply global time scale for GPU sim
-        float scaledDt = dt * TimeScale;
+        // `scaledDt` is already time-scaled by the simulation layer.
 
         // Camera basis from view matrix (world-space).
         // view is orthonormal: right = (M11,M21,M31), up=(M12,M22,M32)
