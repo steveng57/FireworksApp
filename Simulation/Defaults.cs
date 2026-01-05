@@ -126,7 +126,7 @@ public static class DefaultProfiles
                 ParticleCount: 7000,
                 ParticleLifetimeSeconds: 3.2f,
                 RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f),
+                RingAxisRandomTiltDegrees: 90.0f),
             ["horsetail_gold"] = new FireworkShellProfile(
                 Id: "horsetail_gold",
                 BurstShape: FireworkBurstShape.Horsetail,
