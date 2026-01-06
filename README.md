@@ -3,12 +3,12 @@
 A WPF (.NET 10) desktop application that renders and simulates fireworks in real time using a custom Direct3D 11 renderer and GPU shaders.
 
 This project combines:
-- A **simulation layer** (profiles, show scripts, particle generation)
-- A **rendering layer** (D3D11 interop and draw pipeline)
-- **HLSL shaders** for shells/ground and visual effects
+- A **simulation layer** (profiles, show scripts, shell/ground effect logic)
+- A **rendering layer** (D3D11 interop + GPU particle system)
+- **HLSL shaders** for the pad/ground/canisters/shells and GPU particles
 
 > Notes
-> - This README describes the repository as it exists in your workspace. File names and types referenced here (for example `Simulation/Defaults.cs`, `Rendering/D3D11Renderer.cs`, `Shaders/*.hlsl`) are present in the current solution.
+> - This README describes the repository as it exists in your workspace. File names referenced below (for example `Simulation/FireworksEngine.cs`, `Rendering/D3D11Renderer.cs`, `Shaders/*.hlsl`) are present in the current solution.
 
 ---
 
@@ -18,6 +18,7 @@ This project combines:
 - [Tech Stack](#tech-stack)
 - [Repository Layout](#repository-layout)
 - [Build & Run](#build--run)
+- [Controls](#controls)
 - [How the Simulation Works (High-Level)](#how-the-simulation-works-high-level)
 - [Profiles: Canisters, Shells, Color Schemes](#profiles-canisters-shells-color-schemes)
   - [Canisters](#canisters)
@@ -28,6 +29,7 @@ This project combines:
   - [Adding a New Show Event](#adding-a-new-show-event)
 - [Rendering Pipeline (Direct3D 11)](#rendering-pipeline-direct3d-11)
 - [Shaders](#shaders)
+- [GPU Particle System](#gpu-particle-system)
 - [Extending the Project](#extending-the-project)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -40,8 +42,10 @@ This project combines:
 - Multiple **burst shapes** (for example peony, chrysanthemum, willow, ring)
 - Color schemes with variation and brightness boosting
 - Scripted show playback (timeline of launch events)
-- GPU-accelerated rendering and effects via HLSL
+- GPU-accelerated rendering and effects via HLSL (including a compute-shader particle update)
 - WPF desktop UI hosting a D3D11 surface
+- Orbit/pan/zoom camera controls
+- Ground emission effects (show events can trigger ground effects, not just shell launches)
 
 ---
 
@@ -60,16 +64,22 @@ This project combines:
 Typical top-level structure (may vary slightly):
 
 - `Simulation/`
-  - `Defaults.cs` – default canister/shell/color profiles + generated demo show
-  - `FireworksEngine.cs` – core simulation engine (launch, update, particle emission)
-  - `Profiles.cs` – profile types (`CanisterProfile`, `FireworkShellProfile`, `ColorScheme`, `FireworksProfileSet`)
+  - `Defaults.cs` – default profile sets + generated demo show
+  - `DefaultCanisterTypes.cs` – canister type definitions (burst height, muzzle velocity range, etc.)
+  - `FireworksEngine.cs` – core simulation engine (show playback, shells, ground effects)
+  - `GroundEmissionStyles.cs` – ground-effect emission patterns
+  - `Profiles.cs` – profile types (`CanisterProfile`, `FireworkShellProfile`, `ColorScheme`, `FireworksProfileSet`, ground-effect profiles)
   - `ShowScript.cs` – show timeline types (`ShowScript`, `ShowEvent`)
 - `Rendering/`
-  - `D3D11Renderer.cs` – renderer setup and draw loop
+  - `D3D11Renderer.cs` – D3D11 setup, camera, draw loop, and GPU particle system
 - `Shaders/`
-  - `Shells.hlsl` – shell/particle shading
-  - `Ground.hlsl` – ground shading
+  - `Pad.hlsl` – launch pad geometry shader
+  - `Ground.hlsl` – ground plane shader
+  - `Canister.hlsl` – canister shader
+  - `Shell.hlsl` – bright unlit shell shader (debug/visibility)
+  - `Particles.hlsl` – compute + draw shaders for the GPU particle system
 - `D3DHost.cs` – WPF/Direct3D host integration
+- `MainWindow.xaml.cs` – input wiring / app UI host
 - `FireworksApp.csproj` – project definition
 
 ---
@@ -96,19 +106,29 @@ Typical top-level structure (may vary slightly):
 
 ---
 
+## Controls
+
+Camera controls are handled in `Rendering/D3D11Renderer.cs` and surfaced via WPF input:
+
+- Mouse drag: orbit (yaw/pitch)
+- Mouse wheel: zoom in/out
+- Pan: move the camera target (implementation in `D3D11Renderer.PanCamera`)
+
+---
+
 ## How the Simulation Works (High-Level)
 
 At a high level, the app runs two tightly coupled loops:
 
 1. **Simulation update** (CPU)
-   - Advances time
-   - Processes show events (launches)
-   - Updates active shells/particles
-   - Emits new particles on burst
+   - Advances show time (with a global `TimeScale`)
+   - Processes show events (shell launches and/or ground effects)
+   - Updates active shells (including drag and fuse timing)
+   - Tells the renderer when to spawn bursts/trails/ground particles
 2. **Render update** (GPU)
-   - Uploads particle/shell data (as needed)
-   - Renders ground/background
-   - Renders shells/particles using shaders
+   - Updates GPU particles via compute shader
+   - Renders ground/pad/canisters/shell markers
+   - Renders particles in multiple passes (additive + alpha)
 
 The simulation is data-driven via *profiles* and a *show script*:
 
@@ -116,6 +136,8 @@ The simulation is data-driven via *profiles* and a *show script*:
 - `CanisterProfile` defines where a shell launches from and the initial direction.
 - `ColorScheme` defines base colors and how much random variation is applied.
 - `ShowScript` is a timeline of `ShowEvent` objects describing launches at a given time.
+
+`ShowEvent` can also schedule **ground effects** (for example fountains/sparkle sources) via a ground-effect profile ID.
 
 ---
 
@@ -197,6 +219,10 @@ Each `ShowEvent` contains:
 - `ColorSchemeId`: optional override for colors
 - `MuzzleVelocity`: optional override for velocity
 
+Additionally, a show event may specify:
+
+- `GroundEffectProfileId`: if set, the event starts a ground effect instead of launching a shell
+
 ### Adding a New Show Event
 
 To add a new event (either in the default generator or in a different show loader), create a `ShowEvent`:
@@ -218,7 +244,8 @@ Typical responsibilities include:
 
 - Creating D3D11 device/swap chain (or shared surface) compatible with WPF hosting
 - Managing render targets and depth buffers
-- Uploading simulation outputs (shells/particles) to GPU buffers
+- Uploading simulation outputs (shell positions, canister positions)
+- Maintaining a GPU particle buffer updated via compute shader
 - Invoking shader passes and draw calls
 
 If you’re modifying the renderer:
@@ -232,13 +259,27 @@ If you’re modifying the renderer:
 
 HLSL shaders are in `Shaders/`:
 
-- `Shaders/Shells.hlsl` – particle/shell rendering
-- `Shaders/Ground.hlsl` – ground rendering
+- `Shaders/Pad.hlsl` – launch pad shading
+- `Shaders/Ground.hlsl` – ground shading
+- `Shaders/Canister.hlsl` – canister shading
+- `Shaders/Shell.hlsl` – shell marker shading
+- `Shaders/Particles.hlsl` – GPU particle compute + render
 
 When changing shaders:
 
 - Ensure the build action / content pipeline is configured to copy shaders to output (or embed them), depending on how `D3D11Renderer` loads them.
 - Keep shader input layouts and constant buffer structures synchronized with your C# side structs.
+
+---
+
+## GPU Particle System
+
+The renderer uses a GPU particle system backed by a structured buffer:
+
+- Update: `Particles.hlsl` compute shader (`CSUpdate`)
+- Render: billboards expanded in the vertex shader (`VSParticle`) and shaded in the pixel shader
+
+Particle “kinds” include shells, burst sparks, smoke, and crackle-style sparks. Rendering is split into passes so additive particles and alpha-blended particles (like smoke) can be handled separately.
 
 ---
 
