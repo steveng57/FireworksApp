@@ -393,7 +393,10 @@ public sealed class D3D11Renderer : IDisposable
         _canisters = canisters ?? Array.Empty<CanisterRenderState>();
     }
 
-    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count)
+    private static uint PackFloat(float value)
+        => (uint)BitConverter.SingleToInt32Bits(value);
+
+    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;
@@ -432,9 +435,10 @@ public sealed class D3D11Renderer : IDisposable
                 Lifetime = lifetime,
                 Color = baseColor,
                 Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                // Use padding as deterministic per-particle randomness for crackle.
-                _pad0 = (uint)_rng.Next(),
-                _pad1 = (uint)_rng.Next(),
+                // For sparks, pack sparkle params (rate/intensity) so only burst particles twinkle.
+                // For crackle, keep pads as deterministic randomness.
+                _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
+                _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
                 _pad2 = (uint)_rng.Next()
             };
         }
@@ -512,10 +516,17 @@ public sealed class D3D11Renderer : IDisposable
         SpawnBurstDirected(position, baseColor, speed * speedMul, directions, particleLifetimeSeconds);
     }
 
-    public void SpawnBurstDirectedExplode(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    public void SpawnBurstDirectedExplode(
+        Vector3 position,
+        Vector4 baseColor,
+        float speed,
+        System.ReadOnlySpan<Vector3> directions,
+        float particleLifetimeSeconds,
+        float sparkleRateHz = 0.0f,
+        float sparkleIntensity = 0.0f)
     {
         _schemeTint = new Vector3(baseColor.X, baseColor.Y, baseColor.Z);
-        SpawnBurstDirected(position, baseColor, speed, directions, particleLifetimeSeconds);
+        SpawnBurstDirected(position, baseColor, speed, directions, particleLifetimeSeconds, sparkleRateHz, sparkleIntensity);
     }
 
     public void SpawnSmoke(Vector3 burstCenter)
@@ -625,7 +636,14 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
-    public void SpawnBurstDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds)
+    public void SpawnBurstDirected(
+        Vector3 position,
+        Vector4 baseColor,
+        float speed,
+        System.ReadOnlySpan<Vector3> directions,
+        float particleLifetimeSeconds,
+        float sparkleRateHz = 0.0f,
+        float sparkleIntensity = 0.0f)
     {
         if (_context is null || _particleBuffer is null || _particleUploadBuffer is null)
             return;
@@ -671,8 +689,8 @@ public sealed class D3D11Renderer : IDisposable
                 Lifetime = lifetime,
                 Color = baseColor,
                 Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                _pad0 = (uint)_rng.Next(),
-                _pad1 = (uint)_rng.Next(),
+                _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
+                _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
                 _pad2 = (uint)_rng.Next()
             };
         }
@@ -1035,8 +1053,14 @@ public sealed class D3D11Renderer : IDisposable
 
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
         string source = File.ReadAllText(shaderPath);
-
-        var csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
+        ReadOnlyMemory<byte> csBlob = default;
+        try 
+        {
+            csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
+        } catch (Exception ex)
+        { 
+            Console.WriteLine(ex.Message); 
+        }
         var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
         var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
 

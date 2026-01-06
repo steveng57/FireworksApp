@@ -59,6 +59,10 @@ public sealed record class FireworkShellProfile(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    // Sparkle/twinkle for burst particles only (visual brightness modulation in shader).
+    // Rate is in Hz (sparkles per second). Intensity is roughly 0..1 (can go higher for "glitter bombs").
+    float BurstSparkleRateHz = 0.0f,
+    float BurstSparkleIntensity = 0.0f,
     Vector3? RingAxis = null,
     float RingAxisRandomTiltDegrees = 0.0f);
 

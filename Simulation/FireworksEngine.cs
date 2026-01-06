@@ -784,7 +784,9 @@ public sealed class FireworksEngine
             baseColor,
             speed,
             dirs,
-            particleLifetimeSeconds: lifetime);
+            particleLifetimeSeconds: lifetime,
+            sparkleRateHz: explosion.BurstSparkleRateHz,
+            sparkleIntensity: explosion.BurstSparkleIntensity);
         renderer.SpawnSmoke(explosion.Position);
     }
 
@@ -980,6 +982,8 @@ public sealed class FireworkShell
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
+            BurstSparkleRateHz: Profile.BurstSparkleRateHz,
+            BurstSparkleIntensity: Profile.BurstSparkleIntensity,
             RingAxis: Profile.RingAxis,
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme));
@@ -995,6 +999,8 @@ public readonly record struct ShellExplosion(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    float BurstSparkleRateHz,
+    float BurstSparkleIntensity,
     Vector3? RingAxis,
     float RingAxisRandomTiltDegrees,
     Vector4 BaseColor);

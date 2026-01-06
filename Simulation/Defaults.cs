@@ -108,7 +108,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
                 ParticleCount: 6000,
-                ParticleLifetimeSeconds: 5.2f),
+                ParticleLifetimeSeconds: 5.2f,
+                BurstSparkleRateHz: 12.0f,
+                BurstSparkleIntensity: 0.35f),
 
             ["chrys"] = new FireworkShellProfile(
                 Id: "chrys",
@@ -117,7 +119,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.9f,
                 ExplosionRadius: 13.0f,
                 ParticleCount: 6500,
-                ParticleLifetimeSeconds: 5.0f),
+                ParticleLifetimeSeconds: 5.0f,
+                BurstSparkleRateHz: 14.0f,
+                BurstSparkleIntensity: 0.45f),
 
             ["willow"] = new FireworkShellProfile(
                 Id: "willow",
@@ -126,7 +130,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.2f,
                 ExplosionRadius: 15.0f,
                 ParticleCount: 7000,
-                ParticleLifetimeSeconds: 6.0f),
+                ParticleLifetimeSeconds: 6.0f,
+                BurstSparkleRateHz: 8.0f,
+                BurstSparkleIntensity: 0.25f),
 
             ["palm"] = new FireworkShellProfile(
                 Id: "palm",
@@ -135,7 +141,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 16.0f,
                 ParticleCount: 5000,
-                ParticleLifetimeSeconds: 5.5f),
+                ParticleLifetimeSeconds: 5.5f,
+                BurstSparkleRateHz: 18.0f,
+                BurstSparkleIntensity: 0.65f),
 
             ["donut"] = new FireworkShellProfile(
                 Id: "donut",
@@ -145,6 +153,8 @@ public static class DefaultProfiles
                 ExplosionRadius: 14.0f,
                 ParticleCount: 7000,
                 ParticleLifetimeSeconds: 3.2f,
+                BurstSparkleRateHz: 5.0f,
+                BurstSparkleIntensity: 0.65f,
                 RingAxis: Vector3.UnitY,
                 RingAxisRandomTiltDegrees: 90.0f),
             ["horsetail_gold"] = new FireworkShellProfile(
@@ -155,6 +165,8 @@ public static class DefaultProfiles
                 ExplosionRadius: 45.0f,
                 ParticleCount: 3000,
                 ParticleLifetimeSeconds: 3.5f,
+                BurstSparkleRateHz: 6.0f,
+                BurstSparkleIntensity: 0.20f,
                 RingAxis: null,
                 RingAxisRandomTiltDegrees: 0.0f
             ),
@@ -166,6 +178,8 @@ public static class DefaultProfiles
                 ExplosionRadius: 16.0f,
                 ParticleCount: 6500,
                 ParticleLifetimeSeconds: 5.5f,
+                BurstSparkleRateHz: 2.0f,
+                BurstSparkleIntensity: 0.65f,
                 RingAxis: Vector3.UnitY,
                 RingAxisRandomTiltDegrees: 18.0f
             ),
@@ -177,7 +191,9 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 14.0f,
                 ParticleCount: 6200,
-                ParticleLifetimeSeconds: 5.0f
+                ParticleLifetimeSeconds: 5.0f,
+                BurstSparkleRateHz: 16.0f,
+                BurstSparkleIntensity: 0.55f
             ),
         };
 

@@ -42,6 +42,20 @@ static const float SmokeIntensity = 0.28f;
 // Quadratic drag strength for sparks/crackles (tune visually).
 static const float SparkDragK = 0.015f;
 
+// Simple integer hash â†’ [0,1)
+float Hash01(uint x)
+{
+    // Wang hash
+    x = (x ^ 61u) ^ (x >> 16);
+    x *= 9u;
+    x = x ^ (x >> 4);
+    x *= 0x27d4eb2du;
+    x = x ^ (x >> 15);
+
+    // Convert to [0,1)
+    return (x & 0x00FFFFFFu) / 16777216.0f;
+}
+
 float4 ColorRampSpark(float t, float4 baseColor)
 {
     t = saturate(t);
@@ -65,17 +79,33 @@ float4 ColorRampSpark(float t, float4 baseColor)
     return float4(c, a);
 }
 
-
-
-float Hash01(uint x)
+// Burst-sparkle (twinkle) for Kind==2 sparks only.
+// Rate is in Hz (sparkles/sec) and intensity is roughly 0..1 (can go higher for "glitter").
+// The CPU packs rate/intensity into Particle._pad0/_pad1 as float bits.
+float SparkleMul(float time, float rateHz, float intensity, uint seed)
 {
-    // Simple integer hashing -> [0,1)
-    x ^= x >> 16;
-    x *= 0x7feb352d;
-    x ^= x >> 15;
-    x *= 0x846ca68b;
-    x ^= x >> 16;
-    return (x & 0x00ffffffu) / 16777216.0f;
+    if (rateHz <= 0.0f || intensity <= 0.0f)
+        return 1.0f;
+
+    // Per-particle phase and flavor.
+    float phase = Hash01(seed ^ 0x9e3779b9u);
+    float flavor = Hash01(seed * 1664525u + 1013904223u);
+
+    // Continuous flicker (sin) pushed toward "spiky" peaks.
+    float s = 0.5f + 0.5f * sin((time * rateHz) * 6.2831853f + phase * 6.2831853f);
+    s = pow(s, 3.5f);
+
+    // Add short "flash" pulses: narrow bright windows each cycle.
+    float x = frac(time * rateHz + phase);
+    float pulse = smoothstep(0.00f, 0.06f, x) * (1.0f - smoothstep(0.14f, 0.34f, x));
+
+    // Blend between soft glitter and harder twinkle.
+    float tw = lerp(s, max(s, pulse), saturate(flavor * 1.25f));
+
+    // Map to brightness multiplier.
+    // Baseline is 1.0, peaks push higher. Clamp to keep HDR under control.
+    float mul = 1.0f + intensity * (0.25f + 2.75f * tw);
+    return min(mul, 1.0f + 4.0f * intensity);
 }
 
 // Simulates "crackling" by generating short, irregular on/off pulses in the particle lifetime.
@@ -84,12 +114,12 @@ float2 CrackleFlicker(float age, float lifetime, uint seed)
 {
     float t = (lifetime > 1e-5f) ? saturate(age / lifetime) : 1.0f;
 
-    // 2–5 pulses total.
+    // 2â€“5 pulses total.
     float rP = Hash01(seed ^ 0xA2C79u);
     int pulses = 2 + (int) floor(rP * 4.0f); // 2..5
 
     // Pulse timing domain in seconds.
-    // On: 5–15ms, Off: 5–12ms, approximate by a per-pulse frequency.
+    // On: 5â€“15ms, Off: 5â€“12ms, approximate by a per-pulse frequency.
     float baseHz = 18.0f + 22.0f * Hash01(seed ^ 0x19F3Bu); // ~18..40Hz (fits 30-90ms life)
     float phase = Hash01(seed ^ 0xC0FFEEu);
 
@@ -186,6 +216,14 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     if (p.Kind == 2)
     {
         p.Color = ColorRampSpark(t, p.Color);
+
+        // Sparkle/twinkle: brightness-only modulation of burst particles.
+        // Stored as float bits in pads.
+        float sparkleRateHz = asfloat(p._pad.x);
+        float sparkleIntensity = asfloat(p._pad.y);
+        uint seed = p._pad.z ^ (i * 747796405u);
+        float mul = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
+        p.Color.rgb *= mul;
     }
     else if (p.Kind == 3)
     {
