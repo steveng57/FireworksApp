@@ -344,32 +344,69 @@ float4 PSParticle(VSOut input) : SV_Target
 {
     float4 c = input.Color;
 
-    // Soft radial falloff for smoke only (cheap billboard).
-    // Applying this to sparks/crackle made the burst effectively vanish.
+    // Smoke: keep your existing soft billboard behavior
     if (input.Kind == 3)
     {
         float2 p = input.UV;
         float r2 = dot(p, p);
-        // Lower exponent => softer / more diffuse smoke edge
+
         float soft = exp(-r2 * 1.35f);
-        // Make the corners die off faster so the quad boundary doesn't build up when many overlap.
         soft = soft * soft;
-        // Fade both alpha and RGB so the quad doesn't look like a tinted rectangle
-        // when multiple smoke particles overlap.
+
         c.rgb *= soft;
         c.a *= soft;
 
-        // Hard cut extremely low contribution so quads don't stack into visible rectangles.
-        // (Keeps the interior soft while zeroing the corners.)
         if (c.a < 0.01f)
             discard;
 
-        // Alpha pass uses premultiplied blending; make sure smoke output is actually premultiplied.
         if (ParticlePass == 1)
         {
+            // premultiplied output for alpha pass
             c.rgb *= c.a;
         }
+
+        return c;
     }
+
+    // --- Non-smoke: make particles round + "spherical" ---
+    float2 p = input.UV;
+    float r2 = dot(p, p);
+
+    // Hard circle mask (kills square corners)
+    if (r2 > 1.0f)
+        discard;
+
+    // Soft edge so circle isn't aliased (tune 0.90..0.99)
+    float edge = 1.0f - smoothstep(0.85f, 1.00f, r2);
+
+    // Fake sphere normal in billboard space
+    float z = sqrt(saturate(1.0f - r2));
+    float3 N = float3(p.x, p.y, z);
+
+    // Camera forward from Right/Up (world space); used only to bias lighting direction.
+    // This is a cheap approximation that reads well.
+    float3 camF = normalize(cross(CameraRightWS, CameraUpWS));
+
+    // Light from camera-ish with a slight "above" bias so tops read brighter
+    float3 Lw = normalize((-camF) + 0.35f * CameraUpWS);
+
+    // Since N is in billboard space, use z as the "faces camera" term,
+    // and a small extra highlight from the edge.
+    float ndot = saturate(z);
+    float rim = pow(saturate(1.0f - ndot), 2.5f);
+
+    // Brightness model: center bright + rim sparkle
+    float brightness = (0.70f + 0.30f * ndot) + (0.55f * rim);
+
+    // Apply
+    c.rgb *= brightness;
+    c.a *= edge;
+
+    // Optional: also fade RGB at the edge for additive pass so edges look smoother
+    c.rgb *= edge;
+
+    // If you're using premultiplied alpha in alpha pass for non-smoke too, enable this:
+    // if (ParticlePass == 1) c.rgb *= c.a;
 
     return c;
 }
