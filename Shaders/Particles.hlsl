@@ -103,9 +103,10 @@ float SparkleMul(float time, float rateHz, float intensity, uint seed)
     float tw = lerp(s, max(s, pulse), saturate(flavor * 1.25f));
 
     // Map to brightness multiplier.
-    // Baseline is 1.0, peaks push higher. Clamp to keep HDR under control.
-    float mul = 1.0f + intensity * (0.25f + 2.75f * tw);
-    return min(mul, 1.0f + 4.0f * intensity);
+    // Keep baseline closer to 1.0 but push peaks higher so sparkles read clearly.
+    // Clamp to keep HDR under control.
+    float mul = 1.0f + intensity * (0.10f + 4.90f * tw);
+    return min(mul, 1.0f + 7.0f * intensity);
 }
 
 // Simulates "crackling" by generating short, irregular on/off pulses in the particle lifetime.
