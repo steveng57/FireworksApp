@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using FireworksApp.Audio;
 using FireworksApp.Rendering;
 using FireworksApp.Simulation;
 
@@ -21,6 +22,7 @@ public sealed class D3DHost : HwndHost
     private IntPtr _hwnd;
     private D3D11Renderer? _renderer;
     private FireworksEngine? _engine;
+    private AudioEngine? _audio;
     private ShowScript? _defaultShow;
     private bool _started;
     private bool _isDragging;
@@ -146,6 +148,9 @@ public sealed class D3DHost : HwndHost
         _defaultShow = global::FireworksApp.Simulation.DefaultShow.Create();
         _engine.LoadShow(_defaultShow);
 
+        _audio = new AudioEngine();
+        _engine.SoundEvent += OnSoundEvent;
+
         // Basic input for simulation testing
         var window = Window.GetWindow(this);
         window?.KeyDown += OnWindowKeyDown;
@@ -166,6 +171,12 @@ public sealed class D3DHost : HwndHost
         }
 
         CompositionTarget.Rendering -= OnRendering;
+
+        if (_engine is not null)
+            _engine.SoundEvent -= OnSoundEvent;
+
+        _audio?.Dispose();
+        _audio = null;
 
         var window = Window.GetWindow(this);
         window?.KeyDown -= OnWindowKeyDown;
@@ -358,7 +369,18 @@ public sealed class D3DHost : HwndHost
             scaledDt = dt * _engine.TimeScale;
         }
 
+        if (_audio is not null)
+        {
+            _audio.ListenerPosition = _renderer.CameraPosition;
+            _audio.Update(TimeSpan.FromSeconds(scaledDt));
+        }
+
         _renderer.Render(scaledDt);
+    }
+
+    private void OnSoundEvent(SoundEvent ev)
+    {
+        _audio?.Enqueue(ev);
     }
 
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using FireworksApp.Audio;
 using FireworksApp.Rendering;
 
 namespace FireworksApp.Simulation;
@@ -10,6 +11,10 @@ using Math = System.Math;
 
 public sealed class FireworksEngine
 {
+    public event Action<SoundEvent>? SoundEvent;
+
+    private void EmitSound(in SoundEvent ev) => SoundEvent?.Invoke(ev);
+
     private readonly FireworksProfileSet _profiles;
     private readonly List<Canister> _canisters;
     private readonly List<FireworkShell> _shells = new();
@@ -242,6 +247,12 @@ public sealed class FireworksEngine
 
         _shells.Add(shell);
         canister.OnFired();
+
+        EmitSound(new SoundEvent(
+            SoundEventType.ShellLaunch,
+            Position: launchPos,
+            Gain: 1.0f,
+            Loop: false));
 
         renderer.ShellSpawnCount++;
     }
@@ -788,6 +799,21 @@ public sealed class FireworksEngine
             sparkleRateHz: explosion.BurstSparkleRateHz,
             sparkleIntensity: explosion.BurstSparkleIntensity);
         renderer.SpawnSmoke(explosion.Position);
+
+        EmitSound(new SoundEvent(
+            SoundEventType.ShellBurst,
+            Position: explosion.Position,
+            Gain: 1.0f,
+            Loop: false));
+
+        if (explosion.BurstSparkleRateHz > 0.0f && explosion.BurstSparkleIntensity > 0.0f)
+        {
+            EmitSound(new SoundEvent(
+                SoundEventType.Crackle,
+                Position: explosion.Position,
+                Gain: System.Math.Clamp(explosion.BurstSparkleIntensity, 0.15f, 1.0f),
+                Loop: false));
+        }
     }
 
     // *** ALREADY ADDED: used by TriggerEvent now

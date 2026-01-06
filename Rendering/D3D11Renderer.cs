@@ -111,6 +111,8 @@ public sealed class D3D11Renderer : IDisposable
     // Smoothed camera state for nicer motion
     private Vector3 _cameraTargetSmoothed = Vector3.Zero;
     private float _cameraDistanceSmoothed = 200.0f;
+
+    public Vector3 CameraPosition { get; private set; }
     
 
     public D3D11Renderer(nint hwnd)
@@ -933,6 +935,8 @@ public sealed class D3D11Renderer : IDisposable
 
         var target = _cameraTargetSmoothed;
         var eye = target + eyeOffset;
+
+        CameraPosition = eye;
 
         _view = Matrix4x4.CreateLookAt(eye, target, up);
         // Use clip planes suitable for ~500m fireworks scenes.
