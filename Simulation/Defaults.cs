@@ -50,13 +50,13 @@ public static class DefaultProfiles
         var groundCanisters = new Dictionary<string, CanisterProfile>
         {
             ["g01"] = new CanisterProfile("g01", "M2", new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, "basic"),
-            ["g02"] = new CanisterProfile("g02", "M3", new Vector2(0.0f,      -groundHalf), Vector3.UnitY, "basic"),
-            ["g03"] = new CanisterProfile("g03", "M4", new Vector2( groundHalf, -groundHalf), Vector3.UnitY, "basic"),
-            ["g04"] = new CanisterProfile("g04", "M5", new Vector2( groundHalf,  0.0f),      Vector3.UnitY, "basic"),
-            ["g05"] = new CanisterProfile("g05", "M6", new Vector2( groundHalf,  groundHalf), Vector3.UnitY, "basic"),
-            ["g06"] = new CanisterProfile("g06", "M8", new Vector2(0.0f,       groundHalf), Vector3.UnitY, "basic"),
+            ["g02"] = new CanisterProfile("g02", "M3", new Vector2(0.0f, -groundHalf), Vector3.UnitY, "basic"),
+            ["g03"] = new CanisterProfile("g03", "M4", new Vector2(groundHalf, -groundHalf), Vector3.UnitY, "basic"),
+            ["g04"] = new CanisterProfile("g04", "M5", new Vector2(groundHalf, 0.0f), Vector3.UnitY, "basic"),
+            ["g05"] = new CanisterProfile("g05", "M6", new Vector2(groundHalf, groundHalf), Vector3.UnitY, "basic"),
+            ["g06"] = new CanisterProfile("g06", "M8", new Vector2(0.0f, groundHalf), Vector3.UnitY, "basic"),
             ["g07"] = new CanisterProfile("g07", "M10", new Vector2(-groundHalf, groundHalf), Vector3.UnitY, "basic"),
-            ["g08"] = new CanisterProfile("g08", "M6", new Vector2(-groundHalf, 0.0f),      Vector3.UnitY, "basic"),
+            ["g08"] = new CanisterProfile("g08", "M6", new Vector2(-groundHalf, 0.0f), Vector3.UnitY, "basic"),
         };
 
         foreach (var kvp in groundCanisters)
@@ -85,7 +85,7 @@ public static class DefaultProfiles
                 2.2f
             ),
 
-                        ["brocadegold"] = new ColorScheme(
+            ["brocadegold"] = new ColorScheme(
                 "brocadegold",
                 new[]
                 {
@@ -398,7 +398,7 @@ public static class DefaultShow
         events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
         events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
 
-        for (int i = 0; i < 200; i+= gridSize)
+        for (int i = 0; i < 200; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)
             {
@@ -408,7 +408,7 @@ public static class DefaultShow
                 float? muzzleVelocity = null;
 
                 // debug variations
-                // shellId = "donut";
+                //shellId = "double_ring";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
@@ -419,7 +419,7 @@ public static class DefaultShow
                     ColorSchemeId: colorSchemeId,
                     MuzzleVelocity: muzzleVelocity);
                 events.Add(showEvent);
-             
+
                 t += 0.2f;
             }
             t += 1f;
