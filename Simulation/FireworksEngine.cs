@@ -25,7 +25,7 @@ public sealed class FireworksEngine
     public float ShowTimeSeconds { get; private set; }
 
     // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
-    public float TimeScale { get; set; } = 0.25f;
+    public float TimeScale { get; set; } = 0.80f;
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
