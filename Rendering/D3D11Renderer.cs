@@ -10,6 +10,8 @@ using Vortice.Mathematics;
 using static Vortice.Direct3D11.D3D11;
 using System.Windows;
 
+// Pipelines moved under `Rendering/Pipelines` (same namespace).
+
 namespace FireworksApp.Rendering;
 
 // Simple vertex for the launch pad (just a position in 3D).

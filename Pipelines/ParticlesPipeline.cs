@@ -39,7 +39,6 @@ internal sealed class ParticlesPipeline : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
-        // Initialize with Dead particles.
         var init = new GpuParticle[_capacity];
         for (int i = 0; i < init.Length; i++)
         {
