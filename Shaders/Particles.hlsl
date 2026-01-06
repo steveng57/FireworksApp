@@ -340,6 +340,7 @@ VSOut VSParticle(uint vid : SV_VertexID)
     return o;
 }
 
+
 float4 PSParticle(VSOut input) : SV_Target
 {
     float4 c = input.Color;
@@ -359,54 +360,83 @@ float4 PSParticle(VSOut input) : SV_Target
         if (c.a < 0.01f)
             discard;
 
+        // premultiplied output for alpha pass
         if (ParticlePass == 1)
-        {
-            // premultiplied output for alpha pass
             c.rgb *= c.a;
-        }
 
         return c;
     }
 
-    // --- Non-smoke: make particles round + "spherical" ---
+    // ---------- Non-smoke: round sprite + kind-specific edge ----------
     float2 p = input.UV;
     float r2 = dot(p, p);
 
-    // Hard circle mask (kills square corners)
+    // Circle mask
     if (r2 > 1.0f)
         discard;
 
-    // Soft edge so circle isn't aliased (tune 0.90..0.99)
-    float edge = 1.0f - smoothstep(0.85f, 1.00f, r2);
+    // Per-kind edge shaping:
+    // - sparks: soft
+    // - shells: medium
+    // - crackle: sharp
+    float edgeIn, edgeOut;
+    float coreBoost = 0.0f;
 
-    // Fake sphere normal in billboard space
+    if (input.Kind == 2) // Spark
+    {
+        edgeIn = 0.72f;
+        edgeOut = 1.00f;
+        coreBoost = 0.10f;
+    }
+    else if (input.Kind == 4) // Crackle
+    {
+        edgeIn = 0.92f;
+        edgeOut = 1.00f;
+        coreBoost = 0.35f;
+    }
+    else // Shell (Kind==1) or other
+    {
+        edgeIn = 0.84f;
+        edgeOut = 1.00f;
+        coreBoost = 0.18f;
+    }
+
+    float edge = 1.0f - smoothstep(edgeIn, edgeOut, r2);
+
+    // Kill tiny contribution early to reduce overdraw “haze”
+    // (tune 0.005..0.03; higher = faster / crisper, but can pop)
+    float alphaOut = c.a * edge;
+    if (alphaOut < 0.01f)
+        discard;
+
+    // Fake sphere lighting:
     float z = sqrt(saturate(1.0f - r2));
-    float3 N = float3(p.x, p.y, z);
-
-    // Camera forward from Right/Up (world space); used only to bias lighting direction.
-    // This is a cheap approximation that reads well.
-    float3 camF = normalize(cross(CameraRightWS, CameraUpWS));
-
-    // Light from camera-ish with a slight "above" bias so tops read brighter
-    float3 Lw = normalize((-camF) + 0.35f * CameraUpWS);
-
-    // Since N is in billboard space, use z as the "faces camera" term,
-    // and a small extra highlight from the edge.
     float ndot = saturate(z);
-    float rim = pow(saturate(1.0f - ndot), 2.5f);
 
-    // Brightness model: center bright + rim sparkle
-    float brightness = (0.70f + 0.30f * ndot) + (0.55f * rim);
+    // Rim highlight: stronger for sparks, weaker for crackle (crackle should read "pinpoint")
+    float rimPow = (input.Kind == 2) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
+    float rim = pow(saturate(1.0f - ndot), rimPow);
+
+    // Core emphasis: crackle has a hotter center
+    float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2) ? 3.5f : 5.0f);
+
+    // Brightness model:
+    // - base keeps it readable
+    // - core makes center feel hot
+    // - rim adds sparkle/volume
+    float brightness =
+        (0.75f + 0.25f * ndot) +
+        (coreBoost * core) +
+        ((input.Kind == 2 ? 0.60f : 0.35f) * rim);
 
     // Apply
     c.rgb *= brightness;
-    c.a *= edge;
 
-    // Optional: also fade RGB at the edge for additive pass so edges look smoother
+    // For additive pass, letting alpha control intensity still helps shape.
+    c.a = alphaOut;
+
+    // Fade RGB at edges so additive doesn't show a hard disc boundary
     c.rgb *= edge;
-
-    // If you're using premultiplied alpha in alpha pass for non-smoke too, enable this:
-    // if (ParticlePass == 1) c.rgb *= c.a;
 
     return c;
 }

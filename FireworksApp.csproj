@@ -39,4 +39,9 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include=".github\workflows\ci.yml" />
+    <None Include=".github\workflows\release.yml" />
+  </ItemGroup>
+
 </Project>
