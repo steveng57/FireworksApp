@@ -1,0 +1,228 @@
+using System;
+using System.IO;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using Vortice.Direct3D;
+using Vortice.Direct3D11;
+using Vortice.D3DCompiler;
+using Vortice.DXGI;
+
+namespace FireworksApp.Rendering;
+
+internal sealed class PadPipeline : IDisposable
+{
+    private ID3D11VertexShader? _vs;
+    private ID3D11PixelShader? _ps;
+    private ID3D11InputLayout? _inputLayout;
+    private ID3D11Buffer? _vb;
+    private ID3D11RasterizerState? _rasterizerState;
+
+    public ID3D11RasterizerState? RasterizerState => _rasterizerState;
+
+    public void Initialize(ID3D11Device device)
+    {
+        string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Pad.hlsl");
+        string source;
+        try
+        {
+            source = File.ReadAllText(shaderPath);
+        }
+        catch
+        {
+            return;
+        }
+
+        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = Compiler.Compile(source, "PSMain", shaderPath, "ps_5_0");
+        byte[] vsBytes = vsBlob.ToArray();
+        byte[] psBytes = psBlob.ToArray();
+
+        _vs = device.CreateVertexShader(vsBytes);
+        _ps = device.CreatePixelShader(psBytes);
+
+        var elements = new[]
+        {
+            new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
+            new InputElementDescription("COLOR", 0, Format.R32G32B32A32_Float, 12, 0)
+        };
+
+        _inputLayout = device.CreateInputLayout(elements, vsBytes);
+
+        _rasterizerState?.Dispose();
+        _rasterizerState = device.CreateRasterizerState(new RasterizerDescription
+        {
+            FillMode = FillMode.Solid,
+            CullMode = CullMode.None,
+            FrontCounterClockwise = false,
+            DepthClipEnable = true
+        });
+
+        const float outerHalf = 10.0f;
+        const float borderWidth = 2.0f;
+        const float innerHalf = outerHalf - borderWidth;
+        const float thickness = 0.10f;
+        float y0 = 0.0f;
+        float y1 = thickness;
+
+        var padColor = new Vector4(0.10f, 0.30f, 0.90f, 1.0f);
+        var borderColor = new Vector4(0.60f, 0.15f, 0.80f, 1.0f);
+
+        PadVertex[] verts =
+        {
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  innerHalf, borderColor),
+
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -innerHalf, borderColor),
+
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  outerHalf, borderColor),
+
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -outerHalf, borderColor),
+
+            new PadVertex(-innerHalf, y1, -innerHalf, padColor),
+            new PadVertex( innerHalf, y1, -innerHalf, padColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, padColor),
+            new PadVertex( innerHalf, y1, -innerHalf, padColor),
+            new PadVertex( innerHalf, y1,  innerHalf, padColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, padColor),
+
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+
+            new PadVertex( outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex( outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex( outerHalf, y1,  outerHalf, borderColor),
+
+            new PadVertex(-outerHalf, y0, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+            new PadVertex(-outerHalf, y0,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1,  outerHalf, borderColor),
+            new PadVertex(-outerHalf, y1, -outerHalf, borderColor),
+
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+
+            new PadVertex( innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex( innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex( innerHalf, y1,  innerHalf, borderColor),
+
+            new PadVertex(-innerHalf, y0, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
+            new PadVertex(-innerHalf, y0,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1,  innerHalf, borderColor),
+            new PadVertex(-innerHalf, y1, -innerHalf, borderColor),
+        };
+
+        int stride = Marshal.SizeOf<PadVertex>();
+
+        _vb?.Dispose();
+        _vb = device.CreateBuffer(
+            verts,
+            new BufferDescription
+            {
+                BindFlags = BindFlags.VertexBuffer,
+                Usage = ResourceUsage.Default,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = (uint)(stride * verts.Length),
+                StructureByteStride = (uint)stride
+            });
+    }
+
+    public void Draw(ID3D11DeviceContext context, ID3D11Buffer? sceneCB)
+    {
+        if (_vs is null || _ps is null || _vb is null || _inputLayout is null)
+            return;
+
+        int stride = Marshal.SizeOf<PadVertex>();
+        var buffers = new[] { _vb };
+        uint[] strides = new[] { (uint)stride };
+        uint[] offsets = new[] { 0u };
+
+        context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
+        context.IASetInputLayout(_inputLayout);
+        context.IASetVertexBuffers(0, 1, buffers, strides, offsets);
+
+        context.VSSetShader(_vs);
+        context.PSSetShader(_ps);
+
+        if (sceneCB != null)
+        {
+            context.VSSetConstantBuffer(0, sceneCB);
+            context.PSSetConstantBuffer(0, sceneCB);
+        }
+
+        if (_rasterizerState != null)
+        {
+            context.RSSetState(_rasterizerState);
+        }
+
+        context.Draw(30, 0);
+    }
+
+    public void Dispose()
+    {
+        _rasterizerState?.Dispose();
+        _rasterizerState = null;
+
+        _vb?.Dispose();
+        _vb = null;
+
+        _inputLayout?.Dispose();
+        _inputLayout = null;
+
+        _vs?.Dispose();
+        _vs = null;
+
+        _ps?.Dispose();
+        _ps = null;
+    }
+}
