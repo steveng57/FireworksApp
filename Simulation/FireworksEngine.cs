@@ -354,6 +354,25 @@ public sealed class FireworksEngine
     private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, D3D11Renderer renderer)
     {
         renderer.SpawnPopFlash(position, p.PopFlashLifetime, p.PopFlashSize, p.PopPeakIntensity, p.PopFadeGamma);
+
+        // Dense, tight spark burst for realism (no smoke, no color variance beyond white->silver).
+        // Do NOT increase radius: keep speed slightly lower so the energy reads tighter.
+        // Particle count goal: 3-6x the *shell* burst count. We approximate with a fixed high count per pop.
+        renderer.SpawnFinaleSaluteSparks(
+            position: position,
+            particleCount: System.Math.Clamp(p.SparkParticleCount, 0, 250000),
+            baseSpeed: 9.0f,
+            speedJitterFrac: 0.20f,
+            particleLifetimeMinSeconds: 0.40f,
+            particleLifetimeMaxSeconds: 0.80f,
+            sparkleRateHzMin: 18.0f,
+            sparkleRateHzMax: 42.0f,
+            sparkleIntensity: 0.85f,
+            microFragmentChance: 0.25f,
+            microLifetimeMinSeconds: 0.20f,
+            microLifetimeMaxSeconds: 0.40f,
+            microSpeedMulMin: 0.55f,
+            microSpeedMulMax: 0.85f);
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;

@@ -208,7 +208,7 @@ public static class DefaultProfiles
                 ParticleLifetimeSeconds: 0.10f,
                 BurstSparkleRateHz: 0.0f,
                 BurstSparkleIntensity: 0.0f,
-                FinaleSalute: FinaleSaluteParams.Defaults with { SubShellCount = 100 }
+                FinaleSalute: FinaleSaluteParams.Defaults with { SubShellCount = 75 }
             ),
         };
 
@@ -431,42 +431,42 @@ public static class DefaultShow
         events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
         events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
 
-        int k = 0;
-        for (int i = 0; i < 200; i += gridSize)
-        {
-            for (int j = 0; j < gridSize; j++)
-            {
-                string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
-                if (shellId == "finale_salute")
-                {
-                    k++;
-                    continue; 
-                }
-                string canisterId = profiles.Canisters.Keys.ElementAt((i + j - k) % profiles.Canisters.Count);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j - k) % profiles.ColorSchemes.Count);
-                float? muzzleVelocity = null;
+        //int k = 0;
+        //for (int i = 0; i < 200; i += gridSize)
+        //{
+        //    for (int j = 0; j < gridSize; j++)
+        //    {
+        //        string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
+        //        if (shellId == "finale_salute")
+        //        {
+        //            k++;
+        //            continue; 
+        //        }
+        //        string canisterId = profiles.Canisters.Keys.ElementAt((i + j - k) % profiles.Canisters.Count);
+        //        string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j - k) % profiles.ColorSchemes.Count);
+        //        float? muzzleVelocity = null;
 
-                // debug variations
-                //shellId = "double_ring";
-                //canisterId = "c2";
-                //colorSchemeId = "debug";
+        //        // debug variations
+        //        //shellId = "double_ring";
+        //        //canisterId = "c2";
+        //        //colorSchemeId = "debug";
 
-                var showEvent = new ShowEvent(
-                    TimeSeconds: t,
-                    CanisterId: canisterId,
-                    ShellProfileId: shellId,
-                    ColorSchemeId: colorSchemeId,
-                    MuzzleVelocity: muzzleVelocity);
-                events.Add(showEvent);
+        //        var showEvent = new ShowEvent(
+        //            TimeSeconds: t,
+        //            CanisterId: canisterId,
+        //            ShellProfileId: shellId,
+        //            ColorSchemeId: colorSchemeId,
+        //            MuzzleVelocity: muzzleVelocity);
+        //        events.Add(showEvent);
 
-                t += 0.20f;
-            }
-            t += 1f;
-        }
+        //        t += 0.20f;
+        //    }
+        //    t += 1f;
+        //}
 
         t+= 4.0f;
 
-        for (int n = 0; n < 25; n++)
+        for (int n = 0; n < 10; n++)
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(n % 25);
             var finaleEvent = new ShowEvent(
@@ -474,7 +474,7 @@ public static class DefaultShow
                 CanisterId: canisterId,
                 ShellProfileId: "finale_salute");
             events.Add(finaleEvent);
-            t += 0.05f;
+            t += 1.5f;
         }
 
         var showScript = new ShowScript(events);

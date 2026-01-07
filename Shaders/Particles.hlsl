@@ -279,6 +279,32 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         // Store size back into pad so VS can read it without re-packing.
         // (We keep it as-is; VS reads _pad.x.)
     }
+    else if (p.Kind == 6)
+    {
+        // FinaleSpark: dense white/silver sparks for salutes.
+        // Pads: _pad.x = flickerRateHz, _pad.y = flickerIntensity, _pad.z = random seed
+
+        float life01 = saturate(t);
+
+        // Color: pure white -> warm silver/grey.
+        float3 startC = float3(1.0f, 1.0f, 1.0f);
+        float3 endC = float3(0.82f, 0.80f, 0.76f);
+        float3 c = lerp(startC, endC, pow(life01, 0.85f));
+
+        float sparkleRateHz = asfloat(p._pad.x);
+        float sparkleIntensity = asfloat(p._pad.y);
+        uint seed = p._pad.z ^ (i * 1597334677u);
+
+        // Strong, fast flicker that modulates brightness only.
+        float flick = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
+        c *= flick;
+
+        // Short punchy fade-out.
+        float a = pow(saturate(1.0f - life01), 1.35f);
+        a *= saturate(0.75f + 0.55f * flick);
+
+        p.Color = float4(c, a);
+    }
 
     Particles[i] = p;
 }
@@ -331,6 +357,11 @@ VSOut VSParticle(uint vid : SV_VertexID)
     float2 uv = offsets[corner];
 
     float size = (p.Kind == 2) ? 0.10f : 0.20f;
+    if (p.Kind == 6)
+    {
+        // Much smaller than normal sparks.
+        size = 0.055f;
+    }
     if (p.Kind == 3)
     {
         float life01 = (p.Lifetime > 1e-5f) ? saturate(p.Age / p.Lifetime) : 1.0f;
@@ -418,11 +449,12 @@ float4 PSParticle(VSOut input) : SV_Target
     float edgeIn, edgeOut;
     float coreBoost = 0.0f;
 
-    if (input.Kind == 2) // Spark
+    if (input.Kind == 2 || input.Kind == 6) // Spark / FinaleSpark
     {
         edgeIn = 0.72f;
         edgeOut = 1.00f;
-        coreBoost = 0.10f;
+        // FinaleSpark reads more energetic with a slightly hotter core.
+        coreBoost = (input.Kind == 6) ? 0.22f : 0.10f;
     }
     else if (input.Kind == 4) // Crackle
     {
@@ -450,11 +482,11 @@ float4 PSParticle(VSOut input) : SV_Target
     float ndot = saturate(z);
 
     // Rim highlight: stronger for sparks, weaker for crackle (crackle should read "pinpoint")
-    float rimPow = (input.Kind == 2) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
+     float rimPow = (input.Kind == 2 || input.Kind == 6) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
     float rim = pow(saturate(1.0f - ndot), rimPow);
 
     // Core emphasis: crackle has a hotter center
-    float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2) ? 3.5f : 5.0f);
+     float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2 || input.Kind == 6) ? 3.5f : 5.0f);
 
     // Brightness model:
     // - base keeps it readable
@@ -463,7 +495,7 @@ float4 PSParticle(VSOut input) : SV_Target
     float brightness =
         (0.75f + 0.25f * ndot) +
         (coreBoost * core) +
-        ((input.Kind == 2 ? 0.60f : 0.35f) * rim);
+         (((input.Kind == 2 || input.Kind == 6) ? 0.60f : 0.35f) * rim);
 
     // Apply
     c.rgb *= brightness;

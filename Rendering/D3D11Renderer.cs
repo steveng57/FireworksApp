@@ -84,6 +84,7 @@ public sealed class D3D11Renderer : IDisposable
 
     // GPU particles (sparks)
     private readonly ParticlesPipeline _particlesPipeline = new();
+    // Increased 8x to accommodate dense effects (e.g., Finale Salute sparks) without overwriting live particles.
     private int _particleCapacity = 2097152;
     private int _particleWriteCursor;
 
@@ -448,6 +449,185 @@ public sealed class D3D11Renderer : IDisposable
         _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
 
         _particleWriteCursor = (start + 1) % _particleCapacity;
+    }
+
+    public void SpawnFinaleSaluteSparks(
+        Vector3 position,
+        int particleCount,
+        float baseSpeed,
+        float speedJitterFrac,
+        float particleLifetimeMinSeconds,
+        float particleLifetimeMaxSeconds,
+        float sparkleRateHzMin,
+        float sparkleRateHzMax,
+        float sparkleIntensity,
+        float microFragmentChance,
+        float microLifetimeMinSeconds,
+        float microLifetimeMaxSeconds,
+        float microSpeedMulMin,
+        float microSpeedMulMax)
+    {
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        if (_context is null || particleBuffer is null || uploadBuffer is null)
+            return;
+
+        int count = System.Math.Clamp(particleCount, 1, _particleCapacity);
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        // We may add micros; keep within particle budget.
+        int maxExtra = (int)System.MathF.Min(_particleCapacity - count, count * 0.9f);
+        var staging = new List<GpuParticle>(count + maxExtra);
+
+        // Tight, white/silver base. Alpha is an *intensity* factor in this renderer.
+        Vector4 baseColor = new(1.0f, 1.0f, 1.0f, 1.0f);
+
+        float sj = System.Math.Clamp(speedJitterFrac, 0.0f, 0.65f);
+        float lifeMin = System.Math.Max(0.02f, particleLifetimeMinSeconds);
+        float lifeMax = System.Math.Max(lifeMin, particleLifetimeMaxSeconds);
+
+        float microChance = System.Math.Clamp(microFragmentChance, 0.0f, 1.0f);
+        float microLifeMin = System.Math.Max(0.02f, microLifetimeMinSeconds);
+        float microLifeMax = System.Math.Max(microLifeMin, microLifetimeMaxSeconds);
+
+        float rateMin = System.Math.Max(0.0f, sparkleRateHzMin);
+        float rateMax = System.Math.Max(rateMin, sparkleRateHzMax);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+
+            // Jitter direction so it doesn't read as a perfect sphere.
+            // (Jitter affects direction only; flicker affects brightness only.)
+            float jx = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
+            float jy = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
+            float jz = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
+            dir = Vector3.Normalize(dir + new Vector3(jx, jy, jz));
+
+            // Slightly bias inward to make it feel tighter (but do NOT increase radius).
+            float tightMul = 0.85f + 0.10f * (float)_rng.NextDouble();
+            float speed = System.Math.Max(0.0f, baseSpeed) * tightMul;
+
+            float lifeU = (float)_rng.NextDouble();
+            float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
+
+            float rateU = (float)_rng.NextDouble();
+            float rateHz = rateMin + rateU * (rateMax - rateMin);
+
+            // Encode twinkle params into pad fields used in shader.
+            staging.Add(new GpuParticle
+            {
+                Position = position,
+                Velocity = dir * speed,
+                Age = 0.0f,
+                Lifetime = lifetime,
+                Color = baseColor,
+                Kind = (uint)ParticleKind.FinaleSpark,
+                _pad0 = PackFloat(rateHz),
+                _pad1 = PackFloat(inten),
+                _pad2 = (uint)_rng.Next()
+            });
+
+            // Optional micro-fragments: 20-30% chance, 1-3 fragments.
+            if (staging.Count < _particleCapacity && _rng.NextDouble() < microChance)
+            {
+                int fragCount = _rng.Next(1, 4);
+                for (int k = 0; k < fragCount && staging.Count < _particleCapacity; k++)
+                {
+                    float dev = 0.10f + 0.12f * (float)_rng.NextDouble();
+                    Vector3 microDir = Vector3.Normalize(dir + RandomUnitVector() * dev);
+
+                    float mLifeU = (float)_rng.NextDouble();
+                    float mLifetime = microLifeMin + mLifeU * (microLifeMax - microLifeMin);
+
+                    float mSpeedMul = microSpeedMulMin + (float)_rng.NextDouble() * (microSpeedMulMax - microSpeedMulMin);
+                    float mSpeed = speed * System.Math.Max(0.0f, mSpeedMul);
+
+                    // More aggressive flicker for micro-frags: bump rate and intensity.
+                    float microRate = rateHz * (1.4f + 0.8f * (float)_rng.NextDouble());
+                    float microInt = inten * 1.35f;
+
+                    // Stagger their start time so they appear mid-flight.
+                    float startDelay = 0.12f + 0.30f * (float)_rng.NextDouble();
+
+                    staging.Add(new GpuParticle
+                    {
+                        Position = position,
+                        Velocity = microDir * mSpeed,
+                        Age = -startDelay,
+                        Lifetime = mLifetime,
+                        Color = baseColor,
+                        Kind = (uint)ParticleKind.FinaleSpark,
+                        _pad0 = PackFloat(microRate),
+                        _pad1 = PackFloat(microInt),
+                        _pad2 = (uint)_rng.Next()
+                    });
+                }
+            }
+        }
+
+        // Final clamp just in case we added too many micros.
+        int total = System.Math.Clamp(staging.Count, 1, _particleCapacity);
+
+        int firstCount = System.Math.Min(total, _particleCapacity - start);
+        int remaining = total - firstCount;
+
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+            }
+        }
+        finally
+        {
+            _context.Unmap(uploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
+        }
+
+        _particleWriteCursor = (start + total) % _particleCapacity;
     }
 
     public void SpawnGroundEffectDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds, float gravityFactor)
