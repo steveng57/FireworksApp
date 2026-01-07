@@ -48,6 +48,7 @@ public sealed class FireworksEngine
     private readonly List<SubShell> _subShells = new();
     private readonly List<Comet> _comets = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
+    private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
     private readonly Random _rng = new();
 
     private ShowScript _show = ShowScript.Empty;
@@ -123,7 +124,53 @@ public sealed class FireworksEngine
 
             if (shell.TryExplode(out var explosion))
             {
+                // Emit parent burst as before
                 Explode(explosion, renderer);
+
+                // Schedule subshells per attachments before removing parent
+                var attachments = GetShellAttachments(shell.Profile);
+                if (attachments != null && attachments.Count > 0)
+                {
+                    foreach (var att in attachments)
+                    {
+                        if (_rng.NextDouble() > att.Probability)
+                            continue;
+
+                        if (!_profiles.SubShells.TryGetValue(att.SubShellProfileId, out var subProf))
+                            continue;
+
+                        int nextDepth = shell.SubshellDepth + 1;
+                        if (nextDepth > subProf.MaxSubshellDepth || nextDepth > att.DepthBudget)
+                            continue;
+
+                        if (explosion.Position.Y < subProf.MinAltitudeToSpawn)
+                            continue;
+
+                        int count = System.Math.Max(0, (int)System.MathF.Round(subProf.Count * att.Scale));
+                        if (count <= 0)
+                            continue;
+
+                        Vector3[] dirs = subProf.SpawnMode switch
+                        {
+                            SubShellSpawnMode.Ring => EmissionStyles.EmitRing(count, Vector3.UnitY),
+                            SubShellSpawnMode.Cone => EmitConeDirections(count, Vector3.UnitY, subProf.DirectionJitter),
+                            _ => EmissionStyles.EmitPeony(count)
+                        };
+
+                        var pending = new PendingSubShellSpawn(
+                            SpawnTime: ShowTimeSeconds + System.MathF.Max(0.0f, subProf.DelaySeconds),
+                            Position: explosion.Position,
+                            ParentVelocity: shell.Velocity,
+                            SubProfile: subProf,
+                            Attachment: att,
+                            ParentColorScheme: shell.ColorScheme,
+                            ParentDepth: shell.SubshellDepth,
+                            Directions: dirs);
+
+                        _pendingSubshells.Add(pending);
+                    }
+                }
+
                 _shells.RemoveAt(i);
             }
             else if (!shell.Alive)
@@ -134,6 +181,20 @@ public sealed class FireworksEngine
 
         UpdateSubShells(scaledDt, renderer);
         UpdateComets(scaledDt, renderer);
+
+        // Process delayed subshell spawns
+        if (_pendingSubshells.Count > 0)
+        {
+            for (int i = _pendingSubshells.Count - 1; i >= 0; i--)
+            {
+                var p = _pendingSubshells[i];
+                if (ShowTimeSeconds >= p.SpawnTime)
+                {
+                    SpawnResolvedSubShells(p, renderer);
+                    _pendingSubshells.RemoveAt(i);
+                }
+            }
+        }
 
         // Update ground effects and emit particles.
         for (int i = _groundEffects.Count - 1; i >= 0; i--)
@@ -162,6 +223,102 @@ public sealed class FireworksEngine
         // Provide shell positions to renderer.
         var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
         renderer.SetShells(shellStates);
+    }
+
+    // Attachments resolver: replace missing property access with a method.
+    // If future profiles add attachments, hook them up here.
+    private IReadOnlyList<SubShellAttachment>? GetShellAttachments(FireworkShellProfile profile)
+    {
+        // No attachments currently defined in FireworkShellProfile.
+        // Return null to indicate none; routine remains intact.
+        return null;
+    }
+
+    // Local helper for emitting cone directions for subshell spawns
+    private static Vector3[] EmitConeDirections(int count, Vector3 axis, float maxAngle)
+    {
+        var dirs = new Vector3[count];
+        axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
+        for (int i = 0; i < count; i++)
+        {
+            dirs[i] = JitterDirection(axis, maxAngleRadians: MathF.Max(0.0f, maxAngle));
+        }
+        return dirs;
+    }
+
+    private static Vector3 JitterDirection(Vector3 baseDir, float maxAngleRadians)
+    {
+        baseDir = baseDir.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(baseDir);
+        // Use deterministic Random per-call is fine here; engine has its own _rng elsewhere
+        float yaw = (float)(new Random().NextDouble() * MathF.PI * 2f);
+        float pitch = (float)(new Random().NextDouble() * maxAngleRadians);
+        Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
+        if (axis.LengthSquared() < 1e-6f) axis = Vector3.UnitX;
+        var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+        var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+        return Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
+    }
+
+    private void SpawnResolvedSubShells(in PendingSubShellSpawn pending, D3D11Renderer renderer)
+    {
+        var dirs = pending.Directions;
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 dir = dirs[i];
+            // Position jitter around parent burst
+            Vector3 pos = pending.Position + EmissionStyles.RandomUnitVector() * pending.SubProfile.PositionJitter;
+
+            // Velocity blend: inherit portion of parent velocity + added along dir with jitter
+            float speedMul = 1.0f + (float)(_rng.NextDouble() * 2.0 - 1.0) * pending.SubProfile.SpeedJitter;
+            Vector3 vel = pending.ParentVelocity * pending.SubProfile.InheritParentVelocity + dir * (pending.SubProfile.AddedSpeed * speedMul);
+
+            // Resolve child shell profile and color scheme
+            if (!_profiles.Shells.TryGetValue(pending.SubProfile.ShellProfileId, out var childProfile))
+                continue;
+
+            var schemeId = pending.SubProfile.ColorSchemeId ?? childProfile.ColorSchemeId;
+            if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
+                childScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+
+            var child = new FireworkShell(
+                childProfile,
+                childScheme,
+                pos,
+                vel,
+                dragK: ShellDragK,
+                fuseOverrideSeconds: null)
+            {
+                SubshellDepth = pending.ParentDepth + 1,
+                ParentShellId = null,
+                BurstShapeOverride = pending.SubProfile.BurstShapeOverride
+            };
+
+            _shells.Add(child);
+        }
+    }
+
+    private readonly struct PendingSubShellSpawn
+    {
+        public readonly float SpawnTime;
+        public readonly Vector3 Position;
+        public readonly Vector3 ParentVelocity;
+        public readonly SubShellProfile SubProfile;
+        public readonly SubShellAttachment Attachment;
+        public readonly ColorScheme ParentColorScheme;
+        public readonly int ParentDepth;
+        public readonly Vector3[] Directions;
+
+        public PendingSubShellSpawn(float SpawnTime, Vector3 Position, Vector3 ParentVelocity, SubShellProfile SubProfile, SubShellAttachment Attachment, ColorScheme ParentColorScheme, int ParentDepth, Vector3[] Directions)
+        {
+            this.SpawnTime = SpawnTime;
+            this.Position = Position;
+            this.ParentVelocity = ParentVelocity;
+            this.SubProfile = SubProfile;
+            this.Attachment = Attachment;
+            this.ParentColorScheme = ParentColorScheme;
+            this.ParentDepth = ParentDepth;
+            this.Directions = Directions;
+        }
     }
 
     private void UpdateSubShells(float dt, D3D11Renderer renderer)
@@ -1236,6 +1393,11 @@ public sealed class FireworkShell
     public float AgeSeconds { get; private set; }
     public bool Alive { get; private set; } = true;
 
+    // Subshell nesting and optional runtime overrides
+    public int SubshellDepth { get; init; } = 0;
+    public string? ParentShellId { get; init; }
+    public FireworkBurstShape? BurstShapeOverride { get; init; }
+
     // *** CHANGED: drag comes from engine, fuse can be overridden
     public float DragK { get; private set; }
     public float FuseTimeSeconds { get; }
@@ -1338,7 +1500,7 @@ public sealed class FireworkShell
 
         explosion = new ShellExplosion(
             Position,
-            BurstShape: Profile.BurstShape,
+            BurstShape: BurstShapeOverride ?? Profile.BurstShape,
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
@@ -1354,6 +1516,7 @@ public sealed class FireworkShell
         return true;
     }
 }
+    
 
 public readonly record struct ShellExplosion(
     Vector3 Position,
@@ -1720,7 +1883,7 @@ internal static class EmissionStyles
         return Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
     }
 
-    private static Vector3 RandomUnitVector()
+    public static Vector3 RandomUnitVector()
     {
         float z = (float)(s_rng.NextDouble() * 2.0 - 1.0);
         float a = (float)(s_rng.NextDouble() * Math.PI * 2.0);

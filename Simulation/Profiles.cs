@@ -276,4 +276,35 @@ public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
     IReadOnlyDictionary<string, GroundEffectProfile> GroundEffects,
-    IReadOnlyDictionary<string, ColorScheme> ColorSchemes);
+    IReadOnlyDictionary<string, ColorScheme> ColorSchemes,
+    IReadOnlyDictionary<string, SubShellProfile> SubShells);
+
+public enum SubShellSpawnMode
+{
+    Sphere,
+    Ring,
+    Cone
+}
+
+public sealed record class SubShellProfile(
+    string Id,
+    string ShellProfileId,
+    int Count,
+    SubShellSpawnMode SpawnMode,
+    float DelaySeconds,
+    float InheritParentVelocity,
+    float AddedSpeed,
+    float DirectionJitter,
+    float SpeedJitter,
+    float PositionJitter,
+    float ChildTimeScale,
+    string? ColorSchemeId,
+    FireworkBurstShape? BurstShapeOverride,
+    float MinAltitudeToSpawn,
+    int MaxSubshellDepth);
+
+public sealed record class SubShellAttachment(
+    string SubShellProfileId,
+    float Probability = 1.0f,
+    float Scale = 1.0f,
+    int DepthBudget = 1);

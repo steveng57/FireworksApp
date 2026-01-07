@@ -275,9 +275,47 @@ public static class DefaultProfiles
                                 TrailSmokeChance = 0.18f,
                                 // Custom vivid cyan trail color
                                 TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f)
-                            }
+                    }
                         ),
                     };
+
+        // SubShell profiles: reusable child shell behaviors
+        var subshellProfiles = new Dictionary<string, SubShellProfile>
+        {
+            ["subshell_basic_pop"] = new SubShellProfile(
+                Id: "subshell_basic_pop",
+                ShellProfileId: "basic",
+                Count: 12,
+                SpawnMode: SubShellSpawnMode.Sphere,
+                DelaySeconds: 0.15f,
+                InheritParentVelocity: 0.2f,
+                AddedSpeed: 18.0f,
+                DirectionJitter: 0.08f,
+                SpeedJitter: 0.25f,
+                PositionJitter: 0.6f,
+                ChildTimeScale: 1.0f,
+                ColorSchemeId: null,
+                BurstShapeOverride: null,
+                MinAltitudeToSpawn: 5.0f,
+                MaxSubshellDepth: 1),
+
+            ["subshell_ring_sparkle"] = new SubShellProfile(
+                Id: "subshell_ring_sparkle",
+                ShellProfileId: "donut",
+                Count: 24,
+                SpawnMode: SubShellSpawnMode.Ring,
+                DelaySeconds: 0.10f,
+                InheritParentVelocity: 0.1f,
+                AddedSpeed: 12.0f,
+                DirectionJitter: 0.05f,
+                SpeedJitter: 0.20f,
+                PositionJitter: 0.4f,
+                ChildTimeScale: 1.0f,
+                ColorSchemeId: "neon",
+                BurstShapeOverride: null,
+                MinAltitudeToSpawn: 8.0f,
+                MaxSubshellDepth: 1)
+        };
 
         var groundEffects = new Dictionary<string, GroundEffectProfile>
         {
@@ -467,7 +505,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        return new FireworksProfileSet(canisters, shells, groundEffects, schemes);
+        return new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
     }
 }
 
