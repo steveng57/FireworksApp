@@ -223,32 +223,32 @@ public static class DefaultProfiles
 
                 // Comet: beautiful streaming trails that fade naturally without explosions.
                 // Fully configurable trail colors, particle counts, and physics.
-                ["comet_gold"] = new FireworkShellProfile(
-                    Id: "comet_gold",
-                    BurstShape: FireworkBurstShape.Comet,
-                    ColorSchemeId: "gold",
-                    FuseTimeSeconds: 3.8f,
-                    ExplosionRadius: 0.0f,
-                    ParticleCount: 0,
-                    ParticleLifetimeSeconds: 0.0f,
-                    BurstSparkleRateHz: 0.0f,
-                    BurstSparkleIntensity: 0.0f,
-                    Comet: CometParams.Defaults with
-                    {
-                        CometCount = 40,
-                        CometSpeedMin = 12f,
-                        CometSpeedMax = 22f,
-                        CometUpBias = 0.35f,
-                        CometGravityScale = 0.75f,
-                        CometDrag = 0.05f,
-                        CometLifetimeSeconds = 5.0f,
-                        TrailParticleCount = 10,
-                        TrailParticleLifetime = 0.6f,
-                        TrailSpeed = 4.0f,
-                        TrailSmokeChance = 0.25f,
-                        TrailColor = null  // null = use shell's color scheme
-                    }
-                ),
+                //["comet_gold"] = new FireworkShellProfile(
+                //    Id: "comet_gold",
+                //    BurstShape: FireworkBurstShape.Comet,
+                //    ColorSchemeId: "gold",
+                //    FuseTimeSeconds: 3.8f,
+                //    ExplosionRadius: 0.0f,
+                //    ParticleCount: 0,
+                //    ParticleLifetimeSeconds: 0.0f,
+                //    BurstSparkleRateHz: 0.0f,
+                //    BurstSparkleIntensity: 0.0f,
+                //    Comet: CometParams.Defaults with
+                //    {
+                //        CometCount = 40,
+                //        CometSpeedMin = 12f,
+                //        CometSpeedMax = 22f,
+                //        CometUpBias = 0.35f,
+                //        CometGravityScale = 0.75f,
+                //        CometDrag = 0.05f,
+                //        CometLifetimeSeconds = 5.0f,
+                //        TrailParticleCount = 10,
+                //        TrailParticleLifetime = 0.6f,
+                //        TrailSpeed = 4.0f,
+                //        TrailSmokeChance = 0.25f,
+                //        TrailColor = null  // null = use shell's color scheme
+                //    }
+                //),
 
                 ["comet_neon"] = new FireworkShellProfile(
                     Id: "comet_neon",
@@ -276,8 +276,8 @@ public static class DefaultProfiles
                                 // Custom vivid cyan trail color
                                 TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f)
                     }
-                        ),
-                    };
+                ),
+        };
 
         // SubShell profiles: reusable child shell behaviors
         var subshellProfiles = new Dictionary<string, SubShellProfile>
@@ -521,26 +521,26 @@ public static class DefaultShow
 
 
 
-        // Kick off a few overlapping ground effects near the start.
-        // Use dedicated ground-effect canisters placed on the pad border.
-        events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "g01", GroundEffectProfileId: "fountain_warm"));
-        events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "g03", GroundEffectProfileId: "spinner_neon"));
-        events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "spinner_neon_v"));
-        events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "g07", GroundEffectProfileId: "mine_mixed"));
+        //// Kick off a few overlapping ground effects near the start.
+        //// Use dedicated ground-effect canisters placed on the pad border.
+        //events.Add(new ShowEvent(TimeSeconds: 10.0f, CanisterId: "g01", GroundEffectProfileId: "fountain_warm"));
+        //events.Add(new ShowEvent(TimeSeconds: 15.0f, CanisterId: "g03", GroundEffectProfileId: "spinner_neon"));
+        //events.Add(new ShowEvent(TimeSeconds: 20f, CanisterId: "g05", GroundEffectProfileId: "spinner_neon_v"));
+        //events.Add(new ShowEvent(TimeSeconds: 25f, CanisterId: "g07", GroundEffectProfileId: "mine_mixed"));
 
-        // New ground effects showcase
-        events.Add(new ShowEvent(TimeSeconds: 30f, CanisterId: "g02", GroundEffectProfileId: "bengal_warm"));
-        events.Add(new ShowEvent(TimeSeconds: 33f, CanisterId: "g04", GroundEffectProfileId: "glitter_pulse"));
-        events.Add(new ShowEvent(TimeSeconds: 36f, CanisterId: "g06", GroundEffectProfileId: "bloom_brocade"));
-        events.Add(new ShowEvent(TimeSeconds: 39f, CanisterId: "g08", GroundEffectProfileId: "chaser_zipper"));
-        events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
-        events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
+        //// New ground effects showcase
+        //events.Add(new ShowEvent(TimeSeconds: 30f, CanisterId: "g02", GroundEffectProfileId: "bengal_warm"));
+        //events.Add(new ShowEvent(TimeSeconds: 33f, CanisterId: "g04", GroundEffectProfileId: "glitter_pulse"));
+        //events.Add(new ShowEvent(TimeSeconds: 36f, CanisterId: "g06", GroundEffectProfileId: "bloom_brocade"));
+        //events.Add(new ShowEvent(TimeSeconds: 39f, CanisterId: "g08", GroundEffectProfileId: "chaser_zipper"));
+        //events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
+        //events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
 
-        // Comet showcase - beautiful streaming trails
-        events.Add(new ShowEvent(TimeSeconds: 52f, CanisterId: "c13", ShellProfileId: "comet_gold"));
-        events.Add(new ShowEvent(TimeSeconds: 54f, CanisterId: "c07", ShellProfileId: "comet_neon"));
-        events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
-        events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
+        //// Comet showcase - beautiful streaming trails
+        //events.Add(new ShowEvent(TimeSeconds: 52f, CanisterId: "c13", ShellProfileId: "comet_gold"));
+        //events.Add(new ShowEvent(TimeSeconds: 54f, CanisterId: "c07", ShellProfileId: "comet_neon"));
+        //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
+        //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
         int k = 0;
         for (int i = 0; i < 200; i += gridSize)
