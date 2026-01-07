@@ -7,7 +7,8 @@ public enum SoundEventType
 {
     ShellLaunch,
     ShellBurst,
-    Crackle
+    Crackle,
+    FinaleCluster
 }
 
 public readonly record struct SoundEvent(

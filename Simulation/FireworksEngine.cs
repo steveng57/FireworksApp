@@ -845,7 +845,7 @@ public sealed class FireworksEngine
         {
             SpawnFinaleSalute(explosion.Position, explosion.FinaleSalute);
             EmitSound(new SoundEvent(
-                SoundEventType.ShellBurst,
+                SoundEventType.FinaleCluster,
                 Position: explosion.Position,
                 Gain: 1.0f,
                 Loop: false));

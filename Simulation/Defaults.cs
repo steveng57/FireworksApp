@@ -474,6 +474,7 @@ public static class DefaultShow
                 CanisterId: canisterId,
                 ShellProfileId: "finale_salute");
             events.Add(finaleEvent);
+            t += 0.05f;
         }
 
         var showScript = new ShowScript(events);
