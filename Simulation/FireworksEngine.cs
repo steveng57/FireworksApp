@@ -168,6 +168,12 @@ public sealed class FireworksEngine
 
             s.Age += dt;
 
+            // Emit trail particles for this subshell
+            if (s.Pop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
+            {
+                EmitSubShellTrail(s, renderer);
+            }
+
             // Integrate (semi-implicit Euler)
             s.Velocity += gravity * s.GravityScale * dt;
             s.Velocity = s.Velocity * MathF.Exp(-s.Drag * dt);
@@ -373,6 +379,50 @@ public sealed class FireworksEngine
             microLifetimeMaxSeconds: 0.40f,
             microSpeedMulMin: 0.55f,
             microSpeedMulMax: 0.85f);
+    }
+
+    private void EmitSubShellTrail(SubShell s, D3D11Renderer renderer)
+    {
+        var p = s.Pop;
+        if (!p.EnableSubShellTrails || s.Velocity.LengthSquared() < 1e-4f)
+            return;
+
+        Vector3 dir = Vector3.Normalize(s.Velocity);
+        int particleCount = Math.Clamp(p.TrailParticleCount, 1, 20);
+
+        Span<Vector3> dirs = stackalloc Vector3[particleCount];
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 baseDir = -dir;
+
+            // small cone around baseDir
+            float angle = 8f * (MathF.PI / 180f);
+            float yaw = (float)_rng.NextDouble() * MathF.PI * 2f;
+            float pitch = (float)_rng.NextDouble() * angle;
+
+            Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
+            if (axis.LengthSquared() < 1e-6f)
+                axis = Vector3.UnitX;
+
+            var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+            var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+            dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
+        }
+
+        // Subshell trail color: slightly dimmer and more orange than main shells
+        var trailColor = new Vector4(1.0f, 0.75f, 0.4f, 1.0f);
+
+        renderer.SpawnBurstDirected(
+            s.Position,
+            trailColor,
+            speed: p.TrailSpeed,
+            directions: dirs,
+            particleLifetimeSeconds: p.TrailParticleLifetime);
+
+        if (_rng.NextDouble() < p.TrailSmokeChance)
+        {
+            renderer.SpawnSmoke(s.Position);
+        }
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;

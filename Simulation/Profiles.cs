@@ -32,7 +32,12 @@ public sealed record FinaleSaluteParams(
     float PopFlashLifetime,
     float PopFlashSize,
     float PopPeakIntensity,
-    float PopFadeGamma)
+    float PopFadeGamma,
+    bool EnableSubShellTrails = true,
+    int TrailParticleCount = 6,
+    float TrailParticleLifetime = 0.4f,
+    float TrailSpeed = 3.0f,
+    float TrailSmokeChance = 0.15f)
 {
     public static FinaleSaluteParams Defaults { get; } = new(
         SubShellCount: 50,
@@ -48,7 +53,12 @@ public sealed record FinaleSaluteParams(
         PopFlashLifetime: 0.12f,
         PopFlashSize: 1.2f,
         PopPeakIntensity: 8.0f,
-        PopFadeGamma: 2.2f);
+        PopFadeGamma: 2.2f,
+        EnableSubShellTrails: true,
+        TrailParticleCount: 6,
+        TrailParticleLifetime: 0.4f,
+        TrailSpeed: 3.0f,
+        TrailSmokeChance: 0.15f);
 }
 
 public enum GroundEffectType

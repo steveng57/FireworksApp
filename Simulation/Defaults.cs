@@ -198,6 +198,7 @@ public static class DefaultProfiles
             ),
 
             // Finale: scatter mini report shells that pop as a single bright white flash.
+            // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
             ["finale_salute"] = new FireworkShellProfile(
                 Id: "finale_salute",
                 BurstShape: FireworkBurstShape.FinaleSalute,
@@ -208,7 +209,16 @@ public static class DefaultProfiles
                 ParticleLifetimeSeconds: 0.10f,
                 BurstSparkleRateHz: 0.0f,
                 BurstSparkleIntensity: 0.0f,
-                FinaleSalute: FinaleSaluteParams.Defaults with { SubShellCount = 75 }
+                FinaleSalute: FinaleSaluteParams.Defaults with 
+                { 
+                    SubShellCount = 75,
+                    // Trail tuning: reduce counts if performance is an issue
+                    EnableSubShellTrails = true,
+                    TrailParticleCount = 6,
+                    TrailParticleLifetime = 0.4f,
+                    TrailSpeed = 3.0f,
+                    TrailSmokeChance = 0.15f
+                }
             ),
         };
 
