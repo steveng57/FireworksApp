@@ -22,6 +22,24 @@ public sealed class SubShell
     public FinaleSaluteParams Pop;
 }
 
+    public readonly struct PendingWillowHandoff
+    {
+        public readonly float TriggerTime;
+        public readonly Vector3 Position;
+        public readonly Vector3 ParentVelocity;
+        public readonly PeonyToWillowParams Params;
+        public readonly ColorScheme ColorScheme;
+
+        public PendingWillowHandoff(float TriggerTime, Vector3 Position, Vector3 ParentVelocity, PeonyToWillowParams Params, ColorScheme ColorScheme)
+        {
+            this.TriggerTime = TriggerTime;
+            this.Position = Position;
+            this.ParentVelocity = ParentVelocity;
+            this.Params = Params;
+            this.ColorScheme = ColorScheme;
+        }
+    }
+
 public sealed class Comet
 {
     public Vector3 Position;
@@ -49,6 +67,7 @@ public sealed class FireworksEngine
     private readonly List<Comet> _comets = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
+    private readonly List<PendingWillowHandoff> _pendingWillow = new();
     private readonly Random _rng = new();
 
     private ShowScript _show = ShowScript.Empty;
@@ -181,6 +200,20 @@ public sealed class FireworksEngine
 
         UpdateSubShells(scaledDt, renderer);
         UpdateComets(scaledDt, renderer);
+
+        // Process delayed willow handoffs
+        if (_pendingWillow.Count > 0)
+        {
+            for (int i = _pendingWillow.Count - 1; i >= 0; i--)
+            {
+                var p = _pendingWillow[i];
+                if (ShowTimeSeconds >= p.TriggerTime)
+                {
+                    ProcessWillowHandoff(p, renderer);
+                    _pendingWillow.RemoveAt(i);
+                }
+            }
+        }
 
         // Process delayed subshell spawns
         if (_pendingSubshells.Count > 0)
@@ -1201,6 +1234,41 @@ public sealed class FireworksEngine
 
     private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
     {
+        if (explosion.BurstShape == FireworkBurstShape.PeonyToWillow)
+        {
+            // Initial peony-style burst
+            var dirs = EmissionStyles.EmitPeony(Math.Max(1, explosion.ParticleCount));
+            Vector4 baseColor = explosion.BaseColor;
+            float speed = 10.0f; // peony base speed
+            float lifetime = explosion.ParticleLifetimeSeconds;
+
+            renderer.SpawnBurstDirectedExplode(
+                explosion.Position,
+                baseColor,
+                speed,
+                dirs,
+                particleLifetimeSeconds: lifetime,
+                sparkleRateHz: explosion.BurstSparkleRateHz,
+                sparkleIntensity: explosion.BurstSparkleIntensity);
+            renderer.SpawnSmoke(explosion.Position);
+
+            // Schedule willow takeover
+            var p = explosion.PeonyToWillowParams;
+            _pendingWillow.Add(new PendingWillowHandoff(
+                TriggerTime: ShowTimeSeconds + MathF.Max(0.0f, p.HandoffDelaySeconds),
+                Position: explosion.Position,
+                ParentVelocity: Vector3.Zero,
+                Params: p,
+                ColorScheme: _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default", new[] { System.Windows.Media.Colors.Gold }, 0.05f, 1.0f)));
+
+            EmitSound(new SoundEvent(
+                SoundEventType.ShellBurst,
+                Position: explosion.Position,
+                Gain: 1.0f,
+                Loop: false));
+            return;
+        }
+
         if (explosion.BurstShape == FireworkBurstShape.FinaleSalute)
         {
             SpawnFinaleSalute(explosion.Position, explosion.FinaleSalute);
@@ -1232,7 +1300,7 @@ public sealed class FireworksEngine
             float maxTiltRadians = explosion.RingAxisRandomTiltDegrees * (MathF.PI / 180.0f);
 
             // Randomize the axis within a cone centered on the configured axis.
-            // This produces variation in *all* directions (not just a single world-space axis).
+            // This produces variation in all directions (not just a single world-space axis).
             float yaw = (float)(_rng.NextDouble() * MathF.Tau);
             float u = (float)_rng.NextDouble();
             float tilt = maxTiltRadians * MathF.Sqrt(u);
@@ -1247,7 +1315,7 @@ public sealed class FireworksEngine
             ringAxis = Vector3.Normalize(ringAxis * MathF.Cos(tilt) + offset);
         }
 
-        var dirs = explosion.BurstShape switch
+        var dirsDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
             FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount),
@@ -1260,12 +1328,9 @@ public sealed class FireworksEngine
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
-        // Convert Color to HDR-ish Vector4 expected by current particle shader.
-        Vector4 baseColor = explosion.BaseColor;
+        Vector4 baseColorDefault = explosion.BaseColor;
 
-        // Match the renderer's original burst look: speed is not derived from radius/lifetime.
-        // Keep a characteristic base speed and let the renderer apply per-particle variance.
-        float speed = explosion.BurstShape switch
+        float speedDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Willow => 7.0f,
             FireworkBurstShape.Palm => 13.0f,
@@ -1273,7 +1338,7 @@ public sealed class FireworksEngine
             _ => 10.0f
         };
 
-        float lifetime = explosion.BurstShape switch
+        float lifetimeDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Willow => explosion.ParticleLifetimeSeconds * 2.2f,
             FireworkBurstShape.Palm => explosion.ParticleLifetimeSeconds * 1.2f,
@@ -1283,10 +1348,10 @@ public sealed class FireworksEngine
 
         renderer.SpawnBurstDirectedExplode(
             explosion.Position,
-            baseColor,
-            speed,
-            dirs,
-            particleLifetimeSeconds: lifetime,
+            baseColorDefault,
+            speedDefault,
+            dirsDefault,
+            particleLifetimeSeconds: lifetimeDefault,
             sparkleRateHz: explosion.BurstSparkleRateHz,
             sparkleIntensity: explosion.BurstSparkleIntensity);
         renderer.SpawnSmoke(explosion.Position);
@@ -1304,6 +1369,46 @@ public sealed class FireworksEngine
                 Position: explosion.Position,
                 Gain: System.Math.Clamp(explosion.BurstSparkleIntensity, 0.15f, 1.0f),
                 Loop: false));
+        }
+    }
+
+    private void ProcessWillowHandoff(in PendingWillowHandoff pending, D3D11Renderer renderer)
+    {
+        // Spawn subshells representing willow embers using configured subshell profile
+        if (!_profiles.SubShells.TryGetValue(pending.Params.WillowSubshellProfileId, out var subProf))
+            return;
+
+        int count = Math.Max(1, (int)MathF.Round(pending.Params.PeonySparkCount * pending.Params.HandoffFraction));
+        // Use willow emission: bias downward like willow
+        var dirs = EmissionStyles.EmitWillow(count);
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 dir = dirs[i];
+            Vector3 pos = pending.Position + EmissionStyles.RandomUnitVector() * pending.Params.PeonySpeedMax * 0.02f;
+            Vector3 vel = dir * (pending.Params.PeonySpeedMax * pending.Params.WillowVelocityScale);
+
+            if (!_profiles.Shells.TryGetValue(subProf.ShellProfileId, out var childProfile))
+                continue;
+
+            var schemeId = subProf.ColorSchemeId ?? childProfile.ColorSchemeId;
+            if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
+                childScheme = pending.ColorScheme;
+
+            var child = new FireworkShell(
+                childProfile,
+                childScheme,
+                pos,
+                vel,
+                dragK: ShellDragK * pending.Params.WillowDragMultiplier,
+                fuseOverrideSeconds: childProfile.FuseTimeSeconds * pending.Params.WillowLifetimeMultiplier)
+            {
+                SubshellDepth = 1,
+                ParentShellId = null,
+                BurstShapeOverride = FireworkBurstShape.Willow
+            };
+
+            _shells.Add(child);
         }
     }
 
@@ -1510,7 +1615,8 @@ public sealed class FireworkShell
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
-            BaseColor: ColorUtil.PickBaseColor(ColorScheme));
+            BaseColor: ColorUtil.PickBaseColor(ColorScheme),
+            PeonyToWillowParams: Profile.PeonyToWillowParams);
 
         Alive = false;
         return true;
@@ -1530,7 +1636,8 @@ public readonly record struct ShellExplosion(
     float RingAxisRandomTiltDegrees,
     FinaleSaluteParams FinaleSalute,
     CometParams Comet,
-    Vector4 BaseColor);
+    Vector4 BaseColor,
+    PeonyToWillowParams PeonyToWillowParams);
 
 internal static class ColorUtil
 {

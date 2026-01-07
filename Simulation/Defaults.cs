@@ -197,9 +197,31 @@ public static class DefaultProfiles
                 BurstSparkleIntensity: 0.55f
             ),
 
-                // Finale: scatter mini report shells that pop as a single bright white flash.
-                // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
-                ["finale_salute"] = new FireworkShellProfile(
+            ["peony_to_willow"] = new FireworkShellProfile(
+                Id: "peony_to_willow",
+                BurstShape: FireworkBurstShape.PeonyToWillow,
+                ColorSchemeId: "gold",
+                FuseTimeSeconds: 4.0f,
+                ExplosionRadius: 14.0f,
+                ParticleCount: 3000,
+                ParticleLifetimeSeconds: 5.5f,
+                BurstSparkleRateHz: 10.0f,
+                BurstSparkleIntensity: 0.40f,
+                PeonyToWillow: PeonyToWillowParams.Defaults with
+                {
+                    WillowSubshellProfileId = "subshell_basic_pop",
+                    WillowVelocityScale = 0.50f,
+                    WillowGravityMultiplier = 2.2f,
+                    WillowDragMultiplier = 2.4f,
+                    WillowLifetimeMultiplier = 3.2f,
+                    WillowTrailSpawnRate = 8f,
+                    WillowTrailSpeed = 2.2f
+                }
+            ),
+
+            // Finale: scatter mini report shells that pop as a single bright white flash.
+            // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
+            ["finale_salute"] = new FireworkShellProfile(
                     Id: "finale_salute",
                     BurstShape: FireworkBurstShape.FinaleSalute,
                     ColorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
@@ -542,19 +564,16 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        int k = 0;
-        for (int i = 0; i < 200; i += gridSize)
+        var mainShowShells = profiles.Shells.Where(kvp => kvp.Key != "finale_salute").ToList();
+        
+        for (int i = 0; i < 100; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)
             {
-                string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
-                if (shellId == "finale_salute")
-                {
-                    k++;
-                    continue;
-                }
-                string canisterId = profiles.Canisters.Keys.ElementAt((i + j - k) % profiles.Canisters.Count);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j - k) % profiles.ColorSchemes.Count);
+                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
+                
+                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % profiles.Canisters.Count);
+                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
                 float? muzzleVelocity = null;
 
                 // debug variations

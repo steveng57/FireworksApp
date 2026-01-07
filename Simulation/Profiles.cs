@@ -15,6 +15,7 @@ public enum FireworkBurstShape
     Horsetail,
     DoubleRing,
     Spiral,
+    PeonyToWillow,
     FinaleSalute,
     Comet
 }
@@ -140,11 +141,48 @@ public sealed record class FireworkShellProfile(
         Vector3? RingAxis = null,
         float RingAxisRandomTiltDegrees = 0.0f,
         FinaleSaluteParams? FinaleSalute = null,
-        CometParams? Comet = null)
+        CometParams? Comet = null,
+        PeonyToWillowParams? PeonyToWillow = null)
     {
         public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
         public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
+        public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
     }
+
+public sealed record PeonyToWillowParams(
+    int PeonySparkCount,
+    float PeonySpeedMin,
+    float PeonySpeedMax,
+    float PeonyLifetimeSeconds,
+    float HandoffDelaySeconds,
+    float HandoffFraction,
+    float HandoffRandomness,
+    string WillowSubshellProfileId,
+    float WillowVelocityScale,
+    float WillowGravityMultiplier,
+    float WillowDragMultiplier,
+    float WillowLifetimeMultiplier,
+    float WillowBrightnessBoost,
+    float WillowTrailSpawnRate,
+    float WillowTrailSpeed)
+{
+    public static PeonyToWillowParams Defaults { get; } = new(
+        PeonySparkCount: 50,
+        PeonySpeedMin: 18f,
+        PeonySpeedMax: 26f,
+        PeonyLifetimeSeconds: 2.0f,
+        HandoffDelaySeconds: 0.45f,
+        HandoffFraction: 0.55f,
+        HandoffRandomness: 0.15f,
+        WillowSubshellProfileId: "subshell_basic_pop",
+        WillowVelocityScale: 0.45f,
+        WillowGravityMultiplier: 2.2f,
+        WillowDragMultiplier: 2.4f,
+        WillowLifetimeMultiplier: 2.8f,
+        WillowBrightnessBoost: 1.1f,
+        WillowTrailSpawnRate: 10f,
+        WillowTrailSpeed: 2.5f);
+}
 
 public sealed record class GroundEffectProfile(
     string Id,
