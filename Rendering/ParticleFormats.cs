@@ -9,7 +9,8 @@ internal enum ParticleKind : uint
     Shell = 1,
     Spark = 2,
     Smoke = 3,
-    Crackle = 4
+    Crackle = 4,
+    PopFlash = 5
 }
 
 [StructLayout(LayoutKind.Sequential)]

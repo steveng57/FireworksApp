@@ -30,7 +30,7 @@ struct Particle
     float Age;
     float Lifetime;
     float4 Color;
-    uint Kind; // 0=Dead, 1=Shell, 2=Spark, 3=Smoke (reserved), 4=Crackle
+    uint Kind; // 0=Dead, 1=Shell, 2=Spark, 3=Smoke (reserved), 4=Crackle, 5=PopFlash
     uint3 _pad;
 };
 
@@ -265,6 +265,20 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         float a = saturate(0.35f + 0.65f * pulse01);
         p.Color = float4(c * brightness, a);
     }
+    else if (p.Kind == 5)
+    {
+        // PopFlash: white flash, no flicker, no color-scheme tint.
+        // CPU packs: _pad0=size, _pad1=peakIntensity, _pad2=fadeGamma
+        float size = max(0.0f, asfloat(p._pad.x));
+        float peak = max(0.0f, asfloat(p._pad.y));
+        float gamma = max(0.001f, asfloat(p._pad.z));
+
+        float fade = pow(saturate(1.0f - t), gamma);
+        p.Color = float4(1.0f, 1.0f, 1.0f, saturate(peak * fade));
+
+        // Store size back into pad so VS can read it without re-packing.
+        // (We keep it as-is; VS reads _pad.x.)
+    }
 
     Particles[i] = p;
 }
@@ -331,6 +345,11 @@ VSOut VSParticle(uint vid : SV_VertexID)
         float flash = step(0.75f, p.Color.a);
         size = CrackleBaseSize * lerp(1.0f, CrackleFlashSizeMul, flash);
     }
+    if (p.Kind == 5)
+    {
+        // PopFlash size is explicitly provided by the CPU.
+        size = max(0.0f, asfloat(p._pad.x));
+    }
 
     float3 worldPos = p.Position + (CameraRightWS * (uv.x * size)) + (CameraUpWS * (uv.y * size));
     o.Position = mul(float4(worldPos, 1.0f), ViewProjection);
@@ -344,6 +363,23 @@ VSOut VSParticle(uint vid : SV_VertexID)
 float4 PSParticle(VSOut input) : SV_Target
 {
     float4 c = input.Color;
+
+    if (input.Kind == 5)
+    {
+        // PopFlash outputs already contain HDR-ish intensity in alpha.
+        // Use a soft round mask but keep it punchy.
+        float2 p = input.UV;
+        float r2 = dot(p, p);
+        if (r2 > 1.0f)
+            discard;
+
+        float edge = 1.0f - smoothstep(0.65f, 1.00f, r2);
+        float intensity = c.a * edge;
+        if (intensity < 0.01f)
+            discard;
+
+        return float4(1.0f, 1.0f, 1.0f, 1.0f) * intensity;
+    }
 
     // Smoke: keep your existing soft billboard behavior
     if (input.Kind == 3)

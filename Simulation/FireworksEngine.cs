@@ -9,6 +9,19 @@ namespace FireworksApp.Simulation;
 
 using Math = System.Math;
 
+public sealed class SubShell
+{
+    public Vector3 Position;
+    public Vector3 Velocity;
+    public float Age;
+    public float DetonateAt;
+    public bool Detonated;
+
+    public float GravityScale;
+    public float Drag;
+    public FinaleSaluteParams Pop;
+}
+
 public sealed class FireworksEngine
 {
     public event Action<SoundEvent>? SoundEvent;
@@ -18,6 +31,7 @@ public sealed class FireworksEngine
     private readonly FireworksProfileSet _profiles;
     private readonly List<Canister> _canisters;
     private readonly List<FireworkShell> _shells = new();
+    private readonly List<SubShell> _subShells = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly Random _rng = new();
 
@@ -103,6 +117,8 @@ public sealed class FireworksEngine
             }
         }
 
+        UpdateSubShells(scaledDt, renderer);
+
         // Update ground effects and emit particles.
         for (int i = _groundEffects.Count - 1; i >= 0; i--)
         {
@@ -130,6 +146,54 @@ public sealed class FireworksEngine
         // Provide shell positions to renderer.
         var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
         renderer.SetShells(shellStates);
+    }
+
+    private void UpdateSubShells(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0.0f || _subShells.Count == 0)
+            return;
+
+        const float groundY = 0.0f;
+        Vector3 gravity = new(0.0f, -9.81f, 0.0f);
+
+        for (int i = _subShells.Count - 1; i >= 0; i--)
+        {
+            var s = _subShells[i];
+
+            if (s.Detonated)
+            {
+                _subShells.RemoveAt(i);
+                continue;
+            }
+
+            s.Age += dt;
+
+            // Integrate (semi-implicit Euler)
+            s.Velocity += gravity * s.GravityScale * dt;
+            s.Velocity = s.Velocity * MathF.Exp(-s.Drag * dt);
+            s.Position += s.Velocity * dt;
+
+            bool hitGround = s.Position.Y <= groundY;
+            if (hitGround)
+            {
+                s.Position = new Vector3(s.Position.X, groundY, s.Position.Z);
+                s.Detonated = true;
+                SpawnPopFlash(s.Position, s.Pop, renderer);
+                _subShells.RemoveAt(i);
+                continue;
+            }
+
+            if (s.Age >= s.DetonateAt)
+            {
+                s.Detonated = true;
+                SpawnPopFlash(s.Position, s.Pop, renderer);
+                _subShells.RemoveAt(i);
+                continue;
+            }
+
+            // write back struct/class state
+            _subShells[i] = s;
+        }
     }
 
     private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)
@@ -255,6 +319,51 @@ public sealed class FireworksEngine
             Loop: false));
 
         renderer.ShellSpawnCount++;
+    }
+
+    private void SpawnFinaleSalute(Vector3 origin, FinaleSaluteParams p)
+    {
+        int count = System.Math.Clamp(p.SubShellCount, 1, 5000);
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            dir = Vector3.Normalize(dir + Vector3.UnitY * p.SubShellUpBias);
+
+            float u = (float)_rng.NextDouble();
+            float speed = p.SubShellSpeedMin + u * (p.SubShellSpeedMax - p.SubShellSpeedMin);
+            Vector3 vel = dir * speed;
+
+            float baseDelay = Lerp(p.DetonateDelayMin, p.DetonateDelayMax, (float)_rng.NextDouble());
+            float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.DetonateJitterMax;
+            float detonateAt = System.Math.Clamp(baseDelay + jitter, p.DetonateDelayMin, p.DetonateDelayMax);
+
+            _subShells.Add(new SubShell
+            {
+                Position = origin,
+                Velocity = vel,
+                Age = 0.0f,
+                DetonateAt = detonateAt,
+                Detonated = false,
+                GravityScale = p.SubShellGravityScale,
+                Drag = p.SubShellDrag,
+                Pop = p
+            });
+        }
+    }
+
+    private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, D3D11Renderer renderer)
+    {
+        renderer.SpawnPopFlash(position, p.PopFlashLifetime, p.PopFlashSize, p.PopPeakIntensity, p.PopFadeGamma);
+    }
+
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    private Vector3 RandomUnitVector()
+    {
+        float z = (float)(_rng.NextDouble() * 2.0 - 1.0);
+        float a = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
+        float r = MathF.Sqrt(MathF.Max(0.0f, 1.0f - z * z));
+        return new Vector3(r * MathF.Cos(a), z, r * MathF.Sin(a));
     }
 
     private void EmitGroundEffect(GroundEffectInstance ge, float dt, float showTimeSeconds, D3D11Renderer renderer)
@@ -732,6 +841,17 @@ public sealed class FireworksEngine
 
     private void Explode(ShellExplosion explosion, D3D11Renderer renderer)
     {
+        if (explosion.BurstShape == FireworkBurstShape.FinaleSalute)
+        {
+            SpawnFinaleSalute(explosion.Position, explosion.FinaleSalute);
+            EmitSound(new SoundEvent(
+                SoundEventType.ShellBurst,
+                Position: explosion.Position,
+                Gain: 1.0f,
+                Loop: false));
+            return;
+        }
+
         Vector3 ringAxis = Vector3.UnitY;
         if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
             ringAxis = Vector3.Normalize(configuredRingAxis);
@@ -1012,6 +1132,7 @@ public sealed class FireworkShell
             BurstSparkleIntensity: Profile.BurstSparkleIntensity,
             RingAxis: Profile.RingAxis,
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
+            FinaleSalute: Profile.FinaleSaluteParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme));
 
         Alive = false;
@@ -1029,6 +1150,7 @@ public readonly record struct ShellExplosion(
     float BurstSparkleIntensity,
     Vector3? RingAxis,
     float RingAxisRandomTiltDegrees,
+    FinaleSaluteParams FinaleSalute,
     Vector4 BaseColor);
 
 internal static class ColorUtil
@@ -1385,8 +1507,10 @@ internal static class EmissionStyles
     private static Vector3 RandomUnitVector()
     {
         float z = (float)(s_rng.NextDouble() * 2.0 - 1.0);
-        float a = (float)(s_rng.NextDouble() * System.Math.PI * 2.0);
+        float a = (float)(s_rng.NextDouble() * Math.PI * 2.0);
         float r = MathF.Sqrt(MathF.Max(0.0f, 1.0f - z * z));
         return new Vector3(r * MathF.Cos(a), z, r * MathF.Sin(a));
     }
+
 }
+

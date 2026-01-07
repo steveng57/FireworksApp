@@ -401,6 +401,55 @@ public sealed class D3D11Renderer : IDisposable
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
+    public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
+    {
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        if (_context is null || particleBuffer is null || uploadBuffer is null)
+            return;
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
+
+        var p = new GpuParticle
+        {
+            Position = position,
+            Velocity = Vector3.Zero,
+            Age = 0.0f,
+            Lifetime = System.Math.Max(0.01f, lifetimeSeconds),
+            Color = new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
+            Kind = (uint)ParticleKind.PopFlash,
+            _pad0 = PackFloat(System.Math.Max(0.0f, size)),
+            _pad1 = PackFloat(System.Math.Max(0.0f, peakIntensity)),
+            _pad2 = PackFloat(System.Math.Max(0.0f, fadeGamma))
+        };
+
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint dst = mapped.DataPointer + (start * stride);
+            Marshal.StructureToPtr(p, dst, false);
+        }
+        finally
+        {
+            _context.Unmap(uploadBuffer, 0);
+        }
+
+        var srcBox = new Box
+        {
+            Left = (int)(start * stride),
+            Right = (int)((start + 1) * stride),
+            Top = 0,
+            Bottom = 1,
+            Front = 0,
+            Back = 1
+        };
+
+        _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+
+        _particleWriteCursor = (start + 1) % _particleCapacity;
+    }
+
     public void SpawnGroundEffectDirected(Vector3 position, Vector4 baseColor, float speed, System.ReadOnlySpan<Vector3> directions, float particleLifetimeSeconds, float gravityFactor)
     {
         // Current GPU shader uses a single global gravity; we keep gravityFactor for forward compatibility.

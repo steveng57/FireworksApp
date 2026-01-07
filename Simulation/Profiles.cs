@@ -14,7 +14,39 @@ public enum FireworkBurstShape
     Ring,
     Horsetail,
     DoubleRing,
-    Spiral
+    Spiral,
+    FinaleSalute
+}
+
+public sealed record FinaleSaluteParams(
+    int SubShellCount,
+    float SubShellSpeedMin,
+    float SubShellSpeedMax,
+    float SubShellUpBias,
+    float SubShellGravityScale,
+    float SubShellDrag,
+    float DetonateDelayMin,
+    float DetonateDelayMax,
+    float DetonateJitterMax,
+    float PopFlashLifetime,
+    float PopFlashSize,
+    float PopPeakIntensity,
+    float PopFadeGamma)
+{
+    public static FinaleSaluteParams Defaults { get; } = new(
+        SubShellCount: 50,
+        SubShellSpeedMin: 18f,
+        SubShellSpeedMax: 30f,
+        SubShellUpBias: 0.20f,
+        SubShellGravityScale: 1.0f,
+        SubShellDrag: 0.04f,
+        DetonateDelayMin: 2.0f,
+        DetonateDelayMax: 3.0f,
+        DetonateJitterMax: 0.10f,
+        PopFlashLifetime: 0.12f,
+        PopFlashSize: 1.2f,
+        PopPeakIntensity: 8.0f,
+        PopFadeGamma: 2.2f);
 }
 
 public enum GroundEffectType
@@ -64,7 +96,11 @@ public sealed record class FireworkShellProfile(
     float BurstSparkleRateHz = 0.0f,
     float BurstSparkleIntensity = 0.0f,
     Vector3? RingAxis = null,
-    float RingAxisRandomTiltDegrees = 0.0f);
+    float RingAxisRandomTiltDegrees = 0.0f,
+    FinaleSaluteParams? FinaleSalute = null)
+{
+    public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
+}
 
 public sealed record class GroundEffectProfile(
     string Id,
