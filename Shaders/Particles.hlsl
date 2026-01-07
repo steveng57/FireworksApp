@@ -29,6 +29,7 @@ struct Particle
     float3 Velocity;
     float Age;
     float Lifetime;
+    float4 BaseColor;
     float4 Color;
     uint Kind; // 0=Dead, 1=Shell, 2=Spark, 3=Smoke (reserved), 4=Crackle, 5=PopFlash
     uint3 _pad;
@@ -63,9 +64,9 @@ float4 ColorRampSpark(float t, float4 baseColor)
     // Time shaping: keep sparks visually "younger" for longer
     float tColor = pow(t, 0.7f); // 0.7 < 1 => stretches out early/mid phases
 
-    float3 scheme = max(SchemeTint, 0.001f);
-    float3 whiteHot = baseColor.rgb * scheme * 4.0f + 1.5f;
-    float3 mid = baseColor.rgb * scheme;
+    // Remove global scheme tint from per-particle ramp to avoid cross-bleed.
+    float3 whiteHot = baseColor.rgb * 4.0f + 1.5f;
+    float3 mid = baseColor.rgb;
     float3 ember = float3(1.0f, 0.35f, 0.08f);
 
     float early = smoothstep(0.00f, 0.20f, tColor);
@@ -216,7 +217,8 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     if (p.Kind == 2)
     {
-        p.Color = ColorRampSpark(t, p.Color);
+        // Use immutable base color for the ramp to prevent per-frame feedback.
+        p.Color = ColorRampSpark(t, p.BaseColor);
 
         // Sparkle/twinkle: brightness-only modulation of burst particles.
         // Stored as float bits in pads.

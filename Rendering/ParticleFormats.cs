@@ -21,6 +21,7 @@ internal struct GpuParticle
     public Vector3 Velocity;
     public float Age;
     public float Lifetime;
+    public Vector4 BaseColor;
     public Vector4 Color;
     public uint Kind;
     public uint _pad0;
