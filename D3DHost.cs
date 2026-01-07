@@ -25,6 +25,8 @@ public sealed class D3DHost : HwndHost
     private AudioEngine? _audio;
     private ShowScript? _defaultShow;
     private bool _started;
+    private bool _renderPaused;
+    private bool _graphicsInitialized;
     private bool _isDragging;
     private bool _isPanning;
     private Point _lastMouse;
@@ -126,6 +128,7 @@ public sealed class D3DHost : HwndHost
 
         _renderer?.Dispose();
         _renderer = null;
+        _graphicsInitialized = false;
 
         if (hwnd.Handle != IntPtr.Zero)
         {
@@ -138,11 +141,17 @@ public sealed class D3DHost : HwndHost
         if (_renderer == null || _started)
             return;
 
+        _renderPaused = false;
+
         var size = RenderSize;
         int width = (int)System.Math.Max(1.0, size.Width);
         int height = (int)System.Math.Max(1.0, size.Height);
 
-        _renderer.Initialize(width, height);
+        if (!_graphicsInitialized)
+        {
+            _renderer.Initialize(width, height);
+            _graphicsInitialized = true;
+        }
 
         _engine = new FireworksEngine(global::FireworksApp.Simulation.DefaultProfiles.Create());
         _defaultShow = global::FireworksApp.Simulation.DefaultShow.Create();
@@ -164,12 +173,9 @@ public sealed class D3DHost : HwndHost
         if (!_started)
             return;
 
-        // Reset back to the default show when stopping/restarting.
-        if (_engine != null && _defaultShow != null)
-        {
-            _engine.LoadShow(_defaultShow);
-        }
+        _renderPaused = true;
 
+        // Stop simulation updates immediately so visuals stop.
         CompositionTarget.Rendering -= OnRendering;
 
         if (_engine is not null)
@@ -182,6 +188,16 @@ public sealed class D3DHost : HwndHost
         window?.KeyDown -= OnWindowKeyDown;
 
         _started = false;
+    }
+
+    public void PauseRendering()
+    {
+        _renderPaused = true;
+    }
+
+    public void ResumeRendering()
+    {
+        _renderPaused = false;
     }
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -356,6 +372,9 @@ public sealed class D3DHost : HwndHost
 
     void OnRendering(object? sender, EventArgs e)
     {
+        if (_renderPaused)
+            return;
+
         if (_renderer is null)
             return;
 
