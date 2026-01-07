@@ -197,30 +197,87 @@ public static class DefaultProfiles
                 BurstSparkleIntensity: 0.55f
             ),
 
-            // Finale: scatter mini report shells that pop as a single bright white flash.
-            // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
-            ["finale_salute"] = new FireworkShellProfile(
-                Id: "finale_salute",
-                BurstShape: FireworkBurstShape.FinaleSalute,
-                ColorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
-                FuseTimeSeconds: 3.8f,
-                ExplosionRadius: 0.0f,
-                ParticleCount: 0,
-                ParticleLifetimeSeconds: 0.10f,
-                BurstSparkleRateHz: 0.0f,
-                BurstSparkleIntensity: 0.0f,
-                FinaleSalute: FinaleSaluteParams.Defaults with 
-                { 
-                    SubShellCount = 75,
-                    // Trail tuning: reduce counts if performance is an issue
-                    EnableSubShellTrails = true,
-                    TrailParticleCount = 6,
-                    TrailParticleLifetime = 0.4f,
-                    TrailSpeed = 3.0f,
-                    TrailSmokeChance = 0.15f
-                }
-            ),
-        };
+                // Finale: scatter mini report shells that pop as a single bright white flash.
+                // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
+                ["finale_salute"] = new FireworkShellProfile(
+                    Id: "finale_salute",
+                    BurstShape: FireworkBurstShape.FinaleSalute,
+                    ColorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
+                    FuseTimeSeconds: 3.8f,
+                    ExplosionRadius: 0.0f,
+                    ParticleCount: 0,
+                    ParticleLifetimeSeconds: 0.10f,
+                    BurstSparkleRateHz: 0.0f,
+                    BurstSparkleIntensity: 0.0f,
+                    FinaleSalute: FinaleSaluteParams.Defaults with 
+                    { 
+                        SubShellCount = 75,
+                        // Trail tuning: reduce counts if performance is an issue
+                        EnableSubShellTrails = true,
+                        TrailParticleCount = 6,
+                        TrailParticleLifetime = 0.4f,
+                        TrailSpeed = 3.0f,
+                        TrailSmokeChance = 0.15f
+                    }
+                ),
+
+                // Comet: beautiful streaming trails that fade naturally without explosions.
+                // Fully configurable trail colors, particle counts, and physics.
+                ["comet_gold"] = new FireworkShellProfile(
+                    Id: "comet_gold",
+                    BurstShape: FireworkBurstShape.Comet,
+                    ColorSchemeId: "gold",
+                    FuseTimeSeconds: 3.8f,
+                    ExplosionRadius: 0.0f,
+                    ParticleCount: 0,
+                    ParticleLifetimeSeconds: 0.0f,
+                    BurstSparkleRateHz: 0.0f,
+                    BurstSparkleIntensity: 0.0f,
+                    Comet: CometParams.Defaults with
+                    {
+                        CometCount = 40,
+                        CometSpeedMin = 12f,
+                        CometSpeedMax = 22f,
+                        CometUpBias = 0.35f,
+                        CometGravityScale = 0.75f,
+                        CometDrag = 0.05f,
+                        CometLifetimeSeconds = 5.0f,
+                        TrailParticleCount = 10,
+                        TrailParticleLifetime = 0.6f,
+                        TrailSpeed = 4.0f,
+                        TrailSmokeChance = 0.25f,
+                        TrailColor = null  // null = use shell's color scheme
+                    }
+                ),
+
+                ["comet_neon"] = new FireworkShellProfile(
+                    Id: "comet_neon",
+                    BurstShape: FireworkBurstShape.Comet,
+                    ColorSchemeId: "neon",
+                    FuseTimeSeconds: 3.9f,
+                    ExplosionRadius: 0.0f,
+                    ParticleCount: 0,
+                    ParticleLifetimeSeconds: 0.0f,
+                    BurstSparkleRateHz: 0.0f,
+                    BurstSparkleIntensity: 0.0f,
+                            Comet: CometParams.Defaults with
+                            {
+                                CometCount = 50,
+                                CometSpeedMin = 15f,
+                                CometSpeedMax = 28f,
+                                CometUpBias = 0.25f,
+                                CometGravityScale = 0.85f,
+                                CometDrag = 0.04f,
+                                CometLifetimeSeconds = 4.5f,
+                                TrailParticleCount = 12,
+                                TrailParticleLifetime = 0.5f,
+                                TrailSpeed = 5.0f,
+                                TrailSmokeChance = 0.18f,
+                                // Custom vivid cyan trail color
+                                TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f)
+                            }
+                        ),
+                    };
 
         var groundEffects = new Dictionary<string, GroundEffectProfile>
         {
@@ -441,40 +498,46 @@ public static class DefaultShow
         events.Add(new ShowEvent(TimeSeconds: 42f, CanisterId: "g05", GroundEffectProfileId: "lance_heart"));
         events.Add(new ShowEvent(TimeSeconds: 46f, CanisterId: "g06", GroundEffectProfileId: "waterfall_gold"));
 
-        //int k = 0;
-        //for (int i = 0; i < 200; i += gridSize)
-        //{
-        //    for (int j = 0; j < gridSize; j++)
-        //    {
-        //        string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
-        //        if (shellId == "finale_salute")
-        //        {
-        //            k++;
-        //            continue; 
-        //        }
-        //        string canisterId = profiles.Canisters.Keys.ElementAt((i + j - k) % profiles.Canisters.Count);
-        //        string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j - k) % profiles.ColorSchemes.Count);
-        //        float? muzzleVelocity = null;
+        // Comet showcase - beautiful streaming trails
+        events.Add(new ShowEvent(TimeSeconds: 52f, CanisterId: "c13", ShellProfileId: "comet_gold"));
+        events.Add(new ShowEvent(TimeSeconds: 54f, CanisterId: "c07", ShellProfileId: "comet_neon"));
+        events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
+        events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        //        // debug variations
-        //        //shellId = "double_ring";
-        //        //canisterId = "c2";
-        //        //colorSchemeId = "debug";
+        int k = 0;
+        for (int i = 0; i < 200; i += gridSize)
+        {
+            for (int j = 0; j < gridSize; j++)
+            {
+                string shellId = profiles.Shells.Keys.ElementAt((i + j) % profiles.Shells.Count);
+                if (shellId == "finale_salute")
+                {
+                    k++;
+                    continue;
+                }
+                string canisterId = profiles.Canisters.Keys.ElementAt((i + j - k) % profiles.Canisters.Count);
+                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j - k) % profiles.ColorSchemes.Count);
+                float? muzzleVelocity = null;
 
-        //        var showEvent = new ShowEvent(
-        //            TimeSeconds: t,
-        //            CanisterId: canisterId,
-        //            ShellProfileId: shellId,
-        //            ColorSchemeId: colorSchemeId,
-        //            MuzzleVelocity: muzzleVelocity);
-        //        events.Add(showEvent);
+                // debug variations
+                //shellId = "double_ring";
+                //canisterId = "c2";
+                //colorSchemeId = "debug";
 
-        //        t += 0.20f;
-        //    }
-        //    t += 1f;
-        //}
+                var showEvent = new ShowEvent(
+                    TimeSeconds: t,
+                    CanisterId: canisterId,
+                    ShellProfileId: shellId,
+                    ColorSchemeId: colorSchemeId,
+                    MuzzleVelocity: muzzleVelocity);
+                events.Add(showEvent);
 
-        t+= 4.0f;
+                t += 0.20f;
+            }
+            t += 1f;
+        }
+
+        t += 4.0f;
 
         for (int n = 0; n < 10; n++)
         {

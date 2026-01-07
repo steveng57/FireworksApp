@@ -22,6 +22,20 @@ public sealed class SubShell
     public FinaleSaluteParams Pop;
 }
 
+public sealed class Comet
+{
+    public Vector3 Position;
+    public Vector3 Velocity;
+    public float Age;
+    public float LifetimeSeconds;
+    public bool Alive;
+
+    public float GravityScale;
+    public float Drag;
+    public CometParams Params;
+    public Vector4 BaseColor;
+}
+
 public sealed class FireworksEngine
 {
     public event Action<SoundEvent>? SoundEvent;
@@ -32,6 +46,7 @@ public sealed class FireworksEngine
     private readonly List<Canister> _canisters;
     private readonly List<FireworkShell> _shells = new();
     private readonly List<SubShell> _subShells = new();
+    private readonly List<Comet> _comets = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly Random _rng = new();
 
@@ -118,6 +133,7 @@ public sealed class FireworksEngine
         }
 
         UpdateSubShells(scaledDt, renderer);
+        UpdateComets(scaledDt, renderer);
 
         // Update ground effects and emit particles.
         for (int i = _groundEffects.Count - 1; i >= 0; i--)
@@ -199,6 +215,53 @@ public sealed class FireworksEngine
 
             // write back struct/class state
             _subShells[i] = s;
+        }
+    }
+
+    private void UpdateComets(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0.0f || _comets.Count == 0)
+            return;
+
+        const float groundY = 0.0f;
+        Vector3 gravity = new(0.0f, -9.81f, 0.0f);
+
+        for (int i = _comets.Count - 1; i >= 0; i--)
+        {
+            var c = _comets[i];
+
+            if (!c.Alive)
+            {
+                _comets.RemoveAt(i);
+                continue;
+            }
+
+            c.Age += dt;
+
+            // Emit trail particles for this comet
+            if (c.Velocity.LengthSquared() > 1e-4f)
+            {
+                EmitCometTrail(c, renderer);
+            }
+
+            // Integrate (semi-implicit Euler)
+            c.Velocity += gravity * c.GravityScale * dt;
+            c.Velocity = c.Velocity * MathF.Exp(-c.Drag * dt);
+            c.Position += c.Velocity * dt;
+
+            // Check if lifetime exceeded or hit ground
+            bool hitGround = c.Position.Y <= groundY;
+            bool expired = c.Age >= c.LifetimeSeconds;
+
+            if (hitGround || expired)
+            {
+                c.Alive = false;
+                _comets.RemoveAt(i);
+                continue;
+            }
+
+            // write back struct/class state
+            _comets[i] = c;
         }
     }
 
@@ -422,6 +485,77 @@ public sealed class FireworksEngine
         if (_rng.NextDouble() < p.TrailSmokeChance)
         {
             renderer.SpawnSmoke(s.Position);
+        }
+    }
+
+    private void SpawnComet(Vector3 origin, CometParams p, Vector4 baseColor)
+    {
+        int count = System.Math.Clamp(p.CometCount, 1, 500);
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            dir = Vector3.Normalize(dir + Vector3.UnitY * p.CometUpBias);
+
+            float u = (float)_rng.NextDouble();
+            float speed = p.CometSpeedMin + u * (p.CometSpeedMax - p.CometSpeedMin);
+            Vector3 vel = dir * speed;
+
+            _comets.Add(new Comet
+            {
+                Position = origin,
+                Velocity = vel,
+                Age = 0.0f,
+                LifetimeSeconds = p.CometLifetimeSeconds,
+                Alive = true,
+                GravityScale = p.CometGravityScale,
+                Drag = p.CometDrag,
+                Params = p,
+                BaseColor = baseColor
+            });
+        }
+    }
+
+    private void EmitCometTrail(Comet c, D3D11Renderer renderer)
+    {
+        var p = c.Params;
+        if (c.Velocity.LengthSquared() < 1e-4f)
+            return;
+
+        Vector3 dir = Vector3.Normalize(c.Velocity);
+        int particleCount = Math.Clamp(p.TrailParticleCount, 1, 20);
+
+        Span<Vector3> dirs = stackalloc Vector3[particleCount];
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 baseDir = -dir;
+
+            // small cone around baseDir
+            float angle = 8f * (MathF.PI / 180f);
+            float yaw = (float)_rng.NextDouble() * MathF.PI * 2f;
+            float pitch = (float)_rng.NextDouble() * angle;
+
+            Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
+            if (axis.LengthSquared() < 1e-6f)
+                axis = Vector3.UnitX;
+
+            var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+            var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+            dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
+        }
+
+        // Use configured trail color or fall back to base color
+        var trailColor = p.TrailColor ?? c.BaseColor;
+
+        renderer.SpawnBurstDirected(
+            c.Position,
+            trailColor,
+            speed: p.TrailSpeed,
+            directions: dirs,
+            particleLifetimeSeconds: p.TrailParticleLifetime);
+
+        if (_rng.NextDouble() < p.TrailSmokeChance)
+        {
+            renderer.SpawnSmoke(c.Position);
         }
     }
 
@@ -921,6 +1055,17 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.Comet)
+        {
+            SpawnComet(explosion.Position, explosion.Comet, explosion.BaseColor);
+            EmitSound(new SoundEvent(
+                SoundEventType.ShellBurst,
+                Position: explosion.Position,
+                Gain: 0.6f,
+                Loop: false));
+            return;
+        }
+
         Vector3 ringAxis = Vector3.UnitY;
         if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
             ringAxis = Vector3.Normalize(configuredRingAxis);
@@ -1202,6 +1347,7 @@ public sealed class FireworkShell
             RingAxis: Profile.RingAxis,
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
             FinaleSalute: Profile.FinaleSaluteParams,
+            Comet: Profile.CometParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme));
 
         Alive = false;
@@ -1220,6 +1366,7 @@ public readonly record struct ShellExplosion(
     Vector3? RingAxis,
     float RingAxisRandomTiltDegrees,
     FinaleSaluteParams FinaleSalute,
+    CometParams Comet,
     Vector4 BaseColor);
 
 internal static class ColorUtil

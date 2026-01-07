@@ -15,7 +15,37 @@ public enum FireworkBurstShape
     Horsetail,
     DoubleRing,
     Spiral,
-    FinaleSalute
+    FinaleSalute,
+    Comet
+}
+
+public sealed record CometParams(
+    int CometCount,
+    float CometSpeedMin,
+    float CometSpeedMax,
+    float CometUpBias,
+    float CometGravityScale,
+    float CometDrag,
+    float CometLifetimeSeconds,
+    int TrailParticleCount,
+    float TrailParticleLifetime,
+    float TrailSpeed,
+    float TrailSmokeChance,
+    Vector4? TrailColor)
+{
+    public static CometParams Defaults { get; } = new(
+        CometCount: 30,
+        CometSpeedMin: 15f,
+        CometSpeedMax: 25f,
+        CometUpBias: 0.30f,
+        CometGravityScale: 0.8f,
+        CometDrag: 0.06f,
+        CometLifetimeSeconds: 4.0f,
+        TrailParticleCount: 8,
+        TrailParticleLifetime: 0.5f,
+        TrailSpeed: 4.0f,
+        TrailSmokeChance: 0.20f,
+        TrailColor: null); // null = use burst color
 }
 
 public sealed record FinaleSaluteParams(
@@ -105,14 +135,16 @@ public sealed record class FireworkShellProfile(
     float ParticleLifetimeSeconds,
     // Sparkle/twinkle for burst particles only (visual brightness modulation in shader).
     // Rate is in Hz (sparkles per second). Intensity is roughly 0..1 (can go higher for "glitter bombs").
-    float BurstSparkleRateHz = 0.0f,
-    float BurstSparkleIntensity = 0.0f,
-    Vector3? RingAxis = null,
-    float RingAxisRandomTiltDegrees = 0.0f,
-    FinaleSaluteParams? FinaleSalute = null)
-{
-    public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
-}
+        float BurstSparkleRateHz = 0.0f,
+        float BurstSparkleIntensity = 0.0f,
+        Vector3? RingAxis = null,
+        float RingAxisRandomTiltDegrees = 0.0f,
+        FinaleSaluteParams? FinaleSalute = null,
+        CometParams? Comet = null)
+    {
+        public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
+        public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
+    }
 
 public sealed record class GroundEffectProfile(
     string Id,
