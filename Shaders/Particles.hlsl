@@ -37,7 +37,8 @@ struct Particle
 };
 
 RWStructuredBuffer<Particle> Particles : register(u0);
-AppendStructuredBuffer<uint> AliveIndices : register(u1);
+AppendStructuredBuffer<uint> AliveAdd : register(u1);
+AppendStructuredBuffer<uint> AliveAlpha : register(u2);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
@@ -315,7 +316,11 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     // Record index of particles that are still alive after lifetime/ground kills.
     if (p.Kind != 0)
     {
-        AliveIndices.Append(i);
+        // Smoke goes to alpha pass; everything else additive.
+        if (p.Kind == 3)
+            AliveAlpha.Append(i);
+        else
+            AliveAdd.Append(i);
     }
 }
 

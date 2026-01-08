@@ -17,12 +17,18 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11ShaderResourceView? _particleSRV;
     private ID3D11UnorderedAccessView? _particleUAV;
 
-    private ID3D11Buffer? _aliveIndexBuffer;
-    private ID3D11UnorderedAccessView? _aliveIndexUAV;
-    private ID3D11ShaderResourceView? _aliveIndexSRV;
-    private ID3D11Buffer? _aliveCountBuffer; // 4-byte default buffer
-    private ID3D11Buffer? _aliveCountStaging;
-    private int _lastAliveCount;
+    private ID3D11Buffer? _aliveAddIndexBuffer;
+    private ID3D11UnorderedAccessView? _aliveAddUAV;
+    private ID3D11ShaderResourceView? _aliveAddSRV;
+    private ID3D11Buffer? _aliveAlphaIndexBuffer;
+    private ID3D11UnorderedAccessView? _aliveAlphaUAV;
+    private ID3D11ShaderResourceView? _aliveAlphaSRV;
+    private ID3D11Buffer? _aliveAddCountDefault; // 4-byte default buffer
+    private ID3D11Buffer? _aliveAddCountStaging;
+    private ID3D11Buffer? _aliveAlphaCountDefault; // 4-byte default buffer
+    private ID3D11Buffer? _aliveAlphaCountStaging;
+    private int _lastAliveAddCount;
+    private int _lastAliveAlphaCount;
     private long _lastAliveLogTick;
 
     private ID3D11ComputeShader? _cs;
@@ -102,9 +108,9 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-        // Alive index buffer (structured uint)
-        _aliveIndexBuffer?.Dispose();
-        _aliveIndexBuffer = device.CreateBuffer(new BufferDescription
+        // Alive index buffers (structured uint) for additive and alpha
+        _aliveAddIndexBuffer?.Dispose();
+        _aliveAddIndexBuffer = device.CreateBuffer(new BufferDescription
         {
             BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
             Usage = ResourceUsage.Default,
@@ -114,8 +120,19 @@ internal sealed class ParticlesPipeline : IDisposable
             StructureByteStride = (uint)sizeof(uint)
         });
 
-        _aliveIndexUAV?.Dispose();
-        _aliveIndexUAV = device.CreateUnorderedAccessView(_aliveIndexBuffer, new UnorderedAccessViewDescription
+        _aliveAlphaIndexBuffer?.Dispose();
+        _aliveAlphaIndexBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(sizeof(uint) * _capacity),
+            StructureByteStride = (uint)sizeof(uint)
+        });
+
+        _aliveAddUAV?.Dispose();
+        _aliveAddUAV = device.CreateUnorderedAccessView(_aliveAddIndexBuffer, new UnorderedAccessViewDescription
         {
             ViewDimension = UnorderedAccessViewDimension.Buffer,
             Format = Format.Unknown,
@@ -127,8 +144,21 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-        _aliveIndexSRV?.Dispose();
-        _aliveIndexSRV = device.CreateShaderResourceView(_aliveIndexBuffer, new ShaderResourceViewDescription
+        _aliveAlphaUAV?.Dispose();
+        _aliveAlphaUAV = device.CreateUnorderedAccessView(_aliveAlphaIndexBuffer, new UnorderedAccessViewDescription
+        {
+            ViewDimension = UnorderedAccessViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferUnorderedAccessView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_capacity,
+                Flags = BufferUnorderedAccessViewFlags.Append
+            }
+        });
+
+        _aliveAddSRV?.Dispose();
+        _aliveAddSRV = device.CreateShaderResourceView(_aliveAddIndexBuffer, new ShaderResourceViewDescription
         {
             ViewDimension = ShaderResourceViewDimension.Buffer,
             Format = Format.Unknown,
@@ -139,9 +169,21 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-        // 4-byte buffer to receive the structure count via CopyStructureCount
-        _aliveCountBuffer?.Dispose();
-        _aliveCountBuffer = device.CreateBuffer(new BufferDescription
+        _aliveAlphaSRV?.Dispose();
+        _aliveAlphaSRV = device.CreateShaderResourceView(_aliveAlphaIndexBuffer, new ShaderResourceViewDescription
+        {
+            ViewDimension = ShaderResourceViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferShaderResourceView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_capacity
+            }
+        });
+
+        // 4-byte buffers to receive the structure count via CopyStructureCount
+        _aliveAddCountDefault?.Dispose();
+        _aliveAddCountDefault = device.CreateBuffer(new BufferDescription
         {
             BindFlags = BindFlags.None,
             Usage = ResourceUsage.Default,
@@ -150,8 +192,28 @@ internal sealed class ParticlesPipeline : IDisposable
             ByteWidth = 4
         });
 
-        _aliveCountStaging?.Dispose();
-        _aliveCountStaging = device.CreateBuffer(new BufferDescription
+        _aliveAddCountStaging?.Dispose();
+        _aliveAddCountStaging = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = 4
+        });
+
+        _aliveAlphaCountDefault?.Dispose();
+        _aliveAlphaCountDefault = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = 4
+        });
+
+        _aliveAlphaCountStaging?.Dispose();
+        _aliveAlphaCountStaging = device.CreateBuffer(new BufferDescription
         {
             BindFlags = BindFlags.None,
             Usage = ResourceUsage.Staging,
@@ -242,7 +304,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
     {
-        if (_cs is null || _particleUAV is null || _aliveIndexUAV is null || _aliveCountBuffer is null || _aliveCountStaging is null || _frameCB is null)
+        if (_cs is null || _particleUAV is null || _aliveAddUAV is null || _aliveAlphaUAV is null || _aliveAddCountDefault is null || _aliveAddCountStaging is null || _aliveAlphaCountDefault is null || _aliveAlphaCountStaging is null || _frameCB is null)
             return;
 
         var right = new Vector3(view.M11, view.M21, view.M31);
@@ -275,38 +337,46 @@ internal sealed class ParticlesPipeline : IDisposable
 
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
-        // Bind particle UAV at u0 and alive indices UAV at u1; reset append counter to 0 via initialCounts
-        context.CSSetUnorderedAccessView(0, _particleUAV);
-        // Reset append counter to 0 for slot 1
-        context.CSSetUnorderedAccessView(1, _aliveIndexUAV, (uint)0);
+        // Bind particle UAV at u0 and alive additive/alpha at u1/u2; reset append counters to 0
+        var uavs = new ID3D11UnorderedAccessView?[] { _particleUAV, _aliveAddUAV, _aliveAlphaUAV };
+        uint[] initialCounts = new uint[] { 0xFFFFFFFFu, 0u, 0u };
+        context.CSSetUnorderedAccessViews(0u, (uint)uavs.Length, uavs!, initialCounts);
 
         uint groups = (uint)((_capacity + 255) / 256);
         context.Dispatch(groups, 1, 1);
 
-        // Copy append count from alive UAV into a 4-byte buffer
-        context.CopyStructureCount(_aliveCountBuffer, 0, _aliveIndexUAV);
-        // Read back via staging
-        context.CopyResource(_aliveCountStaging, _aliveCountBuffer);
-        var mappedCount = context.Map(_aliveCountStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-        _lastAliveCount = Marshal.ReadInt32(mappedCount.DataPointer);
-        context.Unmap(_aliveCountStaging, 0);
+        // Copy append counts from alive UAVs into 4-byte buffers
+        context.CopyStructureCount(_aliveAddCountDefault, 0, _aliveAddUAV);
+        context.CopyStructureCount(_aliveAlphaCountDefault, 0, _aliveAlphaUAV);
+        // Read back via staging buffers
+        context.CopyResource(_aliveAddCountStaging, _aliveAddCountDefault);
+        context.CopyResource(_aliveAlphaCountStaging, _aliveAlphaCountDefault);
+        var mappedAdd = context.Map(_aliveAddCountStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        _lastAliveAddCount = Marshal.ReadInt32(mappedAdd.DataPointer);
+        context.Unmap(_aliveAddCountStaging, 0);
+        var mappedAlpha = context.Map(_aliveAlphaCountStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        _lastAliveAlphaCount = Marshal.ReadInt32(mappedAlpha.DataPointer);
+        context.Unmap(_aliveAlphaCountStaging, 0);
 
         // Minimal debug logging once per second
         long now = Environment.TickCount64;
         if (now - _lastAliveLogTick > 1000)
         {
-            System.Diagnostics.Debug.WriteLine($"AliveCount: {_lastAliveCount}");
+            int total = System.Math.Max(0, _lastAliveAddCount) + System.Math.Max(0, _lastAliveAlphaCount);
+            System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity}");
             _lastAliveLogTick = now;
         }
 
+        // Unbind UAVs
         context.CSSetUnorderedAccessView(0, null);
         context.CSSetUnorderedAccessView(1, null);
+        context.CSSetUnorderedAccessView(2, null);
         context.CSSetShader(null);
     }
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        if (_vs is null || _ps is null || _particleSRV is null || _aliveIndexSRV is null || _frameCB is null)
+        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null)
             return;
 
         var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -334,7 +404,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 SchemeTint = schemeTint,
 
                 ParticlePass = additive ? 0u : 1u,
-                AliveCount = (uint)System.Math.Max(0, _lastAliveCount)
+                AliveCount = (uint)(additive ? System.Math.Max(0, _lastAliveAddCount) : System.Math.Max(0, _lastAliveAlphaCount))
             };
 
             Marshal.StructureToPtr(frame, mappedPass.DataPointer, false);
@@ -364,11 +434,16 @@ internal sealed class ParticlesPipeline : IDisposable
 
         context.VSSetConstantBuffer(0, _frameCB);
         context.VSSetShaderResource(0, _particleSRV);
-        context.VSSetShaderResource(1, _aliveIndexSRV);
+        // Bind the appropriate alive list SRV to t1
+        if (additive)
+            context.VSSetShaderResource(1, _aliveAddSRV);
+        else
+            context.VSSetShaderResource(1, _aliveAlphaSRV);
 
-        // Instanced quads: 6 verts per particle instance; draw capacity-sized
-        uint particleCount = (uint)_capacity;
-        context.DrawInstanced(6, particleCount, 0, 0);
+        // Instanced quads: 6 verts per particle instance; draw only alive (clamped to capacity)
+        int alive = additive ? _lastAliveAddCount : _lastAliveAlphaCount;
+        uint instanceCount = (uint)System.Math.Min(_capacity, System.Math.Max(0, alive));
+        context.DrawInstanced(6, instanceCount, 0, 0);
 
         context.VSSetShaderResource(0, null);
         context.VSSetShaderResource(1, null);
@@ -390,16 +465,26 @@ internal sealed class ParticlesPipeline : IDisposable
         _particleBuffer?.Dispose();
         _particleBuffer = null;
 
-        _aliveIndexSRV?.Dispose();
-        _aliveIndexSRV = null;
-        _aliveIndexUAV?.Dispose();
-        _aliveIndexUAV = null;
-        _aliveIndexBuffer?.Dispose();
-        _aliveIndexBuffer = null;
-        _aliveCountBuffer?.Dispose();
-        _aliveCountBuffer = null;
-        _aliveCountStaging?.Dispose();
-        _aliveCountStaging = null;
+        _aliveAddSRV?.Dispose();
+        _aliveAddSRV = null;
+        _aliveAddUAV?.Dispose();
+        _aliveAddUAV = null;
+        _aliveAddIndexBuffer?.Dispose();
+        _aliveAddIndexBuffer = null;
+        _aliveAlphaSRV?.Dispose();
+        _aliveAlphaSRV = null;
+        _aliveAlphaUAV?.Dispose();
+        _aliveAlphaUAV = null;
+        _aliveAlphaIndexBuffer?.Dispose();
+        _aliveAlphaIndexBuffer = null;
+        _aliveAddCountDefault?.Dispose();
+        _aliveAddCountDefault = null;
+        _aliveAddCountStaging?.Dispose();
+        _aliveAddCountStaging = null;
+        _aliveAlphaCountDefault?.Dispose();
+        _aliveAlphaCountDefault = null;
+        _aliveAlphaCountStaging?.Dispose();
+        _aliveAlphaCountStaging = null;
 
         _cs?.Dispose();
         _cs = null;
