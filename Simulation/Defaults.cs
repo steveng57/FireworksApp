@@ -566,7 +566,8 @@ public static class DefaultShow
 
         var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
-        
+        //var mainShowShells = profiles.Shells.Where(kvp => (kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
+
         for (int i = 0; i < 100; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)

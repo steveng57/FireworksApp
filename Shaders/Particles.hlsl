@@ -36,6 +36,7 @@ struct Particle
 };
 
 RWStructuredBuffer<Particle> Particles : register(u0);
+AppendStructuredBuffer<uint> AliveIndices : register(u1);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
@@ -309,6 +310,12 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     }
 
     Particles[i] = p;
+
+    // Record index of particles that are still alive after lifetime/ground kills.
+    if (p.Kind != 0)
+    {
+        AliveIndices.Append(i);
+    }
 }
 
 StructuredBuffer<Particle> ParticlesRO : register(t0);
