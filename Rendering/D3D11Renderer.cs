@@ -1,14 +1,15 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Windows;
+using Vortice.D3DCompiler;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
-using Vortice.D3DCompiler;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using static Vortice.Direct3D11.D3D11;
-using System.Windows;
 
 // Pipelines moved under `Rendering/Pipelines` (same namespace).
 
@@ -970,12 +971,38 @@ public sealed class D3D11Renderer : IDisposable
         _particlesPipeline.Initialize(_device, _particleCapacity);
     }
 
+    private static GpuParticle MakeDebugParticle()
+    {
+        return new GpuParticle
+        {
+            Kind = 2, // spark (adjust if your shader uses different kind IDs)
+            Position = new Vector3(0, 8, 0),
+            Velocity = Vector3.Zero,
+            Age = 0.0f,
+            Lifetime = 2.0f,
+            BaseColor = new Vector4(1, 0, 0, 1),
+            Color = new Vector4(1, 0, 0, 1),
+            _pad0 = 0,
+            _pad1 = 0,
+            _pad2 = 0
+        };
+    }
+
+
     private void UpdateParticles(float scaledDt)
     {
         if (_context is null)
             return;
-        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt, _pendingSpawns);
+        // RIGHT BEFORE calling _particlesPipeline.Update(...)
         _pendingSpawns.Clear();
+        _pendingSpawns.Add(MakeDebugParticle());   // ONE particle
+        System.Diagnostics.Debug.WriteLine($"CALLSITE pending={_pendingSpawns.Count}");
+
+        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt, _pendingSpawns);
+
+        System.Diagnostics.Debug.WriteLine($"CALLSITE after Update pending={_pendingSpawns.Count}");
+        _pendingSpawns.Clear();
+
     }
 
     private void DrawParticles(bool additive)
