@@ -87,6 +87,7 @@ public sealed class D3D11Renderer : IDisposable
     // Increased 8x to accommodate dense effects (e.g., Finale Salute sparks) without overwriting live particles.
     private int _particleCapacity = 2097152;
     private int _particleWriteCursor;
+    private readonly System.Collections.Generic.List<GpuParticle> _pendingSpawns = new();
 
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
@@ -1035,7 +1036,25 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null)
             return;
 
-        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt);
+        // TEMP DEBUG: inject 1 particle to verify spawn injection path
+        if (_pendingSpawns.Count == 0)
+        {
+            _pendingSpawns.Add(new GpuParticle
+            {
+                Position = CameraPosition,
+                Velocity = new Vector3(0, 2, 0),
+                Age = 0,
+                Lifetime = 2.0f,
+                BaseColor = new Vector4(1, 1, 1, 1),
+                Color = new Vector4(1, 1, 1, 1),
+                Kind = (uint)ParticleKind.Spark
+            });
+        }
+
+        int spawns = _pendingSpawns.Count;
+        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt, _pendingSpawns);
+        System.Diagnostics.Debug.WriteLine($"Spawns={spawns} AliveOut={spawns}+");
+        _pendingSpawns.Clear();
     }
 
     private void DrawParticles(bool additive)

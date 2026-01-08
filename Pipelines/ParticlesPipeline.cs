@@ -37,6 +37,10 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11DepthStencilState? _depthReadNoWrite;
 
     private ID3D11Buffer? _frameCB;
+    // Spawn buffer for per-frame injections
+    private ID3D11Buffer? _spawnBuffer;
+    private ID3D11ShaderResourceView? _spawnSRV;
+    private const int MaxSpawnsPerFrame = 65536;
 
     private int _capacity;
 
@@ -232,9 +236,33 @@ internal sealed class ParticlesPipeline : IDisposable
             DepthFunc = ComparisonFunction.LessEqual,
             StencilEnable = false
         });
+
+        // Create spawn buffer resources
+        int strideSpawn = Marshal.SizeOf<GpuParticle>();
+        _spawnBuffer?.Dispose();
+        _spawnBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ShaderResource,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(strideSpawn * MaxSpawnsPerFrame),
+            StructureByteStride = (uint)strideSpawn
+        });
+        _spawnSRV?.Dispose();
+        _spawnSRV = device.CreateShaderResourceView(_spawnBuffer, new ShaderResourceViewDescription
+        {
+            ViewDimension = ShaderResourceViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferShaderResourceView
+            {
+                FirstElement = 0,
+                NumElements = (uint)MaxSpawnsPerFrame
+            }
+        });
     }
 
-    public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
+    public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt, System.Collections.Generic.IReadOnlyList<GpuParticle>? pendingSpawns)
     {
         if (_cs is null || _frameCB is null)
             return;
@@ -242,6 +270,10 @@ internal sealed class ParticlesPipeline : IDisposable
         var right = new Vector3(view.M11, view.M21, view.M31);
         var up = new Vector3(view.M12, view.M22, view.M32);
         var vp = Matrix4x4.Transpose(view * proj);
+
+        int spawnCount = pendingSpawns?.Count ?? 0;
+        if (spawnCount > MaxSpawnsPerFrame)
+            spawnCount = MaxSpawnsPerFrame;
 
         var frame = new FrameCBData
         {
@@ -260,7 +292,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
             SchemeTint = schemeTint,
 
-            ParticlePass = 0u
+            ParticlePass = 0u,
+            SpawnCount = (uint)spawnCount
         };
 
         var mapped = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -285,6 +318,40 @@ internal sealed class ParticlesPipeline : IDisposable
         int dispatchCount = System.Math.Clamp(_aliveCount, 0, _capacity);
         uint groups = (uint)((dispatchCount + 255) / 256);
         context.Dispatch(groups, 1, 1);
+        System.Diagnostics.Debug.WriteLine($"Spawns={spawnCount}, AliveOut={dispatchCount}");
+
+        // After survivor update, optionally append spawns
+        if (spawnCount > 0 && _spawnBuffer != null && _spawnSRV != null)
+        {
+            // Upload pendingSpawns to spawn buffer
+            var mappedSpawn = context.Map(_spawnBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                int stride = Marshal.SizeOf<GpuParticle>();
+                nint basePtr = mappedSpawn.DataPointer;
+                for (int i = 0; i < spawnCount; i++)
+                {
+                    Marshal.StructureToPtr(pendingSpawns![i], basePtr + (i * stride), false);
+                }
+            }
+            finally
+            {
+                context.Unmap(_spawnBuffer, 0);
+            }
+
+            // Bind spawn SRV and same Out UAV, then dispatch CSAppendSpawns
+            context.CSSetShaderResource(1, _spawnSRV);
+            // Reuse the same compute shader entry? We need CSAppendSpawns
+            string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
+            string source = File.ReadAllText(shaderPath);
+            var csAppendBlob = Compiler.Compile(source, "CSAppendSpawns", shaderPath, "cs_5_0");
+            var csAppend = context.Device.CreateComputeShader(csAppendBlob.ToArray());
+            context.CSSetShader(csAppend);
+            uint groupsSpawns = (uint)((spawnCount + 255) / 256);
+            context.Dispatch(groupsSpawns, 1, 1);
+            context.CSSetShaderResource(1, null);
+            csAppend.Dispose();
+        }
 
         // Read back new alive count
         if (_counterReadback != null)
@@ -368,9 +435,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         context.VSSetConstantBuffer(0, _frameCB);
 
-        // IMPORTANT: bind to the slot your shader expects.
-        // Step 1 used t2 in your earlier working code; keep it consistent.
-        const int ParticleSrvSlot = 2;
+        // Bind particle SRV at t0 (vertex shader expects ParticlesRO at t0)
+        const int ParticleSrvSlot = 0;
         context.VSSetShaderResource(ParticleSrvSlot, currentSRV);
         context.PSSetShaderResource(ParticleSrvSlot, currentSRV);
 

@@ -52,6 +52,11 @@ internal struct FrameCBData
     public uint _ppad0;
     public uint _ppad1;
     public uint _ppad2;
+
+    public uint SpawnCount;
+    public uint _spad0;
+    public uint _spad1;
+    public uint _spad2;
 }
 
 [StructLayout(LayoutKind.Sequential)]

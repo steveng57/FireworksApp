@@ -21,6 +21,8 @@ cbuffer FrameCB : register(b0)
 
     uint ParticlePass; // 0=additive, 1=alpha
     uint3 _ppad;
+    uint SpawnCount;
+    uint3 _spad;
 };
 
 struct Particle
@@ -36,6 +38,7 @@ struct Particle
 };
 
 StructuredBuffer<Particle> ParticlesIn : register(t0);
+StructuredBuffer<Particle> Spawns : register(t1);
 AppendStructuredBuffer<Particle> ParticlesOut : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
@@ -311,6 +314,21 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     // Append alive particle to output
     ParticlesOut.Append(p);
+}
+
+[numthreads(256, 1, 1)]
+void CSAppendSpawns(uint3 tid : SV_DispatchThreadID)
+{
+    uint i = tid.x;
+    if (i >= SpawnCount)
+        return;
+
+    Particle p = Spawns[i];
+    // Only append non-dead
+    if (p.Kind != 0)
+    {
+        ParticlesOut.Append(p);
+    }
 }
 
 StructuredBuffer<Particle> ParticlesRO : register(t0);
