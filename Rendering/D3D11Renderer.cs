@@ -370,22 +370,17 @@ public sealed class D3D11Renderer : IDisposable
             _context.Unmap(uploadBuffer, 0);
         }
 
-        // Optional safety: avoid overwriting live range when near capacity saturation.
-        bool PreventOverwrite = true;
-        if (PreventOverwrite && (_particlesPipeline is not null))
-        {
-            // If we're already saturated, drop the tail writes and count as SpawnDropped.
-            int alive = System.Math.Max(0, _particlesPipelineCapacitySafe());
-            if (alive >= _particleCapacity - 16)
-            {
-                _particlesPipeline.AddSpawnDroppedCount(firstCount + remaining);
-                return;
-            }
-        }
+        // Debug overwrite detection and optional drop (before writing to default)
+        if (HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining))
+            return;
 
         if (firstCount > 0)
         {
-            var srcBox = new Box
+        // Debug overwrite detection and optional drop (before writing to default)
+        if (HandleOverwriteDebugAndPrevention(particleBuffer, start, 1, 0))
+            return;
+
+        var srcBox = new Box
             {
                 Left = (int)(start * stride),
                 Right = (int)((start + firstCount) * stride),
@@ -470,6 +465,8 @@ public sealed class D3D11Renderer : IDisposable
         };
 
         _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+
+        HandleOverwriteDebugAndPrevention(particleBuffer, start, 1, 0);
 
         _particleWriteCursor = (start + 1) % _particleCapacity;
     }
@@ -784,6 +781,9 @@ public sealed class D3D11Renderer : IDisposable
             _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
         }
 
+        if (HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining))
+            return;
+
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
@@ -856,7 +856,9 @@ public sealed class D3D11Renderer : IDisposable
         try
         {
             nint basePtr = mapped.DataPointer;
-            if (firstCount > 0)
+        if (HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining))
+            return;
+        if (firstCount > 0)
             {
                 nint dst = basePtr + (start * stride);
                 for (int i = 0; i < firstCount; i++)
@@ -878,6 +880,8 @@ public sealed class D3D11Renderer : IDisposable
             _context.Unmap(uploadBuffer, 0);
         }
 
+        if (HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining))
+            return;
         if (firstCount > 0)
         {
             var srcBox = new Box
@@ -907,6 +911,8 @@ public sealed class D3D11Renderer : IDisposable
 
             _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
         }
+
+        HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining);
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
@@ -1031,7 +1037,57 @@ public sealed class D3D11Renderer : IDisposable
             _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
         }
 
+        HandleOverwriteDebugAndPrevention(particleBuffer, start, firstCount, remaining);
+
         _particleWriteCursor = (start + count) % _particleCapacity;
+    }
+
+    private bool HandleOverwriteDebugAndPrevention(ID3D11Buffer particleBuffer, int start, int firstCount, int remaining)
+    {
+        if (_context is null) return false;
+        var readback = _particlesPipeline.ParticleReadbackBuffer;
+        if (readback is null) return false;
+
+        // Copy current particle buffer contents to staging and inspect target slots
+        _context.CopyResource(readback, particleBuffer);
+        var rb = _context.Map(readback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        int ow = 0;
+        try
+        {
+            int stride = Marshal.SizeOf<GpuParticle>();
+            // layout offset: Position(3f)+Velocity(3f)+Age(1f)+Lifetime(1f)+BaseColor(4f)+Color(4f) = 16 floats
+            nint kindOffset = (nint)(sizeof(float) * 16);
+            for (int i = 0; i < firstCount; i++)
+            {
+                int idx = start + i;
+                nint ptr = rb.DataPointer + idx * stride + kindOffset;
+                uint kind = (uint)Marshal.ReadInt32(ptr);
+                if (kind != 0) ow++;
+            }
+            for (int i = 0; i < remaining; i++)
+            {
+                int idx = i;
+                nint ptr = rb.DataPointer + idx * stride + kindOffset;
+                uint kind = (uint)Marshal.ReadInt32(ptr);
+                if (kind != 0) ow++;
+            }
+        }
+        finally
+        {
+            _context.Unmap(readback, 0);
+        }
+
+        if (ow > 0)
+        {
+            _particlesPipeline.AddSpawnOverwriteCount(ow);
+            const bool PreventOverwrite = true;
+            if (PreventOverwrite)
+            {
+                _particlesPipeline.AddSpawnDroppedCount(firstCount + remaining);
+                return true;
+            }
+        }
+        return false;
     }
 
     private Vector3 RandomUnitVector()

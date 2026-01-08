@@ -16,6 +16,7 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _particleUploadBuffer;
     private ID3D11ShaderResourceView? _particleSRV;
     private ID3D11UnorderedAccessView? _particleUAV;
+    private ID3D11Buffer? _particleReadbackBuffer;
 
     private ID3D11Buffer? _aliveAddIndexBuffer;
     private ID3D11UnorderedAccessView? _aliveAddUAV;
@@ -53,6 +54,7 @@ internal sealed class ParticlesPipeline : IDisposable
     public int Capacity => _capacity;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
+    public ID3D11Buffer? ParticleReadbackBuffer => _particleReadbackBuffer;
     public void AddSpawnOverwriteCount(int n) => System.Threading.Interlocked.Add(ref _pendingOw, n);
     public void AddSpawnDroppedCount(int n) => System.Threading.Interlocked.Add(ref _pendingSd, n);
 
@@ -542,6 +544,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _particleBuffer?.Dispose();
         _particleBuffer = null;
+        _particleReadbackBuffer?.Dispose();
+        _particleReadbackBuffer = null;
 
         _aliveAddSRV?.Dispose();
         _aliveAddSRV = null;
