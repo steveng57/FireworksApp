@@ -43,6 +43,11 @@ internal sealed class ParticlesPipeline : IDisposable
 
     private int _capacity;
 
+    // Debug counters (optional)
+    private ID3D11Buffer? _debugCountersBuffer; // UAV buffer with counters
+    private ID3D11UnorderedAccessView? _debugCountersUAV;
+    private ID3D11Buffer? _debugCountersReadback; // staging
+
     public int Capacity => _capacity;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
@@ -300,6 +305,39 @@ internal sealed class ParticlesPipeline : IDisposable
             DepthFunc = ComparisonFunction.LessEqual,
             StencilEnable = false
         });
+
+        // Debug counters: 32 uints structured buffer with UAV
+        _debugCountersBuffer?.Dispose();
+        _debugCountersBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(sizeof(uint) * 32),
+            StructureByteStride = (uint)sizeof(uint)
+        });
+        _debugCountersUAV?.Dispose();
+        _debugCountersUAV = device.CreateUnorderedAccessView(_debugCountersBuffer, new UnorderedAccessViewDescription
+        {
+            ViewDimension = UnorderedAccessViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferUnorderedAccessView
+            {
+                FirstElement = 0,
+                NumElements = 32,
+                Flags = BufferUnorderedAccessViewFlags.None
+            }
+        });
+        _debugCountersReadback?.Dispose();
+        _debugCountersReadback = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = (uint)(sizeof(uint) * 32)
+        });
     }
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
@@ -338,9 +376,15 @@ internal sealed class ParticlesPipeline : IDisposable
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
         // Bind particle UAV at u0 and alive additive/alpha at u1/u2; reset append counters to 0
-        var uavs = new ID3D11UnorderedAccessView?[] { _particleUAV, _aliveAddUAV, _aliveAlphaUAV };
-        uint[] initialCounts = new uint[] { 0xFFFFFFFFu, 0u, 0u };
+        var uavs = new ID3D11UnorderedAccessView?[] { _particleUAV, _aliveAddUAV, _aliveAlphaUAV, _debugCountersUAV };
+        uint[] initialCounts = new uint[] { 0xFFFFFFFFu, 0u, 0u, 0xFFFFFFFFu };
         context.CSSetUnorderedAccessViews(0u, (uint)uavs.Length, uavs!, initialCounts);
+
+        // Clear debug counters to zero each frame if available
+        if (_debugCountersUAV is not null)
+        {
+            context.ClearUnorderedAccessView(_debugCountersUAV, new Int4(0, 0, 0, 0));
+        }
 
         uint groups = (uint)((_capacity + 255) / 256);
         context.Dispatch(groups, 1, 1);
@@ -363,7 +407,31 @@ internal sealed class ParticlesPipeline : IDisposable
         if (now - _lastAliveLogTick > 1000)
         {
             int total = System.Math.Max(0, _lastAliveAddCount) + System.Math.Max(0, _lastAliveAlphaCount);
-            System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity}");
+            if (_debugCountersBuffer is not null && _debugCountersReadback is not null)
+            {
+                context.CopyResource(_debugCountersReadback, _debugCountersBuffer);
+                var mappedDbg = context.Map(_debugCountersReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+                try
+                {
+                    var ptr = mappedDbg.DataPointer;
+                    uint processed = (uint)Marshal.ReadInt32(ptr, 0 * 4);
+                    uint aliveKept = (uint)Marshal.ReadInt32(ptr, 1 * 4);
+                    uint killedLife = (uint)Marshal.ReadInt32(ptr, 2 * 4);
+                    uint killedGround = (uint)Marshal.ReadInt32(ptr, 3 * 4);
+                    uint killedInvalid = (uint)Marshal.ReadInt32(ptr, 4 * 4);
+                    uint appendedAdd = (uint)Marshal.ReadInt32(ptr, 5 * 4);
+                    uint appendedAlpha = (uint)Marshal.ReadInt32(ptr, 6 * 4);
+                    System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity} | Proc={processed} Kept={aliveKept} KL={killedLife} KG={killedGround} KI={killedInvalid} AppAdd={appendedAdd} AppAlpha={appendedAlpha}");
+                }
+                finally
+                {
+                    context.Unmap(_debugCountersReadback, 0);
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity}");
+            }
             _lastAliveLogTick = now;
         }
 
@@ -371,6 +439,7 @@ internal sealed class ParticlesPipeline : IDisposable
         context.CSSetUnorderedAccessView(0, null);
         context.CSSetUnorderedAccessView(1, null);
         context.CSSetUnorderedAccessView(2, null);
+        context.CSSetUnorderedAccessView(3, null);
         context.CSSetShader(null);
     }
 
@@ -506,5 +575,12 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _frameCB?.Dispose();
         _frameCB = null;
+
+        _debugCountersReadback?.Dispose();
+        _debugCountersReadback = null;
+        _debugCountersUAV?.Dispose();
+        _debugCountersUAV = null;
+        _debugCountersBuffer?.Dispose();
+        _debugCountersBuffer = null;
     }
 }

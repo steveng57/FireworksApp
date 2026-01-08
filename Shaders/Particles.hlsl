@@ -1,6 +1,10 @@
 // Shaders/Particles.hlsl
 // GPU particle system: shells + sparks (burst) in a single structured buffer.
 
+#ifndef DEBUG_COUNTERS
+#define DEBUG_COUNTERS 1
+#endif
+
 cbuffer FrameCB : register(b0)
 {
     float4x4 ViewProjection;
@@ -40,6 +44,22 @@ RWStructuredBuffer<Particle> Particles : register(u0);
 AppendStructuredBuffer<uint> AliveAdd : register(u1);
 AppendStructuredBuffer<uint> AliveAlpha : register(u2);
 
+#if DEBUG_COUNTERS
+RWStructuredBuffer<uint> DebugCounters : register(u3);
+// Counter indices
+static const uint DC_Processed       = 0u;
+static const uint DC_AliveKept       = 1u;
+static const uint DC_KilledLifetime  = 2u;
+static const uint DC_KilledGround    = 3u;
+static const uint DC_KilledInvalid   = 4u;
+static const uint DC_AppendedAdd     = 5u;
+static const uint DC_AppendedAlpha   = 6u;
+
+#define COUNTER_ADD(idx) InterlockedAdd(DebugCounters[idx], 1);
+#else
+#define COUNTER_ADD(idx)
+#endif
+
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
 
@@ -58,6 +78,14 @@ float Hash01(uint x)
 
     // Convert to [0,1)
     return (x & 0x00FFFFFFu) / 16777216.0f;
+}
+
+bool AnyInvalid(float3 a, float3 b)
+{
+    // NaN check: x != x is true if NaN; use isnan/isinf if available
+    bool nanp = any(isnan(a)) || any(isnan(b));
+    bool infp = any(isinf(a)) || any(isinf(b));
+    return nanp || infp;
 }
 
 float4 ColorRampSpark(float t, float4 baseColor)
@@ -154,6 +182,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     uint i = tid.x;
 
     Particle p = Particles[i];
+    COUNTER_ADD(DC_Processed);
     if (p.Kind == 0)
         return;
 
@@ -164,6 +193,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     if (p.Age >= p.Lifetime)
     {
+        COUNTER_ADD(DC_KilledLifetime);
         p.Kind = 0;
         p.Color = float4(0, 0, 0, 0);
         Particles[i] = p;
@@ -208,10 +238,21 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         p.Position += p.Velocity * dt;
     }
 
+    // Validate state to prevent bad values from propagating
+    if (AnyInvalid(p.Position, p.Velocity))
+    {
+        COUNTER_ADD(DC_KilledInvalid);
+        p.Kind = 0;
+        p.Color = float4(0, 0, 0, 0);
+        Particles[i] = p;
+        return;
+    }
+
     // Kill particles that fall below ground (y=0).
     // Prevents sparks/smoke rendering through the ground plane.
     if (p.Position.y < 0.0f)
     {
+        COUNTER_ADD(DC_KilledGround);
         p.Kind = 0;
         p.Color = float4(0, 0, 0, 0);
         Particles[i] = p;
@@ -318,9 +359,16 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     {
         // Smoke goes to alpha pass; everything else additive.
         if (p.Kind == 3)
+        {
             AliveAlpha.Append(i);
+            COUNTER_ADD(DC_AppendedAlpha);
+        }
         else
+        {
             AliveAdd.Append(i);
+            COUNTER_ADD(DC_AppendedAdd);
+        }
+        COUNTER_ADD(DC_AliveKept);
     }
 }
 

@@ -564,8 +564,8 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
+        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
+        //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => (kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
 
         for (int i = 0; i < 100; i += gridSize)
