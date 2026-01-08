@@ -908,18 +908,13 @@ public sealed class D3D11Renderer : IDisposable
 
     private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
 
         // Trail is a slightly warm white and additive blended in the first particle pass.
         Vector4 color = new(1.0f, 0.92f, 0.55f, 1.0f);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
 
         var staging = new GpuParticle[count];
 
@@ -947,71 +942,15 @@ public sealed class D3D11Renderer : IDisposable
                 Velocity = vel,
                 Age = 0.0f,
                 Lifetime = ShellTrailLifetimeSeconds,
+                BaseColor = color,
                 Color = color,
-                Kind = (uint)ParticleKind.Spark
+                Kind = (uint)ParticleKind.Spark,
+                _pad0 = PackFloat(12.0f),
+                _pad1 = PackFloat(0.35f),
+                _pad2 = 0
             };
         }
-
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
-
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            nint basePtr = mapped.DataPointer;
-            if (firstCount > 0)
-            {
-                nint dst = basePtr + (start * stride);
-                for (int i = 0; i < firstCount; i++)
-                {
-                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
-                }
-            }
-
-            if (remaining > 0)
-            {
-                for (int i = 0; i < remaining; i++)
-                {
-                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
-                }
-            }
-        }
-        finally
-        {
-            _context.Unmap(uploadBuffer, 0);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = 0,
-                Right = (int)(remaining * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
-        }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
+        _pendingSpawns.AddRange(staging);
     }
 
     private Vector3 RandomUnitVector()
