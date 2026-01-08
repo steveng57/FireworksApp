@@ -107,7 +107,8 @@ internal sealed class ParticlesPipeline : IDisposable
             Console.WriteLine(ex.Message);
         }
 
-        var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
+        // Compile instanced VS entry
+        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
         var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
 
         byte[] csBytes = csBlob.ToArray();
@@ -287,7 +288,9 @@ internal sealed class ParticlesPipeline : IDisposable
         context.VSSetConstantBuffer(0, _frameCB);
         context.VSSetShaderResource(0, _particleSRV);
 
-        context.Draw((uint)(_capacity * 6), 0);
+        // Instanced quads: 6 verts per particle instance; draw capacity-sized
+        uint particleCount = (uint)_capacity;
+        context.DrawInstanced(6, particleCount, 0, 0);
 
         context.VSSetShaderResource(0, null);
         context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);

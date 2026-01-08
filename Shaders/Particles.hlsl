@@ -321,13 +321,11 @@ struct VSOut
     uint Kind : TEXCOORD1;
 };
 
-VSOut VSParticle(uint vid : SV_VertexID)
+// Instanced quad rendering: vid selects corner (0..5), iid selects particle.
+VSOut VSMain(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 {
-    // 6 verts per particle (two triangles)
-    uint particleIndex = vid / 6;
-    uint corner = vid % 6;
-
-    Particle p = ParticlesRO[particleIndex];
+    uint corner = vid; // 0..5 within the instance
+    Particle p = ParticlesRO[iid];
 
     VSOut o;
 
@@ -391,7 +389,6 @@ VSOut VSParticle(uint vid : SV_VertexID)
     o.Kind = p.Kind;
     return o;
 }
-
 
 float4 PSParticle(VSOut input) : SV_Target
 {
@@ -484,11 +481,11 @@ float4 PSParticle(VSOut input) : SV_Target
     float ndot = saturate(z);
 
     // Rim highlight: stronger for sparks, weaker for crackle (crackle should read "pinpoint")
-     float rimPow = (input.Kind == 2 || input.Kind == 6) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
+    float rimPow = (input.Kind == 2 || input.Kind == 6) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
     float rim = pow(saturate(1.0f - ndot), rimPow);
 
     // Core emphasis: crackle has a hotter center
-     float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2 || input.Kind == 6) ? 3.5f : 5.0f);
+    float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2 || input.Kind == 6) ? 3.5f : 5.0f);
 
     // Brightness model:
     // - base keeps it readable
