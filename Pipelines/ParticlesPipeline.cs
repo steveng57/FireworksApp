@@ -167,7 +167,7 @@ internal sealed class ParticlesPipeline : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            Console.WriteLine($"HLSL compile failed for CSUpdate: {ex.Message}");
         }
 
         ReadOnlyMemory<byte> csAppendBlob = default;
@@ -177,11 +177,15 @@ internal sealed class ParticlesPipeline : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            Console.WriteLine($"HLSL compile failed for CSAppendSpawns: {ex.Message}");
         }
 
-        var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
-        var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
+        ReadOnlyMemory<byte> vsBlob = default;
+        ReadOnlyMemory<byte> psBlob = default;
+        try { vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0"); }
+        catch (Exception ex) { Console.WriteLine($"HLSL compile failed for VSParticle: {ex.Message}"); }
+        try { psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0"); }
+        catch (Exception ex) { Console.WriteLine($"HLSL compile failed for PSParticle: {ex.Message}"); }
 
         byte[] csBytes = csBlob.ToArray();
         byte[] vsBytes = vsBlob.ToArray();
@@ -360,20 +364,12 @@ internal sealed class ParticlesPipeline : IDisposable
         context.CSSetShaderResource(1, null);
         context.CSSetUnorderedAccessView(0, null);
 
-        // Bind with initial append counter = 0 (reset once per frame)
-        context.CSSetShader(_cs);
+        // Reset counter via initialCount once per frame
         context.CSSetConstantBuffer(0, _frameCB);
-        context.CSSetShaderResource(0, inSRV);
-        // Reset counter via initialCounts parameter
         context.CSSetUnorderedAccessView(0, outUAV, 0);
 
-        // Dispatch only alive count threads (currently tracked; clamped)
-        int dispatchCount = aliveIn;
-        uint groups = (uint)((dispatchCount + 255) / 256);
-        context.Dispatch(groups, 1, 1);
-        // survivors appended; spawns will be appended next
-
-        // After survivor update, optionally append spawns
+        // Diagnostic Pass 1: append spawns only
+        int countAfterSpawns = 0;
         if (spawnCount > 0 && _spawnBuffer != null && _spawnSRV != null)
         {
             // Upload pendingSpawns to spawn buffer
@@ -392,7 +388,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 context.Unmap(_spawnBuffer, 0);
             }
 
-            // Bind spawn SRV and same Out UAV, then dispatch CSAppendSpawns
+            // Run CSAppendSpawns into uavOut
             context.CSSetShaderResource(1, _spawnSRV);
             if (_csAppend != null)
                 context.CSSetShader(_csAppend);
@@ -401,23 +397,42 @@ internal sealed class ParticlesPipeline : IDisposable
             context.CSSetShaderResource(1, null);
         }
 
-        // Read back new alive count
+        // Read back count after spawns
         if (_counterBuffer != null && _counterStaging != null)
         {
             context.CopyStructureCount(_counterBuffer, 0, outUAV);
             context.CopyResource(_counterStaging, _counterBuffer);
             var mappedCount = context.Map(_counterStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-            try
-            {
-                int count = Marshal.ReadInt32(mappedCount.DataPointer);
-                _aliveCount = System.Math.Clamp(count, 0, _capacity);
-            }
-            finally
-            {
-                context.Unmap(_counterStaging, 0);
-            }
-            System.Diagnostics.Debug.WriteLine($"aliveIn={aliveIn} spawnCount={spawnCount} aliveOut={_aliveCount}");
+            try { countAfterSpawns = Marshal.ReadInt32(mappedCount.DataPointer); }
+            finally { context.Unmap(_counterStaging, 0); }
         }
+
+        // Diagnostic Pass 2: update alive into the same uavOut (do not reset counter)
+        int countAfterUpdate = countAfterSpawns;
+        if (aliveIn > 0)
+        {
+            if (_cs != null)
+            {
+                context.CSSetShader(_cs);
+                context.CSSetShaderResource(0, inSRV);
+                uint groupsAlive = (uint)((aliveIn + 255) / 256);
+                context.Dispatch(groupsAlive, 1, 1);
+                context.CSSetShaderResource(0, null);
+            }
+        }
+
+        // Read back count after update
+        if (_counterBuffer != null && _counterStaging != null)
+        {
+            context.CopyStructureCount(_counterBuffer, 0, outUAV);
+            context.CopyResource(_counterStaging, _counterBuffer);
+            var mappedCount = context.Map(_counterStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+            try { countAfterUpdate = Marshal.ReadInt32(mappedCount.DataPointer); }
+            finally { context.Unmap(_counterStaging, 0); }
+        }
+
+        _aliveCount = System.Math.Clamp(countAfterUpdate, 0, _capacity);
+        System.Diagnostics.Debug.WriteLine($"spawnCount={spawnCount} countAfterSpawns={countAfterSpawns} countAfterUpdate={countAfterUpdate} aIsIn={_aIsIn}");
 
         // Swap buffers: Out becomes In
         _aIsIn = !_aIsIn;

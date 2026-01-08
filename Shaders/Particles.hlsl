@@ -38,7 +38,21 @@ struct Particle
 };
 
 StructuredBuffer<Particle> ParticlesIn : register(t0);
-StructuredBuffer<Particle> Spawns : register(t1);
+// Spawn buffer uses a C#-matching layout (80 bytes)
+struct SpawnParticle
+{
+    float3 Position;
+    float3 Velocity;
+    float Age;
+    float Lifetime;
+    float4 BaseColor;
+    float4 Color;
+    uint Kind;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+};
+StructuredBuffer<SpawnParticle> Spawns : register(t1);
 AppendStructuredBuffer<Particle> ParticlesOut : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
@@ -323,10 +337,20 @@ void CSAppendSpawns(uint3 tid : SV_DispatchThreadID)
     if (i >= SpawnCount)
         return;
 
-    Particle p = Spawns[i];
-    // Only append non-dead
-    if (p.Kind != 0)
+    SpawnParticle s = Spawns[i];
+    if (s.Kind != 0)
     {
+        // Convert to runtime Particle instance
+        Particle p;
+        p.Position = s.Position;
+        p.Velocity = s.Velocity;
+        p.Age = s.Age;
+        p.Lifetime = s.Lifetime;
+        p.BaseColor = s.BaseColor;
+        p.Color = s.Color;
+        p.Kind = s.Kind;
+        p._pad = uint3(s._pad0, s._pad1, s._pad2);
+
         ParticlesOut.Append(p);
     }
 }
@@ -403,10 +427,11 @@ VSOut VSParticle(uint vid : SV_VertexID, uint iid : SV_InstanceID)
         // PopFlash size is explicitly provided by the CPU.
         size = max(0.0f, asfloat(p._pad.x));
     }
-
+    size = 0.25f;
     float3 worldPos = p.Position + (CameraRightWS * (uv.x * size)) + (CameraUpWS * (uv.y * size));
     o.Position = mul(float4(worldPos, 1.0f), ViewProjection);
     o.Color = p.Color;
+    o.Color.a = 1.0f; // DEBUG: force visible
     o.UV = uv;
     o.Kind = p.Kind;
     return o;
