@@ -1053,7 +1053,7 @@ public sealed class D3D11Renderer : IDisposable
 
         int spawns = _pendingSpawns.Count;
         _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt, _pendingSpawns);
-        System.Diagnostics.Debug.WriteLine($"Spawns={spawns} AliveOut={spawns}+");
+        System.Diagnostics.Debug.WriteLine($"Spawns={spawns} AliveOut={_particlesPipeline.AliveCount}");
         _pendingSpawns.Clear();
     }
 

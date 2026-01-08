@@ -29,6 +29,7 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _counterReadback;
 
     private ID3D11ComputeShader? _cs;
+    private ID3D11ComputeShader? _csAppend;
     private ID3D11VertexShader? _vs;
     private ID3D11PixelShader? _ps;
 
@@ -42,9 +43,14 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11ShaderResourceView? _spawnSRV;
     private const int MaxSpawnsPerFrame = 65536;
 
+    // Counter readback
+    private ID3D11Buffer? _counterBuffer;
+    private ID3D11Buffer? _counterStaging;
+
     private int _capacity;
 
     public int Capacity => _capacity;
+    public int AliveCount => _aliveCount;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
     // Expose current input particle buffer for existing spawn paths
     public ID3D11Buffer? ParticleBuffer => _aIsIn ? _particlesA : _particlesB;
@@ -162,6 +168,16 @@ internal sealed class ParticlesPipeline : IDisposable
             Console.WriteLine(ex.Message);
         }
 
+        ReadOnlyMemory<byte> csAppendBlob = default;
+        try
+        {
+            csAppendBlob = Compiler.Compile(source, "CSAppendSpawns", shaderPath, "cs_5_0");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
         var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
         var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
 
@@ -170,10 +186,13 @@ internal sealed class ParticlesPipeline : IDisposable
         byte[] psBytes = psBlob.ToArray();
 
         _cs?.Dispose();
+        _csAppend?.Dispose();
         _vs?.Dispose();
         _ps?.Dispose();
 
         _cs = device.CreateComputeShader(csBytes);
+        if (!csAppendBlob.IsEmpty)
+            _csAppend = device.CreateComputeShader(csAppendBlob.ToArray());
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
 
@@ -260,6 +279,25 @@ internal sealed class ParticlesPipeline : IDisposable
                 NumElements = (uint)MaxSpawnsPerFrame
             }
         });
+
+        // Counter buffers
+        _counterBuffer?.Dispose();
+        _counterBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            ByteWidth = 4
+        });
+
+        _counterStaging?.Dispose();
+        _counterStaging = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            ByteWidth = 4
+        });
     }
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt, System.Collections.Generic.IReadOnlyList<GpuParticle>? pendingSpawns)
@@ -274,6 +312,9 @@ internal sealed class ParticlesPipeline : IDisposable
         int spawnCount = pendingSpawns?.Count ?? 0;
         if (spawnCount > MaxSpawnsPerFrame)
             spawnCount = MaxSpawnsPerFrame;
+        int aliveIn = System.Math.Clamp(_aliveCount, 0, _capacity);
+        int room = _capacity - aliveIn;
+        if (spawnCount > room) spawnCount = room;
 
         var frame = new FrameCBData
         {
@@ -307,7 +348,17 @@ internal sealed class ParticlesPipeline : IDisposable
         if (inSRV is null || outUAV is null)
             return;
 
-        // Bind with initial append counter = 0
+        // Hard unbind SRVs that may still be bound from draw (slots 0 and 2)
+        // Keep both to avoid hazards if bindings change.
+        context.VSSetShaderResource(0, null);
+        context.PSSetShaderResource(0, null);
+        context.VSSetShaderResource(2, null);
+        context.PSSetShaderResource(2, null);
+        context.CSSetShaderResource(0, null);
+        context.CSSetShaderResource(1, null);
+        context.CSSetUnorderedAccessView(0, null);
+
+        // Bind with initial append counter = 0 (reset once per frame)
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
         context.CSSetShaderResource(0, inSRV);
@@ -315,10 +366,10 @@ internal sealed class ParticlesPipeline : IDisposable
         context.CSSetUnorderedAccessView(0, outUAV, 0);
 
         // Dispatch only alive count threads (currently tracked; clamped)
-        int dispatchCount = System.Math.Clamp(_aliveCount, 0, _capacity);
+        int dispatchCount = aliveIn;
         uint groups = (uint)((dispatchCount + 255) / 256);
         context.Dispatch(groups, 1, 1);
-        System.Diagnostics.Debug.WriteLine($"Spawns={spawnCount}, AliveOut={dispatchCount}");
+        // survivors appended; spawns will be appended next
 
         // After survivor update, optionally append spawns
         if (spawnCount > 0 && _spawnBuffer != null && _spawnSRV != null)
@@ -341,23 +392,19 @@ internal sealed class ParticlesPipeline : IDisposable
 
             // Bind spawn SRV and same Out UAV, then dispatch CSAppendSpawns
             context.CSSetShaderResource(1, _spawnSRV);
-            // Reuse the same compute shader entry? We need CSAppendSpawns
-            string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
-            string source = File.ReadAllText(shaderPath);
-            var csAppendBlob = Compiler.Compile(source, "CSAppendSpawns", shaderPath, "cs_5_0");
-            var csAppend = context.Device.CreateComputeShader(csAppendBlob.ToArray());
-            context.CSSetShader(csAppend);
+            if (_csAppend != null)
+                context.CSSetShader(_csAppend);
             uint groupsSpawns = (uint)((spawnCount + 255) / 256);
             context.Dispatch(groupsSpawns, 1, 1);
             context.CSSetShaderResource(1, null);
-            csAppend.Dispose();
         }
 
         // Read back new alive count
-        if (_counterReadback != null)
+        if (_counterBuffer != null && _counterStaging != null)
         {
-            context.CopyStructureCount(_counterReadback, 0, outUAV);
-            var mappedCount = context.Map(_counterReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+            context.CopyStructureCount(_counterBuffer, 0, outUAV);
+            context.CopyResource(_counterStaging, _counterBuffer);
+            var mappedCount = context.Map(_counterStaging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
             try
             {
                 int count = Marshal.ReadInt32(mappedCount.DataPointer);
@@ -365,8 +412,9 @@ internal sealed class ParticlesPipeline : IDisposable
             }
             finally
             {
-                context.Unmap(_counterReadback, 0);
+                context.Unmap(_counterStaging, 0);
             }
+            System.Diagnostics.Debug.WriteLine($"aliveIn={aliveIn} spawnCount={spawnCount} aliveOut={_aliveCount}");
         }
 
         // Swap buffers: Out becomes In
@@ -380,8 +428,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        // Pick the SRV that contains the CURRENT alive list we want to render.
-        var currentSRV = _aIsIn ? _srvB : _srvA;
+        // After Update we swap: the new In buffer holds the alive list for this frame.
+        var currentSRV = _aIsIn ? _srvA : _srvB;
 
         if (_vs is null || _ps is null || currentSRV is null || _frameCB is null)
             return;
@@ -474,6 +522,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _cs?.Dispose();
         _cs = null;
+        _csAppend?.Dispose();
+        _csAppend = null;
 
         _vs?.Dispose();
         _vs = null;
@@ -492,5 +542,10 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _frameCB?.Dispose();
         _frameCB = null;
+
+        _spawnSRV?.Dispose(); _spawnSRV = null;
+        _spawnBuffer?.Dispose(); _spawnBuffer = null;
+        _counterBuffer?.Dispose(); _counterBuffer = null;
+        _counterStaging?.Dispose(); _counterStaging = null;
     }
 }
