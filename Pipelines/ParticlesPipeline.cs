@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.D3DCompiler;
@@ -60,6 +61,7 @@ internal sealed class ParticlesPipeline : IDisposable
         _capacity = particleCapacity;
 
         int stride = Marshal.SizeOf<GpuParticle>();
+        System.Diagnostics.Debug.Assert(stride == 80, "GpuParticle size must match HLSL Particle struct (80 bytes).");
 
         var init = new GpuParticle[_capacity];
         for (int i = 0; i < init.Length; i++)

@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace FireworksApp.Rendering;
@@ -27,6 +28,11 @@ internal struct GpuParticle
     public uint _pad0;
     public uint _pad1;
     public uint _pad2;
+    public static readonly int SizeInBytes = Marshal.SizeOf<GpuParticle>();
+    static GpuParticle()
+    {
+        Debug.Assert(SizeInBytes == 80, "GpuParticle size must be 80 bytes.");
+    }
 }
 
 [StructLayout(LayoutKind.Sequential)]

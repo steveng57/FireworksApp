@@ -1035,25 +1035,7 @@ public sealed class D3D11Renderer : IDisposable
     {
         if (_context is null)
             return;
-
-        // TEMP DEBUG: inject 1 particle to verify spawn injection path
-        if (_pendingSpawns.Count == 0)
-        {
-            _pendingSpawns.Add(new GpuParticle
-            {
-                Position = CameraPosition,
-                Velocity = new Vector3(0, 2, 0),
-                Age = 0,
-                Lifetime = 2.0f,
-                BaseColor = new Vector4(1, 1, 1, 1),
-                Color = new Vector4(1, 1, 1, 1),
-                Kind = (uint)ParticleKind.Spark
-            });
-        }
-
-        int spawns = _pendingSpawns.Count;
         _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt, _pendingSpawns);
-        System.Diagnostics.Debug.WriteLine($"Spawns={spawns} AliveOut={_particlesPipeline.AliveCount}");
         _pendingSpawns.Clear();
     }
 
