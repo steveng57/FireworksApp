@@ -59,9 +59,9 @@ internal sealed class ParticlesPipeline : IDisposable
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
         _capacity = particleCapacity;
-
+        const int ParticleStride = 80;
         int stride = Marshal.SizeOf<GpuParticle>();
-        System.Diagnostics.Debug.Assert(stride == 80, "GpuParticle size must match HLSL Particle struct (80 bytes).");
+        Debug.Assert(stride == ParticleStride, "GpuParticle size must match HLSL Particle struct (80 bytes).");
 
         var init = new GpuParticle[_capacity];
         for (int i = 0; i < init.Length; i++)
@@ -79,8 +79,8 @@ internal sealed class ParticlesPipeline : IDisposable
                 Usage = ResourceUsage.Default,
                 CPUAccessFlags = CpuAccessFlags.None,
                 MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = (uint)(stride * _capacity),
-                StructureByteStride = (uint)stride
+                ByteWidth = (uint)(ParticleStride * _capacity),
+                StructureByteStride = (uint)ParticleStride
             });
 
         _particlesB?.Dispose();
@@ -92,8 +92,8 @@ internal sealed class ParticlesPipeline : IDisposable
                 Usage = ResourceUsage.Default,
                 CPUAccessFlags = CpuAccessFlags.None,
                 MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = (uint)(stride * _capacity),
-                StructureByteStride = (uint)stride
+                ByteWidth = (uint)(ParticleStride * _capacity),
+                StructureByteStride = (uint)ParticleStride
             });
 
         _particleUploadBuffer?.Dispose();
@@ -103,8 +103,8 @@ internal sealed class ParticlesPipeline : IDisposable
             Usage = ResourceUsage.Staging,
             CPUAccessFlags = CpuAccessFlags.Write,
             MiscFlags = ResourceOptionFlags.BufferStructured,
-            ByteWidth = (uint)(stride * _capacity),
-            StructureByteStride = (uint)stride
+            ByteWidth = (uint)(ParticleStride * _capacity),
+            StructureByteStride = (uint)ParticleStride
         });
 
         _srvA?.Dispose();
@@ -262,7 +262,7 @@ internal sealed class ParticlesPipeline : IDisposable
         });
 
         // Create spawn buffer resources
-        int strideSpawn = Marshal.SizeOf<GpuParticle>();
+        int strideSpawn = ParticleStride;
         _spawnBuffer?.Dispose();
         _spawnBuffer = device.CreateBuffer(new BufferDescription
         {
@@ -270,8 +270,8 @@ internal sealed class ParticlesPipeline : IDisposable
             Usage = ResourceUsage.Dynamic,
             CPUAccessFlags = CpuAccessFlags.Write,
             MiscFlags = ResourceOptionFlags.BufferStructured,
-            ByteWidth = (uint)(strideSpawn * MaxSpawnsPerFrame),
-            StructureByteStride = (uint)strideSpawn
+            ByteWidth = (uint)(ParticleStride * MaxSpawnsPerFrame),
+            StructureByteStride = (uint)ParticleStride
         });
         _spawnSRV?.Dispose();
         _spawnSRV = device.CreateShaderResourceView(_spawnBuffer, new ShaderResourceViewDescription
