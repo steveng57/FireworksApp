@@ -35,7 +35,8 @@ struct Particle
     uint3 _pad;
 };
 
-RWStructuredBuffer<Particle> Particles : register(u0);
+StructuredBuffer<Particle> ParticlesIn : register(t0);
+AppendStructuredBuffer<Particle> ParticlesOut : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
@@ -150,7 +151,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 {
     uint i = tid.x;
 
-    Particle p = Particles[i];
+    Particle p = ParticlesIn[i];
     if (p.Kind == 0)
         return;
 
@@ -161,9 +162,9 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     if (p.Age >= p.Lifetime)
     {
+        // Dead: do not append
         p.Kind = 0;
         p.Color = float4(0, 0, 0, 0);
-        Particles[i] = p;
         return;
     }
 
@@ -211,7 +212,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     {
         p.Kind = 0;
         p.Color = float4(0, 0, 0, 0);
-        Particles[i] = p;
+        // Dead: do not append
         return;
     }
 
@@ -308,7 +309,8 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         p.Color = float4(c, a);
     }
 
-    Particles[i] = p;
+    // Append alive particle to output
+    ParticlesOut.Append(p);
 }
 
 StructuredBuffer<Particle> ParticlesRO : register(t0);

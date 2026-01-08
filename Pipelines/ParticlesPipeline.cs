@@ -12,10 +12,21 @@ namespace FireworksApp.Rendering;
 
 internal sealed class ParticlesPipeline : IDisposable
 {
-    private ID3D11Buffer? _particleBuffer;
+    // Ping-pong particle buffers (alive-list)
+    private ID3D11Buffer? _particlesA;
+    private ID3D11Buffer? _particlesB;
+    private ID3D11ShaderResourceView? _srvA;
+    private ID3D11ShaderResourceView? _srvB;
+    private ID3D11UnorderedAccessView? _uavA;
+    private ID3D11UnorderedAccessView? _uavB;
+
+    // Upload buffer used by spawns (unchanged for step 2; renderer still writes particles directly)
     private ID3D11Buffer? _particleUploadBuffer;
-    private ID3D11ShaderResourceView? _particleSRV;
-    private ID3D11UnorderedAccessView? _particleUAV;
+
+    // Current selection: true = A is input, false = B is input
+    private bool _aIsIn = true;
+    private int _aliveCount;
+    private ID3D11Buffer? _counterReadback;
 
     private ID3D11ComputeShader? _cs;
     private ID3D11VertexShader? _vs;
@@ -31,7 +42,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public int Capacity => _capacity;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
-    public ID3D11Buffer? ParticleBuffer => _particleBuffer;
+    // Expose current input particle buffer for existing spawn paths
+    public ID3D11Buffer? ParticleBuffer => _aIsIn ? _particlesA : _particlesB;
 
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
@@ -46,8 +58,21 @@ internal sealed class ParticlesPipeline : IDisposable
             init[i].Color = Vector4.Zero;
         }
 
-        _particleBuffer?.Dispose();
-        _particleBuffer = device.CreateBuffer(
+        _particlesA?.Dispose();
+        _particlesA = device.CreateBuffer(
+            init,
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
+                Usage = ResourceUsage.Default,
+                CPUAccessFlags = CpuAccessFlags.None,
+                MiscFlags = ResourceOptionFlags.BufferStructured,
+                ByteWidth = (uint)(stride * _capacity),
+                StructureByteStride = (uint)stride
+            });
+
+        _particlesB?.Dispose();
+        _particlesB = device.CreateBuffer(
             init,
             new BufferDescription
             {
@@ -70,8 +95,8 @@ internal sealed class ParticlesPipeline : IDisposable
             StructureByteStride = (uint)stride
         });
 
-        _particleSRV?.Dispose();
-        _particleSRV = device.CreateShaderResourceView(_particleBuffer, new ShaderResourceViewDescription
+        _srvA?.Dispose();
+        _srvA = device.CreateShaderResourceView(_particlesA, new ShaderResourceViewDescription
         {
             ViewDimension = ShaderResourceViewDimension.Buffer,
             Format = Format.Unknown,
@@ -82,17 +107,43 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-        _particleUAV?.Dispose();
-        _particleUAV = device.CreateUnorderedAccessView(_particleBuffer, new UnorderedAccessViewDescription
+        _srvB?.Dispose();
+        _srvB = device.CreateShaderResourceView(_particlesB, new ShaderResourceViewDescription
+            {
+                ViewDimension = ShaderResourceViewDimension.Buffer,
+                Format = Format.Unknown,
+                Buffer = new BufferShaderResourceView
+                {
+                    FirstElement = 0,
+                    NumElements = (uint)_capacity
+                }
+            });
+
+        _uavA?.Dispose();
+        _uavA = device.CreateUnorderedAccessView(_particlesA, new UnorderedAccessViewDescription
         {
             ViewDimension = UnorderedAccessViewDimension.Buffer,
             Format = Format.Unknown,
             Buffer = new BufferUnorderedAccessView
             {
                 FirstElement = 0,
-                NumElements = (uint)_capacity
+                    NumElements = (uint)_capacity,
+                    Flags = BufferUnorderedAccessViewFlags.Append
             }
         });
+
+        _uavB?.Dispose();
+        _uavB = device.CreateUnorderedAccessView(_particlesB, new UnorderedAccessViewDescription
+            {
+                ViewDimension = UnorderedAccessViewDimension.Buffer,
+                Format = Format.Unknown,
+                Buffer = new BufferUnorderedAccessView
+                {
+                    FirstElement = 0,
+                    NumElements = (uint)_capacity,
+                    Flags = BufferUnorderedAccessViewFlags.Append
+                }
+            });
 
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
         string source = File.ReadAllText(shaderPath);
@@ -185,7 +236,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
     {
-        if (_cs is null || _particleUAV is null || _frameCB is null)
+        if (_cs is null || _frameCB is null)
             return;
 
         var right = new Vector3(view.M11, view.M21, view.M31);
@@ -216,20 +267,56 @@ internal sealed class ParticlesPipeline : IDisposable
         Marshal.StructureToPtr(frame, mapped.DataPointer, false);
         context.Unmap(_frameCB, 0);
 
+        // Select In SRV and Out UAV based on ping-pong state
+        var inSRV = _aIsIn ? _srvA : _srvB;
+        var outUAV = _aIsIn ? _uavB : _uavA;
+
+        if (inSRV is null || outUAV is null)
+            return;
+
+        // Bind with initial append counter = 0
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
-        context.CSSetUnorderedAccessView(0, _particleUAV);
+        context.CSSetShaderResource(0, inSRV);
+        // Reset counter via initialCounts parameter
+        context.CSSetUnorderedAccessView(0, outUAV, 0);
 
-        uint groups = (uint)((_capacity + 255) / 256);
+        // Dispatch only alive count threads (currently tracked; clamped)
+        int dispatchCount = System.Math.Clamp(_aliveCount, 0, _capacity);
+        uint groups = (uint)((dispatchCount + 255) / 256);
         context.Dispatch(groups, 1, 1);
 
+        // Read back new alive count
+        if (_counterReadback != null)
+        {
+            context.CopyStructureCount(_counterReadback, 0, outUAV);
+            var mappedCount = context.Map(_counterReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                int count = Marshal.ReadInt32(mappedCount.DataPointer);
+                _aliveCount = System.Math.Clamp(count, 0, _capacity);
+            }
+            finally
+            {
+                context.Unmap(_counterReadback, 0);
+            }
+        }
+
+        // Swap buffers: Out becomes In
+        _aIsIn = !_aIsIn;
+
+        // Unbind
         context.CSSetUnorderedAccessView(0, null);
+        context.CSSetShaderResource(0, null);
         context.CSSetShader(null);
     }
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null)
+        // Pick the SRV that contains the CURRENT alive list we want to render.
+        var currentSRV = _aIsIn ? _srvB : _srvA;
+
+        if (_vs is null || _ps is null || currentSRV is null || _frameCB is null)
             return;
 
         var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -255,7 +342,6 @@ internal sealed class ParticlesPipeline : IDisposable
                 CrackleTau = ParticleConstants.CrackleTau,
 
                 SchemeTint = schemeTint,
-
                 ParticlePass = additive ? 0u : 1u
             };
 
@@ -271,13 +357,9 @@ internal sealed class ParticlesPipeline : IDisposable
         context.IASetVertexBuffers(0, 0, Array.Empty<ID3D11Buffer>(), Array.Empty<uint>(), Array.Empty<uint>());
 
         if (additive)
-        {
             context.OMSetDepthStencilState(_depthReadNoWrite, 0);
-        }
         else
-        {
             context.OMSetDepthStencilState(null, 0);
-        }
 
         context.OMSetBlendState(additive ? _blendAdditive : _blendAlpha, new Color4(0, 0, 0, 0), uint.MaxValue);
 
@@ -285,29 +367,44 @@ internal sealed class ParticlesPipeline : IDisposable
         context.PSSetShader(_ps);
 
         context.VSSetConstantBuffer(0, _frameCB);
-        context.VSSetShaderResource(0, _particleSRV);
 
-        // Instanced draw: 6 verts per quad, instance count equals particle count (capacity used as before)
-        context.DrawInstanced(6, (uint)_capacity, 0, 0);
+        // IMPORTANT: bind to the slot your shader expects.
+        // Step 1 used t2 in your earlier working code; keep it consistent.
+        const int ParticleSrvSlot = 2;
+        context.VSSetShaderResource(ParticleSrvSlot, currentSRV);
+        context.PSSetShaderResource(ParticleSrvSlot, currentSRV);
 
-        context.VSSetShaderResource(0, null);
+        // Draw ONLY alive instances (drawing capacity renders stale garbage)
+        uint instances = (uint)System.Math.Clamp(_aliveCount, 0, _capacity);
+        if (instances > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"Draw alive={_aliveCount} aIsIn={_aIsIn}");
+
+            context.DrawInstanced(6, instances, 0, 0);
+        }
+
+        // Unbind SRVs
+        context.VSSetShaderResource(ParticleSrvSlot, null);
+        context.PSSetShaderResource(ParticleSrvSlot, null);
+
         context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);
         context.OMSetDepthStencilState(depthStencilState, 0);
     }
+
 
     public void Dispose()
     {
         _particleUploadBuffer?.Dispose();
         _particleUploadBuffer = null;
 
-        _particleSRV?.Dispose();
-        _particleSRV = null;
+        _srvA?.Dispose(); _srvA = null;
+        _srvB?.Dispose(); _srvB = null;
 
-        _particleUAV?.Dispose();
-        _particleUAV = null;
+        _uavA?.Dispose(); _uavA = null;
+        _uavB?.Dispose(); _uavB = null;
 
-        _particleBuffer?.Dispose();
-        _particleBuffer = null;
+        _particlesA?.Dispose(); _particlesA = null;
+        _particlesB?.Dispose(); _particlesB = null;
 
         _cs?.Dispose();
         _cs = null;
