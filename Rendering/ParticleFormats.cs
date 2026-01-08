@@ -49,7 +49,7 @@ internal struct FrameCBData
     public float _stpad0;
 
     public uint ParticlePass;
-    public uint _ppad0;
+    public uint AliveCount;
     public uint _ppad1;
     public uint _ppad2;
 }

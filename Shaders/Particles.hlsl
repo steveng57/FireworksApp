@@ -20,7 +20,8 @@ cbuffer FrameCB : register(b0)
     float _stpad0;
 
     uint ParticlePass; // 0=additive, 1=alpha
-    uint3 _ppad;
+    uint AliveCount;
+    uint2 _ppad;
 };
 
 struct Particle
@@ -319,6 +320,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 }
 
 StructuredBuffer<Particle> ParticlesRO : register(t0);
+StructuredBuffer<uint> AliveIndicesRO : register(t1);
 
 struct VSOut
 {
@@ -332,9 +334,20 @@ struct VSOut
 VSOut VSMain(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 {
     uint corner = vid; // 0..5 within the instance
-    Particle p = ParticlesRO[iid];
-
     VSOut o;
+
+    // Guard: if instance id exceeds alive count, output zeroed particle
+    if (iid >= AliveCount)
+    {
+        o.Position = float4(0, 0, 0, 0);
+        o.Color = float4(0, 0, 0, 0);
+        o.UV = float2(0, 0);
+        o.Kind = 0;
+        return o;
+    }
+
+    uint pi = AliveIndicesRO[iid];
+    Particle p = ParticlesRO[pi];
 
     if (p.Kind == 0 || p.Color.a <= 0.0f)
     {

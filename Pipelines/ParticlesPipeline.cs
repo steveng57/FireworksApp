@@ -306,7 +306,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null)
+        if (_vs is null || _ps is null || _particleSRV is null || _aliveIndexSRV is null || _frameCB is null)
             return;
 
         var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -333,7 +333,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
                 SchemeTint = schemeTint,
 
-                ParticlePass = additive ? 0u : 1u
+                ParticlePass = additive ? 0u : 1u,
+                AliveCount = (uint)System.Math.Max(0, _lastAliveCount)
             };
 
             Marshal.StructureToPtr(frame, mappedPass.DataPointer, false);
@@ -363,12 +364,14 @@ internal sealed class ParticlesPipeline : IDisposable
 
         context.VSSetConstantBuffer(0, _frameCB);
         context.VSSetShaderResource(0, _particleSRV);
+        context.VSSetShaderResource(1, _aliveIndexSRV);
 
         // Instanced quads: 6 verts per particle instance; draw capacity-sized
         uint particleCount = (uint)_capacity;
         context.DrawInstanced(6, particleCount, 0, 0);
 
         context.VSSetShaderResource(0, null);
+        context.VSSetShaderResource(1, null);
         context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);
         context.OMSetDepthStencilState(depthStencilState, 0);
     }
