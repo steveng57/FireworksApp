@@ -97,18 +97,9 @@ internal sealed class ParticlesPipeline : IDisposable
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
         string source = File.ReadAllText(shaderPath);
 
-        ReadOnlyMemory<byte> csBlob = default;
-        try
-        {
-            csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-        }
-
-        var vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0");
-        var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
+        ReadOnlyMemory<byte> csBlob = ShaderCompilerHelper.CompileAndCatch(source, "CSUpdate", shaderPath, "cs_5_0");
+        var vsBlob = ShaderCompilerHelper.CompileAndCatch(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = ShaderCompilerHelper.CompileAndCatch(source, "PSParticle", shaderPath, "ps_5_0");
 
         byte[] csBytes = csBlob.ToArray();
         byte[] vsBytes = vsBlob.ToArray();
@@ -287,7 +278,9 @@ internal sealed class ParticlesPipeline : IDisposable
         context.VSSetConstantBuffer(0, _frameCB);
         context.VSSetShaderResource(0, _particleSRV);
 
-        context.Draw((uint)(_capacity * 6), 0);
+        // Instanced quads: 6 verts per particle instance; draw capacity-sized
+        uint particleCount = (uint)_capacity;
+        context.DrawInstanced(6, particleCount, 0, 0);
 
         context.VSSetShaderResource(0, null);
         context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);
