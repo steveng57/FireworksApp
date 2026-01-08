@@ -321,11 +321,11 @@ struct VSOut
     uint Kind : TEXCOORD1;
 };
 
-VSOut VSParticle(uint vid : SV_VertexID)
+VSOut VSParticle(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 {
-    // 6 verts per particle (two triangles)
-    uint particleIndex = vid / 6;
-    uint corner = vid % 6;
+    // Instanced quads: 6 verts per instance (two triangles)
+    uint particleIndex = iid;
+    uint corner = vid; // 0..5 within the instance
 
     Particle p = ParticlesRO[particleIndex];
 

@@ -287,7 +287,8 @@ internal sealed class ParticlesPipeline : IDisposable
         context.VSSetConstantBuffer(0, _frameCB);
         context.VSSetShaderResource(0, _particleSRV);
 
-        context.Draw((uint)(_capacity * 6), 0);
+        // Instanced draw: 6 verts per quad, instance count equals particle count (capacity used as before)
+        context.DrawInstanced(6, (uint)_capacity, 0, 0);
 
         context.VSSetShaderResource(0, null);
         context.OMSetBlendState(null, new Color4(0, 0, 0, 0), uint.MaxValue);
