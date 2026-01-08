@@ -310,8 +310,15 @@ internal sealed class ParticlesPipeline : IDisposable
         if (_cs is null || _frameCB is null)
             return;
 
-        var right = new Vector3(view.M11, view.M21, view.M31);
-        var up = new Vector3(view.M12, view.M22, view.M32);
+        //var right = new Vector3(view.M11, view.M21, view.M31);
+        //var up = new Vector3(view.M12, view.M22, view.M32);
+        // Derive camera basis in WORLD SPACE from inverse view, then normalize.
+        // This avoids scale/shear issues and fixes "billboards collapsing into lines".
+        Matrix4x4.Invert(view, out var invView);
+
+        var right = Vector3.Normalize(new Vector3(invView.M11, invView.M12, invView.M13));
+        var up = Vector3.Normalize(new Vector3(invView.M21, invView.M22, invView.M23));
+
         var vp = Matrix4x4.Transpose(view * proj);
 
         int spawnCount = pendingSpawns?.Count ?? 0;
@@ -453,8 +460,16 @@ internal sealed class ParticlesPipeline : IDisposable
         var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
         try
         {
-            var right = new Vector3(view.M11, view.M21, view.M31);
-            var up = new Vector3(view.M12, view.M22, view.M32);
+            //   var right = new Vector3(view.M11, view.M21, view.M31);
+            //   var up = new Vector3(view.M12, view.M22, view.M32);
+            // Derive camera basis in WORLD SPACE from inverse view, then normalize.
+            // This avoids scale/shear issues and fixes "billboards collapsing into lines".
+            Matrix4x4.Invert(view, out var invView);
+
+            var right = Vector3.Normalize(new Vector3(invView.M11, invView.M12, invView.M13));
+            var up = Vector3.Normalize(new Vector3(invView.M21, invView.M22, invView.M23));
+
+
             var vp = Matrix4x4.Transpose(view * proj);
 
             var frame = new FrameCBData
