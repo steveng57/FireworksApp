@@ -97,19 +97,9 @@ internal sealed class ParticlesPipeline : IDisposable
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
         string source = File.ReadAllText(shaderPath);
 
-        ReadOnlyMemory<byte> csBlob = default;
-        try
-        {
-            csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-        }
-
-        // Compile instanced VS entry
-        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
-        var psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0");
+        ReadOnlyMemory<byte> csBlob = ShaderCompilerHelper.CompileAndCatch(source, "CSUpdate", shaderPath, "cs_5_0");
+        var vsBlob = ShaderCompilerHelper.CompileAndCatch(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = ShaderCompilerHelper.CompileAndCatch(source, "PSParticle", shaderPath, "ps_5_0");
 
         byte[] csBytes = csBlob.ToArray();
         byte[] vsBytes = vsBlob.ToArray();

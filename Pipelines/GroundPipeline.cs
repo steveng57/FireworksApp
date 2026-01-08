@@ -21,8 +21,8 @@ internal sealed class GroundPipeline : IDisposable
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Ground.hlsl");
         string source = File.ReadAllText(shaderPath);
 
-        var vsBlob = Compiler.Compile(source, "VSMain", shaderPath, "vs_5_0");
-        var psBlob = Compiler.Compile(source, "PSMain", shaderPath, "ps_5_0");
+        var vsBlob = ShaderCompilerHelper.CompileAndCatch(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = ShaderCompilerHelper.CompileAndCatch(source, "PSMain", shaderPath, "ps_5_0");
         byte[] vsBytes = vsBlob.ToArray();
         byte[] psBytes = psBlob.ToArray();
 
