@@ -160,32 +160,32 @@ internal sealed class ParticlesPipeline : IDisposable
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
         string source = File.ReadAllText(shaderPath);
 
-        ReadOnlyMemory<byte> csBlob = default;
-        try
+        // Helper to compile and surface full diagnostics
+        static ReadOnlyMemory<byte> CompileOrThrow(string src, string entry, string path, string profile)
         {
-            csBlob = Compiler.Compile(source, "CSUpdate", shaderPath, "cs_5_0");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"HLSL compile failed for CSUpdate: {ex.Message}");
+            try
+            {
+                return Compiler.Compile(src, entry, path, profile);
+            }
+            catch (Exception ex)
+            {
+                string msg = $"HLSL compile failed for {entry} ({profile})\n{ex}";
+                Debug.WriteLine(msg);
+                try
+                {
+                    File.AppendAllText(Path.Combine(AppContext.BaseDirectory, "shader_compile_errors.log"),
+                        $"[{DateTime.Now:O}] {msg}\n");
+                }
+                catch { /* ignore file I/O errors */ }
+                // Re-throw so the exception breaks under debugger instead of being eaten later
+                throw;
+            }
         }
 
-        ReadOnlyMemory<byte> csAppendBlob = default;
-        try
-        {
-            csAppendBlob = Compiler.Compile(source, "CSAppendSpawns", shaderPath, "cs_5_0");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"HLSL compile failed for CSAppendSpawns: {ex.Message}");
-        }
-
-        ReadOnlyMemory<byte> vsBlob = default;
-        ReadOnlyMemory<byte> psBlob = default;
-        try { vsBlob = Compiler.Compile(source, "VSParticle", shaderPath, "vs_5_0"); }
-        catch (Exception ex) { Console.WriteLine($"HLSL compile failed for VSParticle: {ex.Message}"); }
-        try { psBlob = Compiler.Compile(source, "PSParticle", shaderPath, "ps_5_0"); }
-        catch (Exception ex) { Console.WriteLine($"HLSL compile failed for PSParticle: {ex.Message}"); }
+        var csBlob = CompileOrThrow(source, "CSUpdate", shaderPath, "cs_5_0");
+        var csAppendBlob = CompileOrThrow(source, "CSAppendSpawns", shaderPath, "cs_5_0");
+        var vsBlob = CompileOrThrow(source, "VSMain", shaderPath, "vs_5_0");
+        var psBlob = CompileOrThrow(source, "PSMain", shaderPath, "ps_5_0");
 
         byte[] csBytes = csBlob.ToArray();
         byte[] vsBytes = vsBlob.ToArray();
@@ -197,8 +197,7 @@ internal sealed class ParticlesPipeline : IDisposable
         _ps?.Dispose();
 
         _cs = device.CreateComputeShader(csBytes);
-        if (!csAppendBlob.IsEmpty)
-            _csAppend = device.CreateComputeShader(csAppendBlob.ToArray());
+        _csAppend = device.CreateComputeShader(csAppendBlob.ToArray());
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
 

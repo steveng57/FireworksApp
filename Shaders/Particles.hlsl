@@ -38,6 +38,7 @@ struct Particle
 };
 
 StructuredBuffer<Particle> ParticlesIn : register(t0);
+
 // Spawn buffer uses a C#-matching layout (80 bytes)
 struct SpawnParticle
 {
@@ -53,6 +54,7 @@ struct SpawnParticle
     uint _pad2;
 };
 StructuredBuffer<SpawnParticle> Spawns : register(t1);
+
 AppendStructuredBuffer<Particle> ParticlesOut : register(u0);
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
@@ -233,7 +235,22 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         return;
     }
 
-    if (p.Kind == 2)
+    // -------------------------------------------------------------------------
+    // FIX #2: Kind==1 (Shell / trail) must always have a valid alpha/color.
+    // Without this, VS was culling many particles because Color.a was 0 or junk.
+    // -------------------------------------------------------------------------
+    if (p.Kind == 1)
+    {
+        float life01 = saturate(t);
+        float a = 1.0f - smoothstep(0.60f, 1.00f, life01);
+
+        // If CPU didn't initialize Color, fall back to BaseColor.
+        float3 rgb = (dot(p.Color.rgb, p.Color.rgb) > 0.0001f) ? p.Color.rgb : p.BaseColor.rgb;
+
+        // Keep minimum alpha to avoid accidental wink-out.
+        p.Color = float4(rgb, max(a, 0.25f));
+    }
+    else if (p.Kind == 2)
     {
         // Use immutable base color for the ramp to prevent per-frame feedback.
         p.Color = ColorRampSpark(t, p.BaseColor);
@@ -365,17 +382,22 @@ struct VSOut
     uint Kind : TEXCOORD1;
 };
 
-VSOut VSParticle(uint vid : SV_VertexID, uint iid : SV_InstanceID)
+VSOut VSMain(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 {
-    // Instanced quads: 6 verts per instance (two triangles)
+    // Instance = particle index; vid selects corner among 6 vertices
     uint particleIndex = iid;
-    uint corner = vid; // 0..5 within the instance
+    uint corner = vid;
 
     Particle p = ParticlesRO[particleIndex];
 
     VSOut o;
 
-    if (p.Kind == 0 || p.Color.a <= 0.0f)
+    // -------------------------------------------------------------------------
+    // FIX #1: do NOT early-cull on p.Color.a here.
+    // Some particle kinds (esp. shells/trails) may not have Color initialized yet,
+    // and alpha-based culling causes "dots only".
+    // -------------------------------------------------------------------------
+    if (p.Kind == 0)
     {
         o.Position = float4(0, 0, 0, 0);
         o.Color = float4(0, 0, 0, 0);
@@ -427,18 +449,16 @@ VSOut VSParticle(uint vid : SV_VertexID, uint iid : SV_InstanceID)
         // PopFlash size is explicitly provided by the CPU.
         size = max(0.0f, asfloat(p._pad.x));
     }
-    size = 0.25f;
+
     float3 worldPos = p.Position + (CameraRightWS * (uv.x * size)) + (CameraUpWS * (uv.y * size));
     o.Position = mul(float4(worldPos, 1.0f), ViewProjection);
     o.Color = p.Color;
-    o.Color.a = 1.0f; // DEBUG: force visible
     o.UV = uv;
     o.Kind = p.Kind;
     return o;
 }
 
-
-float4 PSParticle(VSOut input) : SV_Target
+float4 PSMain(VSOut input) : SV_Target
 {
     float4 c = input.Color;
 
@@ -519,7 +539,6 @@ float4 PSParticle(VSOut input) : SV_Target
     float edge = 1.0f - smoothstep(edgeIn, edgeOut, r2);
 
     // Kill tiny contribution early to reduce overdraw “haze”
-    // (tune 0.005..0.03; higher = faster / crisper, but can pop)
     float alphaOut = c.a * edge;
     if (alphaOut < 0.01f)
         discard;
@@ -529,20 +548,17 @@ float4 PSParticle(VSOut input) : SV_Target
     float ndot = saturate(z);
 
     // Rim highlight: stronger for sparks, weaker for crackle (crackle should read "pinpoint")
-     float rimPow = (input.Kind == 2 || input.Kind == 6) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
+    float rimPow = (input.Kind == 2 || input.Kind == 6) ? 2.2f : (input.Kind == 4) ? 3.2f : 2.6f;
     float rim = pow(saturate(1.0f - ndot), rimPow);
 
     // Core emphasis: crackle has a hotter center
-     float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2 || input.Kind == 6) ? 3.5f : 5.0f);
+    float core = pow(ndot, (input.Kind == 4) ? 7.0f : (input.Kind == 2 || input.Kind == 6) ? 3.5f : 5.0f);
 
     // Brightness model:
-    // - base keeps it readable
-    // - core makes center feel hot
-    // - rim adds sparkle/volume
     float brightness =
         (0.75f + 0.25f * ndot) +
         (coreBoost * core) +
-         (((input.Kind == 2 || input.Kind == 6) ? 0.60f : 0.35f) * rim);
+        (((input.Kind == 2 || input.Kind == 6) ? 0.60f : 0.35f) * rim);
 
     // Apply
     c.rgb *= brightness;
