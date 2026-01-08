@@ -47,10 +47,14 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _debugCountersBuffer; // UAV buffer with counters
     private ID3D11UnorderedAccessView? _debugCountersUAV;
     private ID3D11Buffer? _debugCountersReadback; // staging
+    private int _pendingOw;
+    private int _pendingSd;
 
     public int Capacity => _capacity;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
+    public void AddSpawnOverwriteCount(int n) => System.Threading.Interlocked.Add(ref _pendingOw, n);
+    public void AddSpawnDroppedCount(int n) => System.Threading.Interlocked.Add(ref _pendingSd, n);
 
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
