@@ -54,6 +54,12 @@ static const uint DC_KilledGround    = 3u;
 static const uint DC_KilledInvalid   = 4u;
 static const uint DC_AppendedAdd     = 5u;
 static const uint DC_AppendedAlpha   = 6u;
+static const uint DC_OverwriteAlive  = 7u;
+static const uint DC_SpawnDropped    = 8u;
+// 2.5: Invisible-but-alive indicators
+static const uint DC_AlphaTooLow     = 9u;
+static const uint DC_SizeTooSmall    = 10u;
+static const uint DC_Clipped         = 11u;
 
 #define COUNTER_ADD(idx) InterlockedAdd(DebugCounters[idx], 1);
 #else
@@ -357,6 +363,63 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     // Record index of particles that are still alive after lifetime/ground kills.
     if (p.Kind != 0)
     {
+        // DEBUG: visibility sanity checks (approximate, CS-side)
+#if DEBUG_COUNTERS
+        // alpha threshold like PS discard
+        if (p.Color.a < 0.01f)
+        {
+            COUNTER_ADD(DC_AlphaTooLow);
+        }
+
+        // rough size estimate to catch tiny sprites
+        float sizeEst = 0.20f;
+        if (p.Kind == 2) sizeEst = 0.10f;               // Spark
+        else if (p.Kind == 6) sizeEst = 0.055f;         // FinaleSpark
+        else if (p.Kind == 3)
+        {
+            // Smoke growth
+            float life01 = (p.Lifetime > 1e-5f) ? saturate(p.Age / p.Lifetime) : 1.0f;
+            float baseRadius = 0.4f;
+            float maxRadius = 4.0f;
+            float g = pow(life01, 0.7f);
+            sizeEst = lerp(baseRadius, maxRadius, g);
+        }
+        else if (p.Kind == 4)
+        {
+            // Crackle size follows base with flash multiplier
+            float flash = step(0.75f, p.Color.a);
+            sizeEst = CrackleBaseSize * lerp(1.0f, CrackleFlashSizeMul, flash);
+        }
+        else if (p.Kind == 5)
+        {
+            sizeEst = max(0.0f, asfloat(p._pad.x));
+        }
+        if (sizeEst < 0.02f)
+        {
+            COUNTER_ADD(DC_SizeTooSmall);
+        }
+
+        // clip check in clip space using ViewProjection
+        float4 clip = mul(float4(p.Position, 1.0f), ViewProjection);
+        bool clipped = false;
+        if (clip.w <= 0.0f)
+        {
+            clipped = true; // behind camera
+        }
+        else
+        {
+            float3 ndc = clip.xyz / clip.w;
+            if (ndc.x < -1.0f || ndc.x > 1.0f || ndc.y < -1.0f || ndc.y > 1.0f || ndc.z < 0.0f || ndc.z > 1.0f)
+            {
+                clipped = true;
+            }
+        }
+        if (clipped)
+        {
+            COUNTER_ADD(DC_Clipped);
+        }
+#endif
+
         // Smoke goes to alpha pass; everything else additive.
         if (p.Kind == 3)
         {

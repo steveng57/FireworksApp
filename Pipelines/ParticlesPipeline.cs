@@ -421,7 +421,12 @@ internal sealed class ParticlesPipeline : IDisposable
                     uint killedInvalid = (uint)Marshal.ReadInt32(ptr, 4 * 4);
                     uint appendedAdd = (uint)Marshal.ReadInt32(ptr, 5 * 4);
                     uint appendedAlpha = (uint)Marshal.ReadInt32(ptr, 6 * 4);
-                    System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity} | Proc={processed} Kept={aliveKept} KL={killedLife} KG={killedGround} KI={killedInvalid} AppAdd={appendedAdd} AppAlpha={appendedAlpha}");
+                    uint overwriteAlive = (uint)Marshal.ReadInt32(ptr, 7 * 4);
+                    uint spawnDropped = (uint)Marshal.ReadInt32(ptr, 8 * 4);
+                    uint alphaTooLow = (uint)Marshal.ReadInt32(ptr, 9 * 4);
+                    uint sizeTooSmall = (uint)Marshal.ReadInt32(ptr, 10 * 4);
+                    uint clipped = (uint)Marshal.ReadInt32(ptr, 11 * 4);
+                    System.Diagnostics.Debug.WriteLine($"AliveAdd={_lastAliveAddCount} AliveAlpha={_lastAliveAlphaCount} Total={total} Capacity={_capacity} | Proc={processed} Kept={aliveKept} KL={killedLife} KG={killedGround} KI={killedInvalid} AppAdd={appendedAdd} AppAlpha={appendedAlpha} OW={overwriteAlive} SD={spawnDropped} ALT={alphaTooLow} STS={sizeTooSmall} CLP={clipped}");
                 }
                 finally
                 {
