@@ -12,6 +12,8 @@ namespace FireworksApp.Rendering;
 
 internal sealed class ParticlesPipeline : IDisposable
 {
+    private const int TotalUavSlots = 8;
+
     private ID3D11Buffer? _particleBuffer;
     private ID3D11Buffer? _particleUploadBuffer;
     private ID3D11ShaderResourceView? _particleSRV;
@@ -43,6 +45,21 @@ internal sealed class ParticlesPipeline : IDisposable
 
     private long _lastLogTick;
     private readonly Dictionary<ParticleKind, int> _totalDroppedByKind = new();
+
+    // Reused per-frame state to avoid transient allocations.
+    private readonly ID3D11UnorderedAccessView?[] _uavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
+    private readonly uint[] _initialCounts = new uint[TotalUavSlots];
+    private readonly ID3D11UnorderedAccessView?[] _nullUavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
+    private static readonly uint[] s_counterZeros = new uint[7];
+
+    private static readonly ParticleKind[] s_allKinds =
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+
+    private static readonly ParticleKind[] s_kindsAdditive =
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+
+    private static readonly ParticleKind[] s_kindsAlpha =
+        [ParticleKind.Smoke];
 
     public int Capacity => _capacity;
     public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
@@ -198,7 +215,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 var sb = new System.Text.StringBuilder();
                 sb.Append("AliveByKind: ");
 
-                var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
+        var kinds = s_allKinds;
                 foreach (var kind in kinds)
                 {
                     int count = _lastAliveCountByKind.TryGetValue(kind, out int c) ? c : 0;
@@ -210,7 +227,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
         private void CreatePerKindAliveBuffers(ID3D11Device device)
         {
-            var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
+        var kinds = s_allKinds;
 
             foreach (var kind in kinds)
             {
@@ -344,39 +361,38 @@ internal sealed class ParticlesPipeline : IDisposable
         context.Unmap(_frameCB, 0);
 
         // Clear per-kind atomic counters to 0
-        uint[] zeros = new uint[7];
-        context.UpdateSubresource(zeros, _perKindCountersBuffer);
+        context.UpdateSubresource(s_counterZeros, _perKindCountersBuffer);
 
         // Bind UAVs: u0=particles, u1..u6=per-kind alive, u7=counters
         // Set append buffer initial counts to 0
-        var uavs = new ID3D11UnorderedAccessView?[8];
-        var initialCounts = new uint[8];
+        Array.Clear(_uavs);
+        Array.Clear(_initialCounts);
 
-        uavs[0] = _particleUAV;
-        initialCounts[0] = uint.MaxValue; // structured buffer (not append)
+        _uavs[0] = _particleUAV;
+        _initialCounts[0] = uint.MaxValue; // structured buffer (not append)
 
-        var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
+        var kinds = s_allKinds;
         for (int k = 0; k < kinds.Length; k++)
         {
             if (_aliveUAVByKind.TryGetValue(kinds[k], out var kindUav))
             {
-                uavs[k + 1] = kindUav;
-                initialCounts[k + 1] = 0; // reset append counter
+                _uavs[k + 1] = kindUav;
+                _initialCounts[k + 1] = 0; // reset append counter
             }
         }
 
-        uavs[7] = _perKindCountersUAV;
-        initialCounts[7] = uint.MaxValue;
+        _uavs[7] = _perKindCountersUAV;
+        _initialCounts[7] = uint.MaxValue;
 
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
-        context.CSSetUnorderedAccessViews(0, uavs, initialCounts);
+        context.CSSetUnorderedAccessViews(0, _uavs, _initialCounts);
 
         uint groups = (uint)((_capacity + 255) / 256);
         context.Dispatch(groups, 1, 1);
 
         // Unbind all UAVs
-        context.CSSetUnorderedAccessViews(0, new ID3D11UnorderedAccessView?[8], null);
+        context.CSSetUnorderedAccessViews(0, _nullUavs, null);
         context.CSSetShader(null);
 
         // Read back per-kind alive counts
@@ -421,9 +437,7 @@ internal sealed class ParticlesPipeline : IDisposable
             return;
 
         // Determine which kinds to draw in this pass
-        var kinds = additive
-            ? new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark }
-            : new[] { ParticleKind.Smoke };
+        var kinds = additive ? s_kindsAdditive : s_kindsAlpha;
 
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         context.IASetInputLayout(null);
