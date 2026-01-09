@@ -37,6 +37,26 @@ struct Particle
 
 RWStructuredBuffer<Particle> Particles : register(u0);
 
+// Per-kind alive index append buffers (u1..u6)
+AppendStructuredBuffer<uint> AliveK1 : register(u1); // Shell
+AppendStructuredBuffer<uint> AliveK2 : register(u2); // Spark
+AppendStructuredBuffer<uint> AliveK3 : register(u3); // Smoke
+AppendStructuredBuffer<uint> AliveK4 : register(u4); // Crackle
+AppendStructuredBuffer<uint> AliveK5 : register(u5); // PopFlash
+AppendStructuredBuffer<uint> AliveK6 : register(u6); // FinaleSpark
+
+// Per-kind atomic counters for budget enforcement (u7)
+// Index 0=Dead(unused), 1=Shell, 2=Spark, 3=Smoke, 4=Crackle, 5=PopFlash, 6=FinaleSpark
+RWStructuredBuffer<uint> PerKindCounters : register(u7);
+
+// Per-kind budgets (hardcoded from C# config)
+static const uint MaxK1 = 50000u;
+static const uint MaxK2 = 400000u;
+static const uint MaxK3 = 1200000u;
+static const uint MaxK4 = 200000u;
+static const uint MaxK5 = 50000u;
+static const uint MaxK6 = 400000u;
+
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
 
@@ -309,9 +329,59 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     }
 
     Particles[i] = p;
+
+    // Append to per-kind alive list with budget enforcement.
+    // Use atomic counter to get a slot; if within budget, append.
+    uint kind = p.Kind;
+    uint slot;
+    uint maxCount;
+
+    if (kind == 1u)
+    {
+        maxCount = MaxK1;
+        InterlockedAdd(PerKindCounters[1], 1u, slot);
+        if (slot < maxCount)
+            AliveK1.Append(i);
+    }
+    else if (kind == 2u)
+    {
+        maxCount = MaxK2;
+        InterlockedAdd(PerKindCounters[2], 1u, slot);
+        if (slot < maxCount)
+            AliveK2.Append(i);
+    }
+    else if (kind == 3u)
+    {
+        maxCount = MaxK3;
+        InterlockedAdd(PerKindCounters[3], 1u, slot);
+        if (slot < maxCount)
+            AliveK3.Append(i);
+    }
+    else if (kind == 4u)
+    {
+        maxCount = MaxK4;
+        InterlockedAdd(PerKindCounters[4], 1u, slot);
+        if (slot < maxCount)
+            AliveK4.Append(i);
+    }
+    else if (kind == 5u)
+    {
+        maxCount = MaxK5;
+        InterlockedAdd(PerKindCounters[5], 1u, slot);
+        if (slot < maxCount)
+            AliveK5.Append(i);
+    }
+    else if (kind == 6u)
+    {
+        maxCount = MaxK6;
+        InterlockedAdd(PerKindCounters[6], 1u, slot);
+        if (slot < maxCount)
+            AliveK6.Append(i);
+    }
 }
 
 StructuredBuffer<Particle> ParticlesRO : register(t0);
+StructuredBuffer<uint> AliveIndicesRO : register(t1);
 
 struct VSOut
 {
@@ -321,25 +391,16 @@ struct VSOut
     uint Kind : TEXCOORD1;
 };
 
-// Instanced quad rendering: vid selects corner (0..5), iid selects particle.
+// Instanced quad rendering: vid selects corner (0..5), iid selects alive particle.
 VSOut VSMain(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 {
     uint corner = vid; // 0..5 within the instance
-    Particle p = ParticlesRO[iid];
+    uint pi = AliveIndicesRO[iid]; // particle index from alive list
+    Particle p = ParticlesRO[pi];
 
     VSOut o;
 
     if (p.Kind == 0 || p.Color.a <= 0.0f)
-    {
-        o.Position = float4(0, 0, 0, 0);
-        o.Color = float4(0, 0, 0, 0);
-        o.UV = float2(0, 0);
-        o.Kind = 0;
-        return o;
-    }
-
-    // Smoke must be alpha blended only: drop it from additive pass.
-    if (p.Kind == 3 && ParticlePass == 0)
     {
         o.Position = float4(0, 0, 0, 0);
         o.Color = float4(0, 0, 0, 0);
