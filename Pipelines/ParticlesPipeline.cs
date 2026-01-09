@@ -29,6 +29,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
     private ID3D11Buffer? _frameCB;
     private ID3D11Buffer? _passCB;
+    private ID3D11Buffer? _passCBAdditive;
+    private ID3D11Buffer? _passCBAlpha;
 
     private int _capacity;
 
@@ -144,6 +146,29 @@ internal sealed class ParticlesPipeline : IDisposable
             CPUAccessFlags = CpuAccessFlags.Write,
             ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
         });
+
+        // Pre-baked pass constant buffers (avoid per-pass Map/Unmap during Draw).
+        _passCBAdditive?.Dispose();
+        _passCBAdditive = device.CreateBuffer(
+            new PassCBData { ParticlePass = 0u },
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ConstantBuffer,
+                Usage = ResourceUsage.Immutable,
+                CPUAccessFlags = CpuAccessFlags.None,
+                ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+            });
+
+        _passCBAlpha?.Dispose();
+        _passCBAlpha = device.CreateBuffer(
+            new PassCBData { ParticlePass = 1u },
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ConstantBuffer,
+                Usage = ResourceUsage.Immutable,
+                CPUAccessFlags = CpuAccessFlags.None,
+                ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+            });
 
         CreatePerKindAliveBuffers(device);
 
@@ -441,7 +466,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null || _passCB is null)
+        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null)
             return;
 
         // Determine which kinds to draw in this pass
@@ -469,22 +494,31 @@ internal sealed class ParticlesPipeline : IDisposable
         // Frame CB is updated in `Update`; only set it here.
         context.VSSetConstantBuffer(0, _frameCB);
 
-        // Update tiny pass CB (ParticlePass only)
-        var mappedPass = context.Map(_passCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-        try
+        // Bind pass CB without mapping per pass.
+        // Fallback to dynamic buffer if the cached ones are unavailable.
+        var passCb = additive ? _passCBAdditive : _passCBAlpha;
+        if (passCb != null)
         {
-            var pass = new PassCBData
+            context.VSSetConstantBuffer(1, passCb);
+        }
+        else if (_passCB != null)
+        {
+            var mappedPass = context.Map(_passCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+            try
             {
-                ParticlePass = additive ? 0u : 1u
-            };
-            Marshal.StructureToPtr(pass, mappedPass.DataPointer, false);
-        }
-        finally
-        {
-            context.Unmap(_passCB, 0);
-        }
+                var pass = new PassCBData
+                {
+                    ParticlePass = additive ? 0u : 1u
+                };
+                Marshal.StructureToPtr(pass, mappedPass.DataPointer, false);
+            }
+            finally
+            {
+                context.Unmap(_passCB, 0);
+            }
 
-        context.VSSetConstantBuffer(1, _passCB);
+            context.VSSetConstantBuffer(1, _passCB);
+        }
 
         // Draw each kind with its own alive index buffer
         foreach (var kind in kinds)
@@ -524,6 +558,12 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _passCB?.Dispose();
         _passCB = null;
+
+        _passCBAdditive?.Dispose();
+        _passCBAdditive = null;
+
+        _passCBAlpha?.Dispose();
+        _passCBAlpha = null;
 
         _frameCB?.Dispose();
         _frameCB = null;
