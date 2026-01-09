@@ -38,15 +38,15 @@ internal sealed class ParticlesPipeline : IDisposable
     private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveIndexBufferByKind = new();
     private readonly Dictionary<ParticleKind, ID3D11UnorderedAccessView?> _aliveUAVByKind = new();
     private readonly Dictionary<ParticleKind, ID3D11ShaderResourceView?> _aliveSRVByKind = new();
-    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveCountBufferByKind = new();
-    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveCountStagingByKind = new();
     private readonly Dictionary<ParticleKind, int> _lastAliveCountByKind = new();
+
+    // Per-kind indirect draw args buffers (for DrawInstancedIndirect)
+    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveDrawArgsByKind = new();
 
     // Per-kind atomic counters for budget enforcement (RW buffer)
     private ID3D11Buffer? _perKindCountersBuffer;
     private ID3D11UnorderedAccessView? _perKindCountersUAV;
 
-    private long _lastLogTick;
     private readonly Dictionary<ParticleKind, int> _totalDroppedByKind = new();
 
     // Reused per-frame state to avoid transient allocations.
@@ -233,32 +233,17 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-            _depthReadNoWrite?.Dispose();
-            _depthReadNoWrite = device.CreateDepthStencilState(new DepthStencilDescription
-            {
-                DepthEnable = true,
-                DepthWriteMask = DepthWriteMask.Zero,
-                DepthFunc = ComparisonFunction.LessEqual,
-                StencilEnable = false
-            });
+        _depthReadNoWrite?.Dispose();
+        _depthReadNoWrite = device.CreateDepthStencilState(new DepthStencilDescription
+        {
+            DepthEnable = true,
+            DepthWriteMask = DepthWriteMask.Zero,
+            DepthFunc = ComparisonFunction.LessEqual,
+            StencilEnable = false
+        });
 
-                _lastLogTick = System.Diagnostics.Stopwatch.GetTimestamp();
-            }
+    }
 
-            private void LogPerKindStats()
-            {
-                var sb = new System.Text.StringBuilder();
-                sb.Append("AliveByKind: ");
-
-        var kinds = s_allKinds;
-                foreach (var kind in kinds)
-                {
-                    int count = _lastAliveCountByKind.TryGetValue(kind, out int c) ? c : 0;
-                    sb.Append($"{kind}={count} ");
-                }
-
-                System.Diagnostics.Debug.WriteLine(sb.ToString());
-            }
 
         private void CreatePerKindAliveBuffers(ID3D11Device device)
         {
@@ -312,29 +297,21 @@ internal sealed class ParticlesPipeline : IDisposable
                     }
                 });
 
-                // Count readback buffer (for CopyStructureCount)
-                if (_aliveCountBufferByKind.TryGetValue(kind, out var oldCountBuf))
-                    oldCountBuf?.Dispose();
-                _aliveCountBufferByKind[kind] = device.CreateBuffer(new BufferDescription
-                {
-                    BindFlags = BindFlags.None,
-                    Usage = ResourceUsage.Default,
-                    CPUAccessFlags = CpuAccessFlags.None,
-                    ByteWidth = sizeof(uint),
-                    MiscFlags = ResourceOptionFlags.None
-                });
+                // Indirect args buffer: { VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation }
+                // We always draw quads as 6 verts per instance.
+                if (_aliveDrawArgsByKind.TryGetValue(kind, out var oldArgsBuf))
+                    oldArgsBuf?.Dispose();
+                _aliveDrawArgsByKind[kind] = device.CreateBuffer(
+                    new uint[] { 6u, 0u, 0u, 0u },
+                    new BufferDescription
+                    {
+                        BindFlags = BindFlags.None,
+                        Usage = ResourceUsage.Default,
+                        CPUAccessFlags = CpuAccessFlags.None,
+                        MiscFlags = ResourceOptionFlags.DrawIndirectArguments,
+                        ByteWidth = sizeof(uint) * 4
+                    });
 
-                // Staging for readback
-                if (_aliveCountStagingByKind.TryGetValue(kind, out var oldStagingBuf))
-                    oldStagingBuf?.Dispose();
-                _aliveCountStagingByKind[kind] = device.CreateBuffer(new BufferDescription
-                {
-                    BindFlags = BindFlags.None,
-                    Usage = ResourceUsage.Staging,
-                    CPUAccessFlags = CpuAccessFlags.Read,
-                    ByteWidth = sizeof(uint),
-                    MiscFlags = ResourceOptionFlags.None
-                });
             }
 
             // Per-kind atomic counters buffer (7 uints: one per Kind including Dead=0)
@@ -428,39 +405,16 @@ internal sealed class ParticlesPipeline : IDisposable
         context.CSSetUnorderedAccessViews(0, _nullUavs, null);
         context.CSSetShader(null);
 
-        // Read back per-kind alive counts
+        // GPU-driven draw args (no CPU readback): write alive instance counts into each args buffer.
         foreach (var kind in kinds)
         {
-            if (!_aliveCountBufferByKind.TryGetValue(kind, out var countBuf)) continue;
-            if (!_aliveCountStagingByKind.TryGetValue(kind, out var stagingBuf)) continue;
-            if (countBuf is null || stagingBuf is null)
-                continue;
-
             if (!_aliveUAVByKind.TryGetValue(kind, out var uav) || uav is null)
                 continue;
+            if (!_aliveDrawArgsByKind.TryGetValue(kind, out var argsBuf) || argsBuf is null)
+                continue;
 
-            context.CopyStructureCount(countBuf, 0, uav);
-            context.CopyResource(stagingBuf, countBuf);
-
-            var mappedCount = context.Map(stagingBuf, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-            try
-            {
-                int count = Marshal.ReadInt32(mappedCount.DataPointer);
-                _lastAliveCountByKind[kind] = count;
-            }
-            finally
-            {
-                context.Unmap(stagingBuf, 0);
-            }
-        }
-
-        // Periodic logging (once per second)
-        long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        double elapsed = (now - _lastLogTick) / (double)System.Diagnostics.Stopwatch.Frequency;
-        if (elapsed >= 1.0)
-        {
-            _lastLogTick = now;
-            LogPerKindStats();
+            // Write instance count (DWORD offset 4) into the args buffer.
+            context.CopyStructureCount(argsBuf, sizeof(uint), uav);
         }
     }
 
@@ -523,17 +477,16 @@ internal sealed class ParticlesPipeline : IDisposable
         // Draw each kind with its own alive index buffer
         foreach (var kind in kinds)
         {
-            int aliveCount = _lastAliveCountByKind.TryGetValue(kind, out int c) ? c : 0;
-            if (aliveCount <= 0)
+            if (!_aliveSRVByKind.TryGetValue(kind, out var srv) || srv is null)
                 continue;
 
-            if (!_aliveSRVByKind.TryGetValue(kind, out var srv) || srv is null)
+            if (!_aliveDrawArgsByKind.TryGetValue(kind, out var argsBuf) || argsBuf is null)
                 continue;
 
             context.VSSetShaderResource(1, srv);
 
-            // Instanced quads: 6 verts per particle instance
-            context.DrawInstanced(6, (uint)aliveCount, 0, 0);
+            // Instanced quads: 6 verts per particle instance; instance count comes from GPU (CopyStructureCount).
+            context.DrawInstancedIndirect(argsBuf, 0);
         }
 
         context.VSSetShaderResource(0, null);
@@ -580,13 +533,9 @@ internal sealed class ParticlesPipeline : IDisposable
             kvp.Value?.Dispose();
         _aliveSRVByKind.Clear();
 
-        foreach (var kvp in _aliveCountBufferByKind)
+        foreach (var kvp in _aliveDrawArgsByKind)
             kvp.Value?.Dispose();
-        _aliveCountBufferByKind.Clear();
-
-        foreach (var kvp in _aliveCountStagingByKind)
-            kvp.Value?.Dispose();
-        _aliveCountStagingByKind.Clear();
+        _aliveDrawArgsByKind.Clear();
 
         _perKindCountersBuffer?.Dispose();
         _perKindCountersBuffer = null;
