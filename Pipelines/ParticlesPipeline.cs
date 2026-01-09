@@ -15,7 +15,9 @@ internal sealed class ParticlesPipeline : IDisposable
     private const int TotalUavSlots = 8;
 
     private ID3D11Buffer? _particleBuffer;
-    private ID3D11Buffer? _particleUploadBuffer;
+    private ID3D11Buffer?[]? _particleUploadBuffers;
+    private int _uploadBufferIndex;
+    private int _uploadBufferElementCapacity;
     private ID3D11ShaderResourceView? _particleSRV;
     private ID3D11UnorderedAccessView? _particleUAV;
 
@@ -65,8 +67,49 @@ internal sealed class ParticlesPipeline : IDisposable
         [ParticleKind.Smoke];
 
     public int Capacity => _capacity;
-    public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
+    public ID3D11Buffer? UploadBuffer => GetNextUploadBuffer();
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
+
+    public int UploadBufferElementCapacity => _uploadBufferElementCapacity;
+
+    public ID3D11Buffer? GetNextUploadBuffer()
+    {
+        var buffers = _particleUploadBuffers;
+        if (buffers is null || buffers.Length == 0)
+            return null;
+
+        int idx = _uploadBufferIndex;
+        if ((uint)idx >= (uint)buffers.Length)
+            idx = 0;
+
+        var buf = buffers[idx];
+        _uploadBufferIndex = (idx + 1) % buffers.Length;
+        return buf;
+    }
+
+    public string GetPerfCountersSummary()
+    {
+        // Avoid allocations beyond small concatenations; called at ~1Hz.
+        try
+        {
+            var kinds = s_allKinds;
+            var s = string.Empty;
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                ParticleKind kind = kinds[i];
+                _lastAliveCountByKind.TryGetValue(kind, out int alive);
+                _totalDroppedByKind.TryGetValue(kind, out int dropped);
+                if (s.Length > 0)
+                    s += " ";
+                s += $"{kind}:{alive}(-{dropped})";
+            }
+            return s;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
 
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
@@ -94,16 +137,34 @@ internal sealed class ParticlesPipeline : IDisposable
                 StructureByteStride = (uint)stride
             });
 
-        _particleUploadBuffer?.Dispose();
-        _particleUploadBuffer = device.CreateBuffer(new BufferDescription
+        if (_particleUploadBuffers is not null)
         {
-            BindFlags = BindFlags.None,
-            Usage = ResourceUsage.Staging,
-            CPUAccessFlags = CpuAccessFlags.Write,
-            MiscFlags = ResourceOptionFlags.BufferStructured,
-            ByteWidth = (uint)(stride * _capacity),
-            StructureByteStride = (uint)stride
-        });
+            for (int i = 0; i < _particleUploadBuffers.Length; i++)
+                _particleUploadBuffers[i]?.Dispose();
+        }
+
+        // Ring of small staging buffers:
+        // - Reduces Map contention vs using a single massive staging buffer.
+        // - Sized for a reasonable maximum per-write chunk to keep copies small.
+        const int uploadRingSize = 12;
+        const int uploadChunkElements = 32_768;
+        _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
+        _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
+        _uploadBufferIndex = 0;
+
+        uint byteWidth = (uint)(stride * _uploadBufferElementCapacity);
+        for (int i = 0; i < uploadRingSize; i++)
+        {
+            _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
+            {
+                BindFlags = BindFlags.None,
+                Usage = ResourceUsage.Staging,
+                CPUAccessFlags = CpuAccessFlags.Write,
+                MiscFlags = ResourceOptionFlags.BufferStructured,
+                ByteWidth = byteWidth,
+                StructureByteStride = (uint)stride
+            });
+        }
 
         _particleSRV?.Dispose();
         _particleSRV = device.CreateShaderResourceView(_particleBuffer, new ShaderResourceViewDescription
@@ -497,8 +558,12 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Dispose()
     {
-        _particleUploadBuffer?.Dispose();
-        _particleUploadBuffer = null;
+        if (_particleUploadBuffers is not null)
+        {
+            for (int i = 0; i < _particleUploadBuffers.Length; i++)
+                _particleUploadBuffers[i]?.Dispose();
+        }
+        _particleUploadBuffers = null;
 
         _particleSRV?.Dispose();
         _particleSRV = null;

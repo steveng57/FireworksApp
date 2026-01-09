@@ -89,6 +89,8 @@ public sealed class D3D11Renderer : IDisposable
     private readonly int _particleCapacity = ParticleKindBudget.GetTotalCapacity();
     private int _particleWriteCursor;
 
+    private readonly PerfTelemetry _perf = new();
+
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
@@ -275,6 +277,13 @@ public sealed class D3D11Renderer : IDisposable
 
         // Present
         _swapChain.Present(1, PresentFlags.None);
+
+        _perf.Tick("Render", appendDetails: () =>
+        {
+            var counters = _particlesPipeline.GetPerfCountersSummary();
+            if (!string.IsNullOrEmpty(counters))
+                System.Diagnostics.Debug.Write($" kinds[{counters}]");
+        });
     }
 
     public void SetShells(System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
@@ -293,7 +302,7 @@ public sealed class D3D11Renderer : IDisposable
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -348,7 +357,7 @@ public sealed class D3D11Renderer : IDisposable
     public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -412,7 +421,7 @@ public sealed class D3D11Renderer : IDisposable
         float microSpeedMulMax)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -548,7 +557,7 @@ public sealed class D3D11Renderer : IDisposable
     public void SpawnSmoke(Vector3 burstCenter)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -607,7 +616,7 @@ public sealed class D3D11Renderer : IDisposable
         float sparkleIntensity = 0.0f)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -681,7 +690,7 @@ public sealed class D3D11Renderer : IDisposable
     private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.UploadBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
@@ -744,69 +753,91 @@ public sealed class D3D11Renderer : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
-        // Split write if wrapping around buffer end
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
+        int uploadCap = _particlesPipeline.UploadBufferElementCapacity;
+        if (uploadCap <= 0)
+            uploadCap = 1;
 
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
-        try
+        int producedOffset = 0;
+        int remainingToUpload = count;
+
+        while (remainingToUpload > 0)
         {
-            nint basePtr = mapped.DataPointer;
+            int chunkCount = System.Math.Min(remainingToUpload, uploadCap);
+            int chunkStart = (start + producedOffset) % _particleCapacity;
 
-            // Use bulk memory copy instead of per-particle StructureToPtr
-            unsafe
+            // Each chunk uses its own staging buffer from the ring.
+            var chunkUploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (chunkUploadBuffer is null)
+                return;
+
+            // If wrapping occurs, split this chunk into two segments.
+            int firstCount = System.Math.Min(chunkCount, _particleCapacity - chunkStart);
+            int secondCount = chunkCount - firstCount;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+            try
             {
-                if (firstCount > 0)
+                nint basePtr = mapped.DataPointer;
+                unsafe
                 {
-                    fixed (GpuParticle* srcPtr = &staging[0])
+                    if (firstCount > 0)
                     {
-                        nint dst = basePtr + (start * stride);
-                        Buffer.MemoryCopy(srcPtr, (void*)dst, firstCount * stride, firstCount * stride);
+                        fixed (GpuParticle* srcPtr = &staging[producedOffset])
+                        {
+                            Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstCount * stride, firstCount * stride);
+                        }
                     }
-                }
 
-                if (remaining > 0)
-                {
-                    fixed (GpuParticle* srcPtr = &staging[firstCount])
+                    if (secondCount > 0)
                     {
-                        Buffer.MemoryCopy(srcPtr, (void*)basePtr, remaining * stride, remaining * stride);
+                        fixed (GpuParticle* srcPtr = &staging[producedOffset + firstCount])
+                        {
+                            nint dst = basePtr + (firstCount * stride);
+                            Buffer.MemoryCopy(srcPtr, (void*)dst, secondCount * stride, secondCount * stride);
+                        }
                     }
                 }
             }
-        }
-        finally
-        {
-            _context.Unmap(uploadBuffer, 0);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
+            finally
             {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
+                _context.Unmap(chunkUploadBuffer, 0);
+                sw.Stop();
+                _perf.RecordUpload(sw.Elapsed, checked(chunkCount * stride));
+            }
 
-            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
+            if (firstCount > 0)
             {
-                Left = 0,
-                Right = (int)(remaining * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
+                var srcBox = new Box
+                {
+                    Left = 0,
+                    Right = (int)(firstCount * stride),
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
 
-            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
+                _context.CopySubresourceRegion(particleBuffer, 0, (uint)(chunkStart * stride), 0, 0, chunkUploadBuffer, 0, srcBox);
+            }
+
+            if (secondCount > 0)
+            {
+                var srcBox = new Box
+                {
+                    Left = (int)(firstCount * stride),
+                    Right = (int)(chunkCount * stride),
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
+
+                _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, chunkUploadBuffer, 0, srcBox);
+            }
+
+            producedOffset += chunkCount;
+            remainingToUpload -= chunkCount;
         }
     }
 
@@ -820,6 +851,7 @@ public sealed class D3D11Renderer : IDisposable
         int firstCount = System.Math.Min(count, _particleCapacity - start);
         int remaining = count - firstCount;
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
@@ -834,8 +866,7 @@ public sealed class D3D11Renderer : IDisposable
                 {
                     fixed (GpuParticle* srcPtr = &span[0])
                     {
-                        nint dst = basePtr + (start * stride);
-                        Buffer.MemoryCopy(srcPtr, (void*)dst, firstCount * stride, firstCount * stride);
+                        Buffer.MemoryCopy(srcPtr, (void*)(basePtr + (start * stride)), firstCount * stride, firstCount * stride);
                     }
                 }
 
@@ -851,6 +882,9 @@ public sealed class D3D11Renderer : IDisposable
         finally
         {
             _context.Unmap(uploadBuffer, 0);
+            sw.Stop();
+            int bytes = checked(count * stride);
+            _perf.RecordUpload(sw.Elapsed, bytes);
         }
 
         if (firstCount > 0)
