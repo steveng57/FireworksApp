@@ -85,7 +85,7 @@ public sealed class D3D11Renderer : IDisposable
     // GPU particles (sparks)
     private readonly ParticlesPipeline _particlesPipeline = new();
     // Increased 8x to accommodate dense effects (e.g., Finale Salute sparks) without overwriting live particles.
-    private int _particleCapacity = 2097152;
+    private int _particleCapacity = 4_194_304;
     private int _particleWriteCursor;
 
     private Matrix4x4 _view;
