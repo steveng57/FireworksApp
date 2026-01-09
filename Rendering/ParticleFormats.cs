@@ -19,7 +19,7 @@ internal static class ParticleKindBudget
     public static int GetBudget(ParticleKind kind) => kind switch
     {
         ParticleKind.Shell => 50_000,
-        ParticleKind.Spark => 1_500_000,      // Increased from 400k
+        ParticleKind.Spark => 2_500_000,      // Increased from 400k
         ParticleKind.Smoke => 500_000,    // Increased from 1.2M
         ParticleKind.Crackle => 500_000,    // Increased from 200k
         ParticleKind.PopFlash => 50_000,

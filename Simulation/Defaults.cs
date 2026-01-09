@@ -590,7 +590,7 @@ public static class DefaultShow
                     MuzzleVelocity: muzzleVelocity);
                 events.Add(showEvent);
 
-                t += 0.20f;
+                t += 0.25f;
             }
             t += 1f;
         }
