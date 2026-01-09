@@ -75,7 +75,11 @@ internal struct FrameCBData
 
     public Vector3 SchemeTint;
     public float _stpad0;
+}
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct PassCBData
+{
     public uint ParticlePass;
     public uint _ppad0;
     public uint _ppad1;

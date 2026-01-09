@@ -28,6 +28,7 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11DepthStencilState? _depthReadNoWrite;
 
     private ID3D11Buffer? _frameCB;
+    private ID3D11Buffer? _passCB;
 
     private int _capacity;
 
@@ -126,6 +127,24 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
+        _frameCB?.Dispose();
+        _frameCB = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<FrameCBData>()
+        });
+
+        _passCB?.Dispose();
+        _passCB = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+        });
+
         CreatePerKindAliveBuffers(device);
 
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
@@ -146,15 +165,6 @@ internal sealed class ParticlesPipeline : IDisposable
         _cs = device.CreateComputeShader(csBytes);
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
-
-        _frameCB?.Dispose();
-        _frameCB = device.CreateBuffer(new BufferDescription
-        {
-            BindFlags = BindFlags.ConstantBuffer,
-            Usage = ResourceUsage.Dynamic,
-            CPUAccessFlags = CpuAccessFlags.Write,
-            ByteWidth = (uint)Marshal.SizeOf<FrameCBData>()
-        });
 
         _blendAdditive?.Dispose();
         _blendAdditive = device.CreateBlendState(new BlendDescription
@@ -351,9 +361,7 @@ internal sealed class ParticlesPipeline : IDisposable
             CrackleFadeColor = ParticleConstants.CrackleFadeColor,
             CrackleTau = ParticleConstants.CrackleTau,
 
-            SchemeTint = schemeTint,
-
-            ParticlePass = 0u
+            SchemeTint = schemeTint
         };
 
         var mapped = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -433,7 +441,7 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Draw(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, ID3D11DepthStencilState? depthStencilState, bool additive)
     {
-        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null)
+        if (_vs is null || _ps is null || _particleSRV is null || _frameCB is null || _passCB is null)
             return;
 
         // Determine which kinds to draw in this pass
@@ -458,42 +466,25 @@ internal sealed class ParticlesPipeline : IDisposable
         context.PSSetShader(_ps);
         context.VSSetShaderResource(0, _particleSRV);
 
-        // Update frame CB with current pass
-        var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        // Frame CB is updated in `Update`; only set it here.
+        context.VSSetConstantBuffer(0, _frameCB);
+
+        // Update tiny pass CB (ParticlePass only)
+        var mappedPass = context.Map(_passCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
         try
         {
-            var right = new Vector3(view.M11, view.M21, view.M31);
-            var up = new Vector3(view.M12, view.M22, view.M32);
-            var vp = Matrix4x4.Transpose(view * proj);
-
-            var frame = new FrameCBData
+            var pass = new PassCBData
             {
-                ViewProjection = vp,
-                CameraRightWS = right,
-                DeltaTime = 0.0f,
-                CameraUpWS = up,
-                Time = (float)(Environment.TickCount64 / 1000.0),
-
-                CrackleBaseColor = ParticleConstants.CrackleBaseColor,
-                CrackleBaseSize = ParticleConstants.CrackleBaseSize,
-                CracklePeakColor = ParticleConstants.CracklePeakColor,
-                CrackleFlashSizeMul = ParticleConstants.CrackleFlashSizeMul,
-                CrackleFadeColor = ParticleConstants.CrackleFadeColor,
-                CrackleTau = ParticleConstants.CrackleTau,
-
-                SchemeTint = schemeTint,
-
                 ParticlePass = additive ? 0u : 1u
             };
-
-            Marshal.StructureToPtr(frame, mappedPass.DataPointer, false);
+            Marshal.StructureToPtr(pass, mappedPass.DataPointer, false);
         }
         finally
         {
-            context.Unmap(_frameCB, 0);
+            context.Unmap(_passCB, 0);
         }
 
-        context.VSSetConstantBuffer(0, _frameCB);
+        context.VSSetConstantBuffer(1, _passCB);
 
         // Draw each kind with its own alive index buffer
         foreach (var kind in kinds)
@@ -530,6 +521,12 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _particleBuffer?.Dispose();
         _particleBuffer = null;
+
+        _passCB?.Dispose();
+        _passCB = null;
+
+        _frameCB?.Dispose();
+        _frameCB = null;
 
         foreach (var kvp in _aliveIndexBufferByKind)
             kvp.Value?.Dispose();
