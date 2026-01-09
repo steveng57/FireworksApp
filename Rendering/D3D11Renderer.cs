@@ -84,8 +84,9 @@ public sealed class D3D11Renderer : IDisposable
 
     // GPU particles (sparks)
     private readonly ParticlesPipeline _particlesPipeline = new();
-    // Increased 8x to accommodate dense effects (e.g., Finale Salute sparks) without overwriting live particles.
-    private int _particleCapacity = 4_194_304;
+    // Particle capacity must be at least the sum of all per-kind budgets (currently 2.3M).
+    // We use the calculated total to ensure the backing buffer never overwrites live particles.
+    private readonly int _particleCapacity = ParticleKindBudget.GetTotalCapacity();
     private int _particleWriteCursor;
 
     private Matrix4x4 _view;
@@ -339,66 +340,7 @@ public sealed class D3D11Renderer : IDisposable
             };
         }
 
-        // Write into a rotating region. Wrap with a split update when needed.
-        // Use `Map` + memcpy because Vortice's `UpdateSubresource` overloads vary by version.
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
-
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            nint basePtr = mapped.DataPointer;
-            if (firstCount > 0)
-            {
-                nint dst = basePtr + (start * stride);
-                for (int i = 0; i < firstCount; i++)
-                {
-                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
-                }
-            }
-
-            if (remaining > 0)
-            {
-                for (int i = 0; i < remaining; i++)
-                {
-                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
-                }
-            }
-        }
-        finally
-        {
-            _context.Unmap(uploadBuffer, 0);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = 0,
-                Right = (int)(remaining * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
-        }
+        WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
@@ -1020,6 +962,137 @@ public sealed class D3D11Renderer : IDisposable
         float a = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
         float r = (float)System.Math.Sqrt(System.Math.Max(0.0, 1.0 - z * z));
         return new Vector3(r * (float)System.Math.Cos(a), z, r * (float)System.Math.Sin(a));
+    }
+
+    private void WriteParticlesToBuffer(GpuParticle[] staging, int start, int count, ID3D11Buffer particleBuffer, ID3D11Buffer uploadBuffer)
+    {
+        if (_context is null)
+            return;
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+
+        // Split write if wrapping around buffer end
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                {
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+                }
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                {
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+                }
+            }
+        }
+        finally
+        {
+            _context.Unmap(uploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
+        }
+    }
+
+    private void WriteParticlesToBuffer(List<GpuParticle> staging, int start, int count, ID3D11Buffer particleBuffer, ID3D11Buffer uploadBuffer)
+    {
+        if (_context is null)
+            return;
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+
+        int firstCount = System.Math.Min(count, _particleCapacity - start);
+        int remaining = count - firstCount;
+
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            nint basePtr = mapped.DataPointer;
+            if (firstCount > 0)
+            {
+                nint dst = basePtr + (start * stride);
+                for (int i = 0; i < firstCount; i++)
+                    Marshal.StructureToPtr(staging[i], dst + (i * stride), false);
+            }
+
+            if (remaining > 0)
+            {
+                for (int i = 0; i < remaining; i++)
+                    Marshal.StructureToPtr(staging[firstCount + i], basePtr + (i * stride), false);
+            }
+        }
+        finally
+        {
+            _context.Unmap(uploadBuffer, 0);
+        }
+
+        if (firstCount > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = (int)(start * stride),
+                Right = (int)((start + firstCount) * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+        }
+
+        if (remaining > 0)
+        {
+            var srcBox = new Box
+            {
+                Left = 0,
+                Right = (int)(remaining * stride),
+                Top = 0,
+                Bottom = 1,
+                Front = 0,
+                Back = 1
+            };
+
+            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
+        }
     }
 
     private void CreateParticleSystem()
