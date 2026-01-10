@@ -1330,13 +1330,13 @@ public sealed class FireworksEngine
 
         Vector4 baseColorDefault = explosion.BaseColor;
 
-        float speedDefault = explosion.BurstShape switch
+        float speedDefault = explosion.BurstSpeed ?? (explosion.BurstShape switch
         {
             FireworkBurstShape.Willow => 7.0f,
             FireworkBurstShape.Palm => 13.0f,
             FireworkBurstShape.Horsetail => 6.0f,
             _ => 10.0f
-        };
+        });
 
         float lifetimeDefault = explosion.BurstShape switch
         {
@@ -1609,6 +1609,7 @@ public sealed class FireworkShell
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
+            BurstSpeed: Profile.BurstSpeed,
             BurstSparkleRateHz: Profile.BurstSparkleRateHz,
             BurstSparkleIntensity: Profile.BurstSparkleIntensity,
             RingAxis: Profile.RingAxis,
@@ -1630,6 +1631,7 @@ public readonly record struct ShellExplosion(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    float? BurstSpeed,
     float BurstSparkleRateHz,
     float BurstSparkleIntensity,
     Vector3? RingAxis,

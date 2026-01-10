@@ -111,7 +111,8 @@ public static class DefaultProfiles
                 ParticleCount: 6000,
                 ParticleLifetimeSeconds: 2.5f,
                 BurstSparkleRateHz: 12.0f,
-                BurstSparkleIntensity: 0.35f),
+                BurstSparkleIntensity: 0.35f, 
+                BurstSpeed: 9.0f),
 
             ["chrys"] = new FireworkShellProfile(
                 Id: "chrys",
@@ -142,7 +143,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 16.0f,
                 ParticleCount: 5000,
-                ParticleLifetimeSeconds: 5.5f,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 18.0f,
                 BurstSparkleIntensity: 0.65f),
 
@@ -165,7 +166,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.2f,             // whatever works with your canister
                 ExplosionRadius: 45.0f,
                 ParticleCount: 3000,
-                ParticleLifetimeSeconds: 3.5f,
+                ParticleLifetimeSeconds: 3.0f,
                 BurstSparkleRateHz: 6.0f,
                 BurstSparkleIntensity: 0.20f,
                 RingAxis: null,
@@ -178,7 +179,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 16.0f,
                 ParticleCount: 6500,
-                ParticleLifetimeSeconds: 5.5f,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 2.0f,
                 BurstSparkleIntensity: 0.65f,
                 RingAxis: Vector3.UnitY,
@@ -192,7 +193,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 14.0f,
                 ParticleCount: 6200,
-                ParticleLifetimeSeconds: 5.0f,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 16.0f,
                 BurstSparkleIntensity: 0.55f
             ),
@@ -578,9 +579,9 @@ public static class DefaultShow
                 float? muzzleVelocity = null;
 
                 // debug variations
-                shellId = "basic";
+                //shellId = "basic";
                 //canisterId = "c2";
-                colorSchemeId = "debug";
+                //colorSchemeId = "debug";
 
                 var showEvent = new ShowEvent(
                     TimeSeconds: t,
