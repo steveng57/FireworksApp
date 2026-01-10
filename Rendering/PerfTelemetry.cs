@@ -32,6 +32,17 @@ internal sealed class PerfTelemetry
         _uploadCalls++;
     }
 
+    public void RecordUpload(double elapsedMilliseconds, int bytes)
+    {
+        if (!Enabled)
+            return;
+
+        _uploadMsAccum += elapsedMilliseconds;
+        _uploadMsMax = System.MathF.Max((float)_uploadMsMax, (float)elapsedMilliseconds);
+        _uploadBytesAccum += bytes;
+        _uploadCalls++;
+    }
+
     public void Tick(string source, Action? appendDetails)
     {
         if (!Enabled)

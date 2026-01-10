@@ -806,6 +806,9 @@ public sealed class D3D11Renderer : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
+        static double ToMilliseconds(long start, long end)
+            => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
         int uploadCap = _particlesPipeline.UploadBufferElementCapacity;
         if (uploadCap <= 0)
             uploadCap = 1;
@@ -827,7 +830,7 @@ public sealed class D3D11Renderer : IDisposable
             int firstCount = System.Math.Min(chunkCount, _particleCapacity - chunkStart);
             int secondCount = chunkCount - firstCount;
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
             try
             {
@@ -855,8 +858,8 @@ public sealed class D3D11Renderer : IDisposable
             finally
             {
                 _context.Unmap(chunkUploadBuffer, 0);
-                sw.Stop();
-                _perf.RecordUpload(sw.Elapsed, checked(chunkCount * stride));
+                long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordUpload(ToMilliseconds(t0, t1), checked(chunkCount * stride));
             }
 
             if (firstCount > 0)
@@ -901,6 +904,9 @@ public sealed class D3D11Renderer : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
+        static double ToMilliseconds(long start, long end)
+            => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
         int firstCount = System.Math.Min(count, _particleCapacity - start);
         int remaining = count - firstCount;
 
@@ -916,7 +922,7 @@ public sealed class D3D11Renderer : IDisposable
             return;
         }
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
@@ -948,9 +954,9 @@ public sealed class D3D11Renderer : IDisposable
         finally
         {
             _context.Unmap(uploadBuffer, 0);
-            sw.Stop();
             int bytes = checked(count * stride);
-            _perf.RecordUpload(sw.Elapsed, bytes);
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _perf.RecordUpload(ToMilliseconds(t0, t1), bytes);
         }
 
         if (firstCount > 0)
