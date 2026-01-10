@@ -78,6 +78,9 @@ public sealed class D3D11Renderer : IDisposable
     private long _lastTick;
     private readonly System.Random _rng = new();
 
+    private const int UnitVectorTableSize = 4096;
+    private static readonly Vector3[] s_unitVectorTable = CreateUnitVectorTable();
+
     // Shell trail tuning
     private static int ShellTrailParticlesPerSecond = 220;
     private static float ShellTrailLifetimeSeconds = 0.37f;
@@ -137,6 +140,22 @@ public sealed class D3D11Renderer : IDisposable
     {
         _hwnd = hwnd;
         _deviceResources = new DeviceResources(hwnd);
+    }
+
+    private static Vector3[] CreateUnitVectorTable()
+    {
+        // Deterministic table: removes trig/sqrt from hot loops while keeping a good spread.
+        // Use a fixed seed so baseline visuals are stable across runs.
+        var rng = new System.Random(1234567);
+        var table = new Vector3[UnitVectorTableSize];
+        for (int i = 0; i < table.Length; i++)
+        {
+            float z = (float)(rng.NextDouble() * 2.0 - 1.0);
+            float a = (float)(rng.NextDouble() * System.Math.PI * 2.0);
+            float r = (float)System.Math.Sqrt(System.Math.Max(0.0, 1.0 - z * z));
+            table[i] = new Vector3(r * (float)System.Math.Cos(a), z, r * (float)System.Math.Sin(a));
+        }
+        return table;
     }
 
     public void Initialize(int width, int height)
@@ -794,11 +813,8 @@ public sealed class D3D11Renderer : IDisposable
 
     private Vector3 RandomUnitVector()
     {
-        // Uniform on sphere
-        float z = (float)(_rng.NextDouble() * 2.0 - 1.0);
-        float a = (float)(_rng.NextDouble() * System.Math.PI * 2.0);
-        float r = (float)System.Math.Sqrt(System.Math.Max(0.0, 1.0 - z * z));
-        return new Vector3(r * (float)System.Math.Cos(a), z, r * (float)System.Math.Sin(a));
+        // Lookup-based: avoids trig/sqrt in hot spawn loops.
+        return s_unitVectorTable[_rng.Next(UnitVectorTableSize)];
     }
 
     private void WriteParticlesToBuffer(GpuParticle[] staging, int start, int count, ID3D11Buffer particleBuffer, ID3D11Buffer uploadBuffer)
