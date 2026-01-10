@@ -2,6 +2,7 @@
 using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Buffers;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.D3DCompiler;
@@ -91,10 +92,23 @@ public sealed class D3D11Renderer : IDisposable
 
     private readonly PerfTelemetry _perf = new();
 
+    private static readonly ArrayPool<GpuParticle> s_particleArrayPool = ArrayPool<GpuParticle>.Shared;
+
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
     public int ShellSpawnCount { get; set; }
+
+    private static GpuParticle[] RentParticleArray(int count)
+        => count <= 0 ? Array.Empty<GpuParticle>() : s_particleArrayPool.Rent(count);
+
+    private static void ReturnParticleArray(GpuParticle[]? buffer)
+    {
+        if (buffer is null || buffer.Length == 0)
+            return;
+
+        s_particleArrayPool.Return(buffer, clearArray: false);
+    }
 
     public readonly record struct ShellRenderState(Vector3 Position);
 
@@ -311,45 +325,52 @@ public sealed class D3D11Renderer : IDisposable
         int stride = Marshal.SizeOf<GpuParticle>();
         int start = _particleWriteCursor;
 
-        var staging = new GpuParticle[count];
-        for (int i = 0; i < count; i++)
+        var staging = RentParticleArray(count);
+        try
         {
-            Vector3 dir = RandomUnitVector();
-            float u = (float)_rng.NextDouble();
-            float speed = 6.0f + (u * u) * 12.0f;
-            Vector3 vel = dir * speed;
-
-            bool crackle = (_rng.NextDouble() < 0.22);
-
-            float lifetime;
-            if (crackle)
+            for (int i = 0; i < count; i++)
             {
-                // 30–90ms per micro-spark
-                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                Vector3 dir = RandomUnitVector();
+                float u = (float)_rng.NextDouble();
+                float speed = 6.0f + (u * u) * 12.0f;
+                Vector3 vel = dir * speed;
+
+                bool crackle = (_rng.NextDouble() < 0.22);
+
+                float lifetime;
+                if (crackle)
+                {
+                    // 30–90ms per micro-spark
+                    lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                }
+                else
+                {
+                    lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+                }
+
+                staging[i] = new GpuParticle
+                {
+                    Position = position,
+                    Velocity = vel,
+                    Age = 0.0f,
+                    Lifetime = lifetime,
+                    BaseColor = baseColor,
+                    Color = baseColor,
+                    Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
+                    // For sparks, pack sparkle params (rate/intensity) so only burst particles twinkle.
+                    // For crackle, keep pads as deterministic randomness.
+                    _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
+                    _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
+                    _pad2 = (uint)_rng.Next()
+                };
             }
-            else
-            {
-                lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
-            }
 
-            staging[i] = new GpuParticle
-            {
-                Position = position,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = lifetime,
-                BaseColor = baseColor,
-                Color = baseColor,
-                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                // For sparks, pack sparkle params (rate/intensity) so only burst particles twinkle.
-                // For crackle, keep pads as deterministic randomness.
-                _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
-                _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
-                _pad2 = (uint)_rng.Next()
-            };
+            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
         }
-
-        WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+        finally
+        {
+            ReturnParticleArray(staging);
+        }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
@@ -566,42 +587,48 @@ public sealed class D3D11Renderer : IDisposable
 
         int start = _particleWriteCursor;
 
-        var staging = new GpuParticle[count];
+        var staging = RentParticleArray(count);
 
         // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
         Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
-
-        for (int i = 0; i < count; i++)
+        try
         {
-            Vector3 dir = RandomUnitVector();
-            Vector3 pos = burstCenter + dir * 0.5f;
-
-            float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
-            Vector3 outward = dir * outwardSpeed;
-
-            float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
-            Vector3 up = new(0.0f, upSpeed, 0.0f);
-
-            Vector3 vel = outward * 0.7f + up;
-
-            float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
-
-            staging[i] = new GpuParticle
+            for (int i = 0; i < count; i++)
             {
-                Position = pos,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = lifetime,
-                BaseColor = startColor,
-                Color = startColor,
-                Kind = (uint)ParticleKind.Smoke,
-                _pad0 = (uint)_rng.Next(),
-                _pad1 = (uint)_rng.Next(),
-                _pad2 = (uint)_rng.Next()
-            };
-        }
+                Vector3 dir = RandomUnitVector();
+                Vector3 pos = burstCenter + dir * 0.5f;
 
-        WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
+                Vector3 outward = dir * outwardSpeed;
+
+                float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
+                Vector3 up = new(0.0f, upSpeed, 0.0f);
+
+                Vector3 vel = outward * 0.7f + up;
+
+                float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
+
+                staging[i] = new GpuParticle
+                {
+                    Position = pos,
+                    Velocity = vel,
+                    Age = 0.0f,
+                    Lifetime = lifetime,
+                    BaseColor = startColor,
+                    Color = startColor,
+                    Kind = (uint)ParticleKind.Smoke,
+                    _pad0 = (uint)_rng.Next(),
+                    _pad1 = (uint)_rng.Next(),
+                    _pad2 = (uint)_rng.Next()
+                };
+            }
+
+            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+        }
+        finally
+        {
+            ReturnParticleArray(staging);
+        }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
@@ -624,50 +651,57 @@ public sealed class D3D11Renderer : IDisposable
 
         int start = _particleWriteCursor;
 
-        var staging = new GpuParticle[count];
-        for (int i = 0; i < count; i++)
+        var staging = RentParticleArray(count);
+        try
         {
-            Vector3 dir = directions[i];
-            if (dir.LengthSquared() < 1e-8f)
-                dir = Vector3.UnitY;
-            else
-                dir = Vector3.Normalize(dir);
-
-            // Match the original "nice" look: varied speeds and lifetimes, plus crackle.
-            float u = (float)_rng.NextDouble();
-            float speedMul = 0.65f + (u * u) * 0.85f;
-            Vector3 vel = dir * (speed * speedMul);
-
-            bool crackle = (_rng.NextDouble() < 0.22);
-
-            float lifetime;
-            if (crackle)
+            for (int i = 0; i < count; i++)
             {
-                lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                Vector3 dir = directions[i];
+                if (dir.LengthSquared() < 1e-8f)
+                    dir = Vector3.UnitY;
+                else
+                    dir = Vector3.Normalize(dir);
+
+                // Match the original "nice" look: varied speeds and lifetimes, plus crackle.
+                float u = (float)_rng.NextDouble();
+                float speedMul = 0.65f + (u * u) * 0.85f;
+                Vector3 vel = dir * (speed * speedMul);
+
+                bool crackle = (_rng.NextDouble() < 0.22);
+
+                float lifetime;
+                if (crackle)
+                {
+                    lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                }
+                else
+                {
+                    // Center around the requested lifetime but keep some variation.
+                    float j = (float)(_rng.NextDouble() * 2.0 - 1.0);
+                    lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * (1.0f + 0.35f * j));
+                }
+
+                staging[i] = new GpuParticle
+                {
+                    Position = position,
+                    Velocity = vel,
+                    Age = 0.0f,
+                    Lifetime = lifetime,
+                    BaseColor = baseColor,
+                    Color = baseColor,
+                    Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
+                    _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
+                    _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
+                    _pad2 = (uint)_rng.Next()
+                };
             }
-            else
-            {
-                // Center around the requested lifetime but keep some variation.
-                float j = (float)(_rng.NextDouble() * 2.0 - 1.0);
-                lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * (1.0f + 0.35f * j));
-            }
 
-            staging[i] = new GpuParticle
-            {
-                Position = position,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = lifetime,
-                BaseColor = baseColor,
-                Color = baseColor,
-                Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
-                _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
-                _pad2 = (uint)_rng.Next()
-            };
+            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
         }
-
-        WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+        finally
+        {
+            ReturnParticleArray(staging);
+        }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
@@ -701,7 +735,7 @@ public sealed class D3D11Renderer : IDisposable
 
         int start = _particleWriteCursor;
 
-        var staging = new GpuParticle[count];
+        var staging = RentParticleArray(count);
 
         Vector3 dir = velocity.LengthSquared() > 1e-6f ? Vector3.Normalize(velocity) : Vector3.UnitY;
         Vector3 back = -dir;
@@ -710,29 +744,36 @@ public sealed class D3D11Renderer : IDisposable
             right = Vector3.UnitX;
         Vector3 up = Vector3.Normalize(Vector3.Cross(right, dir));
 
-        for (int i = 0; i < count; i++)
+        try
         {
-            float jitterR = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
-            float jitterU = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
-            float alongBack = ((float)_rng.NextDouble()) * 0.12f;
-
-            Vector3 pos = position + (back * alongBack) + (right * jitterR) + (up * jitterU);
-
-            // Slight backward drift to form a continuous streak.
-            Vector3 vel = (back * ShellTrailSpeed) + (right * jitterR * 0.5f) + (up * jitterU * 0.5f);
-
-            staging[i] = new GpuParticle
+            for (int i = 0; i < count; i++)
             {
-                Position = pos,
-                Velocity = vel,
-                Age = 0.0f,
-                Lifetime = ShellTrailLifetimeSeconds,
-                Color = color,
-                Kind = (uint)ParticleKind.Spark
-            };
-        }
+                float jitterR = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
+                float jitterU = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
+                float alongBack = ((float)_rng.NextDouble()) * 0.12f;
 
-        WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                Vector3 pos = position + (back * alongBack) + (right * jitterR) + (up * jitterU);
+
+                // Slight backward drift to form a continuous streak.
+                Vector3 vel = (back * ShellTrailSpeed) + (right * jitterR * 0.5f) + (up * jitterU * 0.5f);
+
+                staging[i] = new GpuParticle
+                {
+                    Position = pos,
+                    Velocity = vel,
+                    Age = 0.0f,
+                    Lifetime = ShellTrailLifetimeSeconds,
+                    Color = color,
+                    Kind = (uint)ParticleKind.Spark
+                };
+            }
+
+            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+        }
+        finally
+        {
+            ReturnParticleArray(staging);
+        }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
