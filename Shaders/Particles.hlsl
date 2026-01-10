@@ -243,11 +243,19 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         // Use immutable base color for the ramp to prevent per-frame feedback.
         p.Color = ColorRampSpark(t, p.BaseColor);
 
+        // De-sync fade so sparks don't all hit the same fade band together.
+        // Keep hue/brightness logic from ColorRampSpark; only override alpha.
+        uint seed = p._pad.z ^ (i * 747796405u);
+        float uFade = Hash01(seed);
+        float fadeStart = lerp(0.55f, 0.85f, uFade);
+        float tColor = pow(saturate(t), 0.7f);
+        float a = 1.0f - smoothstep(fadeStart, 1.0f, tColor);
+        p.Color.a = a;
+
         // Sparkle/twinkle: brightness-only modulation of burst particles.
         // Stored as float bits in pads.
         float sparkleRateHz = asfloat(p._pad.x);
         float sparkleIntensity = asfloat(p._pad.y);
-        uint seed = p._pad.z ^ (i * 747796405u);
         float mul = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
         p.Color.rgb *= mul;
     }

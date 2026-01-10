@@ -109,7 +109,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
                 ParticleCount: 6000,
-                ParticleLifetimeSeconds: 5.2f,
+                ParticleLifetimeSeconds: 1.2f,
                 BurstSparkleRateHz: 12.0f,
                 BurstSparkleIntensity: 0.35f),
 
@@ -130,7 +130,7 @@ public static class DefaultProfiles
                 ColorSchemeId: "pastel",
                 FuseTimeSeconds: 4.2f,
                 ExplosionRadius: 15.0f,
-                ParticleCount: 7000,
+                ParticleCount: 5000,
                 ParticleLifetimeSeconds: 6.0f,
                 BurstSparkleRateHz: 8.0f,
                 BurstSparkleIntensity: 0.25f),
@@ -578,9 +578,9 @@ public static class DefaultShow
                 float? muzzleVelocity = null;
 
                 // debug variations
-                //shellId = "double_ring";
+                shellId = "basic";
                 //canisterId = "c2";
-                //colorSchemeId = "debug";
+                colorSchemeId = "debug";
 
                 var showEvent = new ShowEvent(
                     TimeSeconds: t,

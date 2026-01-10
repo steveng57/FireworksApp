@@ -709,9 +709,12 @@ public sealed class D3D11Renderer : IDisposable
                 }
                 else
                 {
-                    // Center around the requested lifetime but keep some variation.
-                    float j = (float)(_rng.NextDouble() * 2.0 - 1.0);
-                    lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * (1.0f + 0.35f * j));
+                    // Wider, more realistic distribution with a long tail so burst stars don't all die together.
+                    // Keep respecting the requested base lifetime.
+                    float r = (float)_rng.NextDouble();
+                    float tail = r * r; // bias toward shorter, with a long tail
+                    float lifeMul = 0.55f + 1.60f * tail; // ~0.55x..2.15x
+                    lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * lifeMul);
                 }
 
                 staging[i] = new GpuParticle
