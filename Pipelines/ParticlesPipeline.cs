@@ -146,7 +146,9 @@ internal sealed class ParticlesPipeline : IDisposable
         // Ring of small staging buffers:
         // - Reduces Map contention vs using a single massive staging buffer.
         // - Sized for a reasonable maximum per-write chunk to keep copies small.
-        const int uploadRingSize = 12;
+        // Increase staging ring depth to reduce probability of Map/Unmap stalling on driver/GPU sync.
+        // (Stalls were observed in CPU trace with ID3D11DeviceContext.Map.)
+        const int uploadRingSize = 32;
         const int uploadChunkElements = 32_768;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
         _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];

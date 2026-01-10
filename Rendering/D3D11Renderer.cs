@@ -402,8 +402,10 @@ public sealed class D3D11Renderer : IDisposable
         var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
-            nint dst = mapped.DataPointer;
-            Marshal.StructureToPtr(p, dst, false);
+            unsafe
+            {
+                *(GpuParticle*)mapped.DataPointer = p;
+            }
         }
         finally
         {
@@ -1157,7 +1159,10 @@ public sealed class D3D11Renderer : IDisposable
         };
 
         var mapped = _context.Map(_sceneCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-        Marshal.StructureToPtr(scene, mapped.DataPointer, false);
+        unsafe
+        {
+            *(SceneCBData*)mapped.DataPointer = scene;
+        }
         _context.Unmap(_sceneCB, 0);
 
         if (_lightingCB != null)
@@ -1170,7 +1175,10 @@ public sealed class D3D11Renderer : IDisposable
             };
 
             var mappedLight = _context.Map(_lightingCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-            Marshal.StructureToPtr(light, mappedLight.DataPointer, false);
+            unsafe
+            {
+                *(LightingCBData*)mappedLight.DataPointer = light;
+            }
             _context.Unmap(_lightingCB, 0);
         }
     }
