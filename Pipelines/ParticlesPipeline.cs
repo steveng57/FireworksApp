@@ -117,25 +117,16 @@ internal sealed class ParticlesPipeline : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
-        var init = new GpuParticle[_capacity];
-        for (int i = 0; i < init.Length; i++)
-        {
-            init[i].Kind = (uint)ParticleKind.Dead;
-            init[i].Color = Vector4.Zero;
-        }
-
         _particleBuffer?.Dispose();
-        _particleBuffer = device.CreateBuffer(
-            init,
-            new BufferDescription
-            {
-                BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
-                Usage = ResourceUsage.Default,
-                CPUAccessFlags = CpuAccessFlags.None,
-                MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = (uint)(stride * _capacity),
-                StructureByteStride = (uint)stride
-            });
+        _particleBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(stride * _capacity),
+            StructureByteStride = (uint)stride
+        });
 
         if (_particleUploadBuffers is not null)
         {
@@ -166,6 +157,57 @@ internal sealed class ParticlesPipeline : IDisposable
                 ByteWidth = byteWidth,
                 StructureByteStride = (uint)stride
             });
+        }
+
+        // Clear the newly created particle buffer to Dead/Zero without allocating a huge managed array.
+        // This is especially important on resize/maximize, where reinitialization previously caused large allocation spikes.
+        if (_particleUploadBuffers is not null && _particleUploadBuffers.Length > 0)
+        {
+            var ctx = device.ImmediateContext;
+
+            var dead = new GpuParticle { Kind = (uint)ParticleKind.Dead, Color = Vector4.Zero };
+
+            int remaining = _capacity;
+            int dstElement = 0;
+            while (remaining > 0)
+            {
+                int chunkElements = System.Math.Min(remaining, _uploadBufferElementCapacity);
+
+                var upload = _particleUploadBuffers[_uploadBufferIndex];
+                _uploadBufferIndex = (_uploadBufferIndex + 1) % _particleUploadBuffers.Length;
+                if (upload is null)
+                    break;
+
+                var mapped = ctx.Map(upload, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+                try
+                {
+                    unsafe
+                    {
+                        var dst = (GpuParticle*)mapped.DataPointer;
+                        for (int i = 0; i < chunkElements; i++)
+                            dst[i] = dead;
+                    }
+                }
+                finally
+                {
+                    ctx.Unmap(upload, 0);
+                }
+
+                var srcBox = new Box
+                {
+                    Left = 0,
+                    Right = chunkElements * stride,
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
+
+                ctx.CopySubresourceRegion(_particleBuffer, 0, (uint)(dstElement * stride), 0, 0, upload, 0, srcBox);
+
+                dstElement += chunkElements;
+                remaining -= chunkElements;
+            }
         }
 
         _particleSRV?.Dispose();
