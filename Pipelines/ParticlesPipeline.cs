@@ -7,6 +7,7 @@ using Vortice.Direct3D11;
 using Vortice.D3DCompiler;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using System.Diagnostics;
 
 namespace FireworksApp.Rendering;
 
@@ -134,11 +135,8 @@ internal sealed class ParticlesPipeline : IDisposable
                 _particleUploadBuffers[i]?.Dispose();
         }
 
-        // Ring of small staging buffers:
-        // - Reduces Map contention vs using a single massive staging buffer.
-        // - Sized for a reasonable maximum per-write chunk to keep copies small.
-        // Increase staging ring depth to reduce probability of Map/Unmap stalling on driver/GPU sync.
-        // (Stalls were observed in CPU trace with ID3D11DeviceContext.Map.)
+        // Ring of small upload buffers:
+        // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
         const int uploadRingSize = 32;
         const int uploadChunkElements = 32_768;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
@@ -146,17 +144,25 @@ internal sealed class ParticlesPipeline : IDisposable
         _uploadBufferIndex = 0;
 
         uint byteWidth = (uint)(stride * _uploadBufferElementCapacity);
-        for (int i = 0; i < uploadRingSize; i++)
+        try
         {
-            _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
+            for (int i = 0; i < uploadRingSize; i++)
             {
-                BindFlags = BindFlags.None,
-                Usage = ResourceUsage.Staging,
-                CPUAccessFlags = CpuAccessFlags.Write,
-                MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = byteWidth,
-                StructureByteStride = (uint)stride
-            });
+                _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
+                {
+                    BindFlags = BindFlags.VertexBuffer,
+                    Usage = ResourceUsage.Dynamic,
+                    CPUAccessFlags = CpuAccessFlags.Write,
+                    MiscFlags = ResourceOptionFlags.None,
+                    ByteWidth = byteWidth,
+                    StructureByteStride = 0
+                });
+            }
+        }
+        catch (Exception ex) 
+        {
+            Debug.WriteLine($"Warning: Failed to create full upload buffer ring: {ex.Message}");
+            throw;
         }
 
         // Clear the newly created particle buffer to Dead/Zero without allocating a huge managed array.
@@ -178,7 +184,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 if (upload is null)
                     break;
 
-                var mapped = ctx.Map(upload, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+                var mapped = ctx.Map(upload, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
                 try
                 {
                     unsafe

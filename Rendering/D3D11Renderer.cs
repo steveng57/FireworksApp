@@ -418,7 +418,7 @@ public sealed class D3D11Renderer : IDisposable
             _pad2 = PackFloat(System.Math.Max(0.0f, fadeGamma))
         };
 
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
         try
         {
             unsafe
@@ -850,7 +850,7 @@ public sealed class D3D11Renderer : IDisposable
 
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
-            var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+            var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
             try
             {
                 nint basePtr = mapped.DataPointer;
@@ -942,7 +942,7 @@ public sealed class D3D11Renderer : IDisposable
         }
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
+        var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
         try
         {
             nint basePtr = mapped.DataPointer;
