@@ -381,7 +381,7 @@ public sealed class D3D11Renderer : IDisposable
         var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
-            nint dst = mapped.DataPointer + (start * stride);
+            nint dst = mapped.DataPointer;
             Marshal.StructureToPtr(p, dst, false);
         }
         finally
@@ -391,8 +391,8 @@ public sealed class D3D11Renderer : IDisposable
 
         var srcBox = new Box
         {
-            Left = (int)(start * stride),
-            Right = (int)((start + 1) * stride),
+            Left = 0,
+            Right = stride,
             Top = 0,
             Bottom = 1,
             Front = 0,
@@ -851,22 +851,33 @@ public sealed class D3D11Renderer : IDisposable
         int firstCount = System.Math.Min(count, _particleCapacity - start);
         int remaining = count - firstCount;
 
+        int uploadCap = _particlesPipeline.UploadBufferElementCapacity;
+        if (uploadCap <= 0)
+            uploadCap = 1;
+
+        // If the list upload is larger than the upload buffer capacity, fall back to chunked upload.
+        if (count > uploadCap)
+        {
+            // Reuse the array chunk path to keep logic in one place.
+            WriteParticlesToBuffer(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging).ToArray(), start, count, particleBuffer, uploadBuffer);
+            return;
+        }
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
         try
         {
             nint basePtr = mapped.DataPointer;
 
-            // Use CollectionsMarshal for efficient List<T> access
             var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging);
-
             unsafe
             {
                 if (firstCount > 0)
                 {
                     fixed (GpuParticle* srcPtr = &span[0])
                     {
-                        Buffer.MemoryCopy(srcPtr, (void*)(basePtr + (start * stride)), firstCount * stride, firstCount * stride);
+                        // Upload contiguously at offset 0 in the upload buffer.
+                        Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstCount * stride, firstCount * stride);
                     }
                 }
 
@@ -874,7 +885,9 @@ public sealed class D3D11Renderer : IDisposable
                 {
                     fixed (GpuParticle* srcPtr = &span[firstCount])
                     {
-                        Buffer.MemoryCopy(srcPtr, (void*)basePtr, remaining * stride, remaining * stride);
+                        // Append remaining segment after the first segment.
+                        nint dst = basePtr + (firstCount * stride);
+                        Buffer.MemoryCopy(srcPtr, (void*)dst, remaining * stride, remaining * stride);
                     }
                 }
             }
@@ -891,8 +904,8 @@ public sealed class D3D11Renderer : IDisposable
         {
             var srcBox = new Box
             {
-                Left = (int)(start * stride),
-                Right = (int)((start + firstCount) * stride),
+                Left = 0,
+                Right = (int)(firstCount * stride),
                 Top = 0,
                 Bottom = 1,
                 Front = 0,
@@ -906,8 +919,8 @@ public sealed class D3D11Renderer : IDisposable
         {
             var srcBox = new Box
             {
-                Left = 0,
-                Right = (int)(remaining * stride),
+                Left = (int)(firstCount * stride),
+                Right = (int)((firstCount + remaining) * stride),
                 Top = 0,
                 Bottom = 1,
                 Front = 0,
