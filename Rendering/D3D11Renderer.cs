@@ -849,6 +849,7 @@ public sealed class D3D11Renderer : IDisposable
             int secondCount = chunkCount - firstCount;
 
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+
             var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.Write, Vortice.Direct3D11.MapFlags.None);
             try
             {
