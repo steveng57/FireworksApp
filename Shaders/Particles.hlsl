@@ -18,7 +18,10 @@ cbuffer FrameCB : register(b0)
 
     float3 SchemeTint;
     float _stpad0;
+};
 
+cbuffer PassCB : register(b1)
+{
     uint ParticlePass; // 0=additive, 1=alpha
     uint3 _ppad;
 };

@@ -7,13 +7,18 @@ using Vortice.Direct3D11;
 using Vortice.D3DCompiler;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using System.Diagnostics;
 
 namespace FireworksApp.Rendering;
 
 internal sealed class ParticlesPipeline : IDisposable
 {
+    private const int TotalUavSlots = 8;
+
     private ID3D11Buffer? _particleBuffer;
-    private ID3D11Buffer? _particleUploadBuffer;
+    private ID3D11Buffer?[]? _particleUploadBuffers;
+    private int _uploadBufferIndex;
+    private int _uploadBufferElementCapacity;
     private ID3D11ShaderResourceView? _particleSRV;
     private ID3D11UnorderedAccessView? _particleUAV;
 
@@ -26,6 +31,9 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11DepthStencilState? _depthReadNoWrite;
 
     private ID3D11Buffer? _frameCB;
+    private ID3D11Buffer? _passCB;
+    private ID3D11Buffer? _passCBAdditive;
+    private ID3D11Buffer? _passCBAlpha;
 
     private int _capacity;
 
@@ -33,20 +41,76 @@ internal sealed class ParticlesPipeline : IDisposable
     private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveIndexBufferByKind = new();
     private readonly Dictionary<ParticleKind, ID3D11UnorderedAccessView?> _aliveUAVByKind = new();
     private readonly Dictionary<ParticleKind, ID3D11ShaderResourceView?> _aliveSRVByKind = new();
-    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveCountBufferByKind = new();
-    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveCountStagingByKind = new();
     private readonly Dictionary<ParticleKind, int> _lastAliveCountByKind = new();
+
+    // Per-kind indirect draw args buffers (for DrawInstancedIndirect)
+    private readonly Dictionary<ParticleKind, ID3D11Buffer?> _aliveDrawArgsByKind = new();
 
     // Per-kind atomic counters for budget enforcement (RW buffer)
     private ID3D11Buffer? _perKindCountersBuffer;
     private ID3D11UnorderedAccessView? _perKindCountersUAV;
 
-    private long _lastLogTick;
     private readonly Dictionary<ParticleKind, int> _totalDroppedByKind = new();
 
+    // Reused per-frame state to avoid transient allocations.
+    private readonly ID3D11UnorderedAccessView?[] _uavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
+    private readonly uint[] _initialCounts = new uint[TotalUavSlots];
+    private readonly ID3D11UnorderedAccessView?[] _nullUavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
+    private static readonly uint[] s_counterZeros = new uint[7];
+
+    private static readonly ParticleKind[] s_allKinds =
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+
+    private static readonly ParticleKind[] s_kindsAdditive =
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+
+    private static readonly ParticleKind[] s_kindsAlpha =
+        [ParticleKind.Smoke];
+
     public int Capacity => _capacity;
-    public ID3D11Buffer? UploadBuffer => _particleUploadBuffer;
+    public ID3D11Buffer? UploadBuffer => GetNextUploadBuffer();
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
+
+    public int UploadBufferElementCapacity => _uploadBufferElementCapacity;
+
+    public ID3D11Buffer? GetNextUploadBuffer()
+    {
+        var buffers = _particleUploadBuffers;
+        if (buffers is null || buffers.Length == 0)
+            return null;
+
+        int idx = _uploadBufferIndex;
+        if ((uint)idx >= (uint)buffers.Length)
+            idx = 0;
+
+        var buf = buffers[idx];
+        _uploadBufferIndex = (idx + 1) % buffers.Length;
+        return buf;
+    }
+
+    public string GetPerfCountersSummary()
+    {
+        // Avoid allocations beyond small concatenations; called at ~1Hz.
+        try
+        {
+            var kinds = s_allKinds;
+            var s = string.Empty;
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                ParticleKind kind = kinds[i];
+                _lastAliveCountByKind.TryGetValue(kind, out int alive);
+                _totalDroppedByKind.TryGetValue(kind, out int dropped);
+                if (s.Length > 0)
+                    s += " ";
+                s += $"{kind}:{alive}(-{dropped})";
+            }
+            return s;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
 
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
@@ -54,36 +118,103 @@ internal sealed class ParticlesPipeline : IDisposable
 
         int stride = Marshal.SizeOf<GpuParticle>();
 
-        var init = new GpuParticle[_capacity];
-        for (int i = 0; i < init.Length; i++)
-        {
-            init[i].Kind = (uint)ParticleKind.Dead;
-            init[i].Color = Vector4.Zero;
-        }
-
         _particleBuffer?.Dispose();
-        _particleBuffer = device.CreateBuffer(
-            init,
-            new BufferDescription
-            {
-                BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
-                Usage = ResourceUsage.Default,
-                CPUAccessFlags = CpuAccessFlags.None,
-                MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = (uint)(stride * _capacity),
-                StructureByteStride = (uint)stride
-            });
-
-        _particleUploadBuffer?.Dispose();
-        _particleUploadBuffer = device.CreateBuffer(new BufferDescription
+        _particleBuffer = device.CreateBuffer(new BufferDescription
         {
-            BindFlags = BindFlags.None,
-            Usage = ResourceUsage.Staging,
-            CPUAccessFlags = CpuAccessFlags.Write,
+            BindFlags = BindFlags.ShaderResource | BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
             MiscFlags = ResourceOptionFlags.BufferStructured,
             ByteWidth = (uint)(stride * _capacity),
             StructureByteStride = (uint)stride
         });
+
+        if (_particleUploadBuffers is not null)
+        {
+            for (int i = 0; i < _particleUploadBuffers.Length; i++)
+                _particleUploadBuffers[i]?.Dispose();
+        }
+
+        // Ring of small upload buffers:
+        // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
+        const int uploadRingSize = 32;
+        const int uploadChunkElements = 32_768;
+        _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
+        _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
+        _uploadBufferIndex = 0;
+
+        uint byteWidth = (uint)(stride * _uploadBufferElementCapacity);
+        try
+        {
+            for (int i = 0; i < uploadRingSize; i++)
+            {
+                _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
+                {
+                    BindFlags = BindFlags.VertexBuffer,
+                    Usage = ResourceUsage.Dynamic,
+                    CPUAccessFlags = CpuAccessFlags.Write,
+                    MiscFlags = ResourceOptionFlags.None,
+                    ByteWidth = byteWidth,
+                    StructureByteStride = 0
+                });
+            }
+        }
+        catch (Exception ex) 
+        {
+            Debug.WriteLine($"Warning: Failed to create full upload buffer ring: {ex.Message}");
+            throw;
+        }
+
+        // Clear the newly created particle buffer to Dead/Zero without allocating a huge managed array.
+        // This is especially important on resize/maximize, where reinitialization previously caused large allocation spikes.
+        if (_particleUploadBuffers is not null && _particleUploadBuffers.Length > 0)
+        {
+            var ctx = device.ImmediateContext;
+
+            var dead = new GpuParticle { Kind = (uint)ParticleKind.Dead, Color = Vector4.Zero };
+
+            int remaining = _capacity;
+            int dstElement = 0;
+            while (remaining > 0)
+            {
+                int chunkElements = System.Math.Min(remaining, _uploadBufferElementCapacity);
+
+                var upload = _particleUploadBuffers[_uploadBufferIndex];
+                _uploadBufferIndex = (_uploadBufferIndex + 1) % _particleUploadBuffers.Length;
+                if (upload is null)
+                    break;
+
+                var mapped = ctx.Map(upload, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                try
+                {
+                    unsafe
+                    {
+                        var dst = (GpuParticle*)mapped.DataPointer;
+                        for (int i = 0; i < chunkElements; i++)
+                            dst[i] = dead;
+                    }
+                }
+                finally
+                {
+                    ctx.Unmap(upload, 0);
+                }
+
+                var srcBox = new Box
+                {
+                    Left = 0,
+                    Right = chunkElements * stride,
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
+
+                ctx.CopySubresourceRegion(_particleBuffer, 0, (uint)(dstElement * stride), 0, 0, upload, 0, srcBox);
+
+                dstElement += chunkElements;
+                remaining -= chunkElements;
+            }
+        }
 
         _particleSRV?.Dispose();
         _particleSRV = device.CreateShaderResourceView(_particleBuffer, new ShaderResourceViewDescription
@@ -109,6 +240,47 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
+        _frameCB?.Dispose();
+        _frameCB = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<FrameCBData>()
+        });
+
+        _passCB?.Dispose();
+        _passCB = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+        });
+
+        // Pre-baked pass constant buffers (avoid per-pass Map/Unmap during Draw).
+        _passCBAdditive?.Dispose();
+        _passCBAdditive = device.CreateBuffer(
+            new PassCBData { ParticlePass = 0u },
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ConstantBuffer,
+                Usage = ResourceUsage.Immutable,
+                CPUAccessFlags = CpuAccessFlags.None,
+                ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+            });
+
+        _passCBAlpha?.Dispose();
+        _passCBAlpha = device.CreateBuffer(
+            new PassCBData { ParticlePass = 1u },
+            new BufferDescription
+            {
+                BindFlags = BindFlags.ConstantBuffer,
+                Usage = ResourceUsage.Immutable,
+                CPUAccessFlags = CpuAccessFlags.None,
+                ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
+            });
+
         CreatePerKindAliveBuffers(device);
 
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Particles.hlsl");
@@ -129,15 +301,6 @@ internal sealed class ParticlesPipeline : IDisposable
         _cs = device.CreateComputeShader(csBytes);
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
-
-        _frameCB?.Dispose();
-        _frameCB = device.CreateBuffer(new BufferDescription
-        {
-            BindFlags = BindFlags.ConstantBuffer,
-            Usage = ResourceUsage.Dynamic,
-            CPUAccessFlags = CpuAccessFlags.Write,
-            ByteWidth = (uint)Marshal.SizeOf<FrameCBData>()
-        });
 
         _blendAdditive?.Dispose();
         _blendAdditive = device.CreateBlendState(new BlendDescription
@@ -181,36 +344,21 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         });
 
-            _depthReadNoWrite?.Dispose();
-            _depthReadNoWrite = device.CreateDepthStencilState(new DepthStencilDescription
-            {
-                DepthEnable = true,
-                DepthWriteMask = DepthWriteMask.Zero,
-                DepthFunc = ComparisonFunction.LessEqual,
-                StencilEnable = false
-            });
+        _depthReadNoWrite?.Dispose();
+        _depthReadNoWrite = device.CreateDepthStencilState(new DepthStencilDescription
+        {
+            DepthEnable = true,
+            DepthWriteMask = DepthWriteMask.Zero,
+            DepthFunc = ComparisonFunction.LessEqual,
+            StencilEnable = false
+        });
 
-                _lastLogTick = System.Diagnostics.Stopwatch.GetTimestamp();
-            }
+    }
 
-            private void LogPerKindStats()
-            {
-                var sb = new System.Text.StringBuilder();
-                sb.Append("AliveByKind: ");
-
-                var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
-                foreach (var kind in kinds)
-                {
-                    int count = _lastAliveCountByKind.TryGetValue(kind, out int c) ? c : 0;
-                    sb.Append($"{kind}={count} ");
-                }
-
-                System.Diagnostics.Debug.WriteLine(sb.ToString());
-            }
 
         private void CreatePerKindAliveBuffers(ID3D11Device device)
         {
-            var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
+        var kinds = s_allKinds;
 
             foreach (var kind in kinds)
             {
@@ -260,29 +408,21 @@ internal sealed class ParticlesPipeline : IDisposable
                     }
                 });
 
-                // Count readback buffer (for CopyStructureCount)
-                if (_aliveCountBufferByKind.TryGetValue(kind, out var oldCountBuf))
-                    oldCountBuf?.Dispose();
-                _aliveCountBufferByKind[kind] = device.CreateBuffer(new BufferDescription
-                {
-                    BindFlags = BindFlags.None,
-                    Usage = ResourceUsage.Default,
-                    CPUAccessFlags = CpuAccessFlags.None,
-                    ByteWidth = sizeof(uint),
-                    MiscFlags = ResourceOptionFlags.None
-                });
+                // Indirect args buffer: { VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation }
+                // We always draw quads as 6 verts per instance.
+                if (_aliveDrawArgsByKind.TryGetValue(kind, out var oldArgsBuf))
+                    oldArgsBuf?.Dispose();
+                _aliveDrawArgsByKind[kind] = device.CreateBuffer(
+                    new uint[] { 6u, 0u, 0u, 0u },
+                    new BufferDescription
+                    {
+                        BindFlags = BindFlags.None,
+                        Usage = ResourceUsage.Default,
+                        CPUAccessFlags = CpuAccessFlags.None,
+                        MiscFlags = ResourceOptionFlags.DrawIndirectArguments,
+                        ByteWidth = sizeof(uint) * 4
+                    });
 
-                // Staging for readback
-                if (_aliveCountStagingByKind.TryGetValue(kind, out var oldStagingBuf))
-                    oldStagingBuf?.Dispose();
-                _aliveCountStagingByKind[kind] = device.CreateBuffer(new BufferDescription
-                {
-                    BindFlags = BindFlags.None,
-                    Usage = ResourceUsage.Staging,
-                    CPUAccessFlags = CpuAccessFlags.Read,
-                    ByteWidth = sizeof(uint),
-                    MiscFlags = ResourceOptionFlags.None
-                });
             }
 
             // Per-kind atomic counters buffer (7 uints: one per Kind including Dead=0)
@@ -334,9 +474,7 @@ internal sealed class ParticlesPipeline : IDisposable
             CrackleFadeColor = ParticleConstants.CrackleFadeColor,
             CrackleTau = ParticleConstants.CrackleTau,
 
-            SchemeTint = schemeTint,
-
-            ParticlePass = 0u
+            SchemeTint = schemeTint
         };
 
         var mapped = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -344,74 +482,50 @@ internal sealed class ParticlesPipeline : IDisposable
         context.Unmap(_frameCB, 0);
 
         // Clear per-kind atomic counters to 0
-        uint[] zeros = new uint[7];
-        context.UpdateSubresource(zeros, _perKindCountersBuffer);
+        context.UpdateSubresource(s_counterZeros, _perKindCountersBuffer);
 
         // Bind UAVs: u0=particles, u1..u6=per-kind alive, u7=counters
         // Set append buffer initial counts to 0
-        var uavs = new ID3D11UnorderedAccessView?[8];
-        var initialCounts = new uint[8];
+        Array.Clear(_uavs);
+        Array.Clear(_initialCounts);
 
-        uavs[0] = _particleUAV;
-        initialCounts[0] = uint.MaxValue; // structured buffer (not append)
+        _uavs[0] = _particleUAV;
+        _initialCounts[0] = uint.MaxValue; // structured buffer (not append)
 
-        var kinds = new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark };
+        var kinds = s_allKinds;
         for (int k = 0; k < kinds.Length; k++)
         {
             if (_aliveUAVByKind.TryGetValue(kinds[k], out var kindUav))
             {
-                uavs[k + 1] = kindUav;
-                initialCounts[k + 1] = 0; // reset append counter
+                _uavs[k + 1] = kindUav;
+                _initialCounts[k + 1] = 0; // reset append counter
             }
         }
 
-        uavs[7] = _perKindCountersUAV;
-        initialCounts[7] = uint.MaxValue;
+        _uavs[7] = _perKindCountersUAV;
+        _initialCounts[7] = uint.MaxValue;
 
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
-        context.CSSetUnorderedAccessViews(0, uavs, initialCounts);
+        context.CSSetUnorderedAccessViews(0, _uavs, _initialCounts);
 
         uint groups = (uint)((_capacity + 255) / 256);
         context.Dispatch(groups, 1, 1);
 
         // Unbind all UAVs
-        context.CSSetUnorderedAccessViews(0, new ID3D11UnorderedAccessView?[8], null);
+        context.CSSetUnorderedAccessViews(0, _nullUavs, null);
         context.CSSetShader(null);
 
-        // Read back per-kind alive counts
+        // GPU-driven draw args (no CPU readback): write alive instance counts into each args buffer.
         foreach (var kind in kinds)
         {
-            if (!_aliveCountBufferByKind.TryGetValue(kind, out var countBuf)) continue;
-            if (!_aliveCountStagingByKind.TryGetValue(kind, out var stagingBuf)) continue;
-            if (countBuf is null || stagingBuf is null)
-                continue;
-
             if (!_aliveUAVByKind.TryGetValue(kind, out var uav) || uav is null)
                 continue;
+            if (!_aliveDrawArgsByKind.TryGetValue(kind, out var argsBuf) || argsBuf is null)
+                continue;
 
-            context.CopyStructureCount(countBuf, 0, uav);
-            context.CopyResource(stagingBuf, countBuf);
-
-            var mappedCount = context.Map(stagingBuf, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-            try
-            {
-                int count = Marshal.ReadInt32(mappedCount.DataPointer);
-                _lastAliveCountByKind[kind] = count;
-            }
-            finally
-            {
-                context.Unmap(stagingBuf, 0);
-            }
-        }
-
-        // Periodic logging (once per second)
-        long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        double elapsed = (now - _lastLogTick) / (double)System.Diagnostics.Stopwatch.Frequency;
-        if (elapsed >= 1.0)
-        {
-            _lastLogTick = now;
-            LogPerKindStats();
+            // Write instance count (DWORD offset 4) into the args buffer.
+            context.CopyStructureCount(argsBuf, sizeof(uint), uav);
         }
     }
 
@@ -421,9 +535,7 @@ internal sealed class ParticlesPipeline : IDisposable
             return;
 
         // Determine which kinds to draw in this pass
-        var kinds = additive
-            ? new[] { ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark }
-            : new[] { ParticleKind.Smoke };
+        var kinds = additive ? s_kindsAdditive : s_kindsAlpha;
 
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         context.IASetInputLayout(null);
@@ -444,57 +556,48 @@ internal sealed class ParticlesPipeline : IDisposable
         context.PSSetShader(_ps);
         context.VSSetShaderResource(0, _particleSRV);
 
-        // Update frame CB with current pass
-        var mappedPass = context.Map(_frameCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            var right = new Vector3(view.M11, view.M21, view.M31);
-            var up = new Vector3(view.M12, view.M22, view.M32);
-            var vp = Matrix4x4.Transpose(view * proj);
-
-            var frame = new FrameCBData
-            {
-                ViewProjection = vp,
-                CameraRightWS = right,
-                DeltaTime = 0.0f,
-                CameraUpWS = up,
-                Time = (float)(Environment.TickCount64 / 1000.0),
-
-                CrackleBaseColor = ParticleConstants.CrackleBaseColor,
-                CrackleBaseSize = ParticleConstants.CrackleBaseSize,
-                CracklePeakColor = ParticleConstants.CracklePeakColor,
-                CrackleFlashSizeMul = ParticleConstants.CrackleFlashSizeMul,
-                CrackleFadeColor = ParticleConstants.CrackleFadeColor,
-                CrackleTau = ParticleConstants.CrackleTau,
-
-                SchemeTint = schemeTint,
-
-                ParticlePass = additive ? 0u : 1u
-            };
-
-            Marshal.StructureToPtr(frame, mappedPass.DataPointer, false);
-        }
-        finally
-        {
-            context.Unmap(_frameCB, 0);
-        }
-
+        // Frame CB is updated in `Update`; only set it here.
         context.VSSetConstantBuffer(0, _frameCB);
+
+        // Bind pass CB without mapping per pass.
+        // Fallback to dynamic buffer if the cached ones are unavailable.
+        var passCb = additive ? _passCBAdditive : _passCBAlpha;
+        if (passCb != null)
+        {
+            context.VSSetConstantBuffer(1, passCb);
+        }
+        else if (_passCB != null)
+        {
+            var mappedPass = context.Map(_passCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                var pass = new PassCBData
+                {
+                    ParticlePass = additive ? 0u : 1u
+                };
+                Marshal.StructureToPtr(pass, mappedPass.DataPointer, false);
+            }
+            finally
+            {
+                context.Unmap(_passCB, 0);
+            }
+
+            context.VSSetConstantBuffer(1, _passCB);
+        }
 
         // Draw each kind with its own alive index buffer
         foreach (var kind in kinds)
         {
-            int aliveCount = _lastAliveCountByKind.TryGetValue(kind, out int c) ? c : 0;
-            if (aliveCount <= 0)
+            if (!_aliveSRVByKind.TryGetValue(kind, out var srv) || srv is null)
                 continue;
 
-            if (!_aliveSRVByKind.TryGetValue(kind, out var srv) || srv is null)
+            if (!_aliveDrawArgsByKind.TryGetValue(kind, out var argsBuf) || argsBuf is null)
                 continue;
 
             context.VSSetShaderResource(1, srv);
 
-            // Instanced quads: 6 verts per particle instance
-            context.DrawInstanced(6, (uint)aliveCount, 0, 0);
+            // Instanced quads: 6 verts per particle instance; instance count comes from GPU (CopyStructureCount).
+            context.DrawInstancedIndirect(argsBuf, 0);
         }
 
         context.VSSetShaderResource(0, null);
@@ -505,8 +608,12 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public void Dispose()
     {
-        _particleUploadBuffer?.Dispose();
-        _particleUploadBuffer = null;
+        if (_particleUploadBuffers is not null)
+        {
+            for (int i = 0; i < _particleUploadBuffers.Length; i++)
+                _particleUploadBuffers[i]?.Dispose();
+        }
+        _particleUploadBuffers = null;
 
         _particleSRV?.Dispose();
         _particleSRV = null;
@@ -516,6 +623,18 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _particleBuffer?.Dispose();
         _particleBuffer = null;
+
+        _passCB?.Dispose();
+        _passCB = null;
+
+        _passCBAdditive?.Dispose();
+        _passCBAdditive = null;
+
+        _passCBAlpha?.Dispose();
+        _passCBAlpha = null;
+
+        _frameCB?.Dispose();
+        _frameCB = null;
 
         foreach (var kvp in _aliveIndexBufferByKind)
             kvp.Value?.Dispose();
@@ -529,13 +648,9 @@ internal sealed class ParticlesPipeline : IDisposable
             kvp.Value?.Dispose();
         _aliveSRVByKind.Clear();
 
-        foreach (var kvp in _aliveCountBufferByKind)
+        foreach (var kvp in _aliveDrawArgsByKind)
             kvp.Value?.Dispose();
-        _aliveCountBufferByKind.Clear();
-
-        foreach (var kvp in _aliveCountStagingByKind)
-            kvp.Value?.Dispose();
-        _aliveCountStagingByKind.Clear();
+        _aliveDrawArgsByKind.Clear();
 
         _perKindCountersBuffer?.Dispose();
         _perKindCountersBuffer = null;
