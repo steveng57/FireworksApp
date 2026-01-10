@@ -109,7 +109,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
                 ParticleCount: 6000,
-                ParticleLifetimeSeconds: 1.2f,
+                ParticleLifetimeSeconds: 2.5f,
                 BurstSparkleRateHz: 12.0f,
                 BurstSparkleIntensity: 0.35f),
 
