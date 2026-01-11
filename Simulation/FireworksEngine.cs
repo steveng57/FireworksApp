@@ -73,16 +73,17 @@ public sealed class FireworksEngine
     private ShowScript _show = ShowScript.Empty;
     private int _nextEventIndex;
 
-    // *** CHANGED: drag for shells (must match FireworkShell.Update usage)
-    private const float ShellDragK = 0.020f;
+    // drag for shells (must match FireworkShell.Update usage)
+    private const float ShellDragK = Tunables.ShellDragK;
 
     public float ShowTimeSeconds { get; private set; }
 
     // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
-    public float TimeScale { get; set; } = 0.80f;
+    public float TimeScale { get; set; } = Tunables.DefaultTimeScale;
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
+        Tunables.Validate();
         _profiles = profiles;
         _canisters = profiles.Canisters.Values.Select(cp => new Canister(cp)).ToList();
     }
@@ -191,6 +192,11 @@ public sealed class FireworksEngine
                 }
 
                 _shells.RemoveAt(i);
+            }
+            else if (shell.IsTerminalFading)
+            {
+                if (!shell.Alive)
+                    _shells.RemoveAt(i);
             }
             else if (!shell.Alive)
             {
@@ -1318,11 +1324,11 @@ public sealed class FireworksEngine
         var dirsDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
-            FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount),
-            FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
-            FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
+              FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount, explosion.Emission),
+              FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount, explosion.Emission),
+              FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount, explosion.Emission),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
-            FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount),
+              FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount, axis: ringAxis, settings: explosion.Emission),
             FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(explosion.ParticleCount, axis: ringAxis),
             FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
@@ -1330,13 +1336,13 @@ public sealed class FireworksEngine
 
         Vector4 baseColorDefault = explosion.BaseColor;
 
-        float speedDefault = explosion.BurstShape switch
+        float speedDefault = explosion.BurstSpeed ?? (explosion.BurstShape switch
         {
             FireworkBurstShape.Willow => 7.0f,
             FireworkBurstShape.Palm => 13.0f,
             FireworkBurstShape.Horsetail => 6.0f,
             _ => 10.0f
-        };
+        });
 
         float lifetimeDefault = explosion.BurstShape switch
         {
@@ -1380,7 +1386,7 @@ public sealed class FireworksEngine
 
         int count = Math.Max(1, (int)MathF.Round(pending.Params.PeonySparkCount * pending.Params.HandoffFraction));
         // Use willow emission: bias downward like willow
-        var dirs = EmissionStyles.EmitWillow(count);
+        var dirs = EmissionStyles.EmitWillow(count, BurstEmissionSettings.Defaults);
 
         for (int i = 0; i < dirs.Length; i++)
         {
@@ -1507,6 +1513,16 @@ public sealed class FireworkShell
     public float DragK { get; private set; }
     public float FuseTimeSeconds { get; }
 
+    private enum ShellTerminalState
+    {
+        Active,
+        Fading
+    }
+
+    private ShellTerminalState _terminalState = ShellTerminalState.Active;
+    private float _fadeRemainingSeconds;
+    private float _fadeDurationSeconds;
+
     // *** CHANGED: new constructor signature
     public FireworkShell(
         FireworkShellProfile profile,
@@ -1541,6 +1557,16 @@ public sealed class FireworkShell
         Position += Velocity * dt;
         AgeSeconds += dt;
 
+        if (_terminalState == ShellTerminalState.Fading)
+        {
+            _fadeRemainingSeconds = MathF.Max(0.0f, _fadeRemainingSeconds - dt);
+            if (_fadeRemainingSeconds <= 0.0f)
+            {
+                Alive = false;
+                return;
+            }
+        }
+
         if (Position.Y <= GroundY)
             Alive = false;
     }
@@ -1552,7 +1578,12 @@ public sealed class FireworkShell
 
         Vector3 dir = Vector3.Normalize(Velocity);
 
-        Span<Vector3> dirs = stackalloc Vector3[12];
+        int particleCount = Math.Clamp(Profile.TrailParticleCount, 1, 64);
+        Span<Vector3> dirs = particleCount <= 64
+            ? stackalloc Vector3[64]
+            : new Vector3[particleCount];
+
+        dirs = dirs.Slice(0, particleCount);
         for (int i = 0; i < dirs.Length; i++)
         {
             Vector3 baseDir = -dir;
@@ -1573,24 +1604,55 @@ public sealed class FireworkShell
 
         // LOCAL trail color
         var trailColor = new Vector4(1.0f, 0.85f, 0.5f, 1.0f);
+
+        if (_terminalState == ShellTerminalState.Fading)
+        {
+            float t = _fadeDurationSeconds > 1e-4f ? (_fadeRemainingSeconds / _fadeDurationSeconds) : 0.0f;
+            t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+            trailColor *= t;
+        }
         // trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green for debugging
 
         renderer.SpawnBurstDirected(
             Position,
             trailColor,
-            speed: 5.0f,
+            speed: MathF.Max(0.0f, Profile.TrailSpeed),
             directions: dirs,
-            particleLifetimeSeconds: 0.6f);
+            particleLifetimeSeconds: MathF.Max(0.01f, Profile.TrailParticleLifetimeSeconds));
 
-        if (_rng.NextDouble() < 0.2)
+        if (_rng.NextDouble() < Math.Clamp(Profile.TrailSmokeChance, 0.0f, 1.0f))
         {
             renderer.SpawnSmoke(Position);
         }
     }
 
+    public bool IsTerminalFading => _terminalState == ShellTerminalState.Fading;
+
+    public void BeginTerminalFade(float seconds)
+    {
+        if (!Alive)
+            return;
+
+        if (_terminalState == ShellTerminalState.Fading)
+            return;
+
+        _fadeDurationSeconds = MathF.Max(0.0f, seconds);
+        _fadeRemainingSeconds = _fadeDurationSeconds;
+        _terminalState = ShellTerminalState.Fading;
+
+        if (_fadeDurationSeconds <= 0.0f)
+            Alive = false;
+    }
+
     public bool TryExplode(out ShellExplosion explosion)
     {
         if (!Alive)
+        {
+            explosion = default;
+            return false;
+        }
+
+        if (_terminalState == ShellTerminalState.Fading)
         {
             explosion = default;
             return false;
@@ -1603,16 +1665,25 @@ public sealed class FireworkShell
             return false;
         }
 
+        if (Profile.SuppressBurst)
+        {
+            BeginTerminalFade(Profile.TerminalFadeOutSeconds);
+            explosion = default;
+            return false;
+        }
+
         explosion = new ShellExplosion(
             Position,
             BurstShape: BurstShapeOverride ?? Profile.BurstShape,
             ExplosionRadius: Profile.ExplosionRadius,
             ParticleCount: Profile.ParticleCount,
             ParticleLifetimeSeconds: Profile.ParticleLifetimeSeconds,
+            BurstSpeed: Profile.BurstSpeed,
             BurstSparkleRateHz: Profile.BurstSparkleRateHz,
             BurstSparkleIntensity: Profile.BurstSparkleIntensity,
             RingAxis: Profile.RingAxis,
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
+            Emission: Profile.EmissionSettings,
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
@@ -1630,10 +1701,12 @@ public readonly record struct ShellExplosion(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    float? BurstSpeed,
     float BurstSparkleRateHz,
     float BurstSparkleIntensity,
     Vector3? RingAxis,
     float RingAxisRandomTiltDegrees,
+    BurstEmissionSettings Emission,
     FinaleSaluteParams FinaleSalute,
     CometParams Comet,
     Vector4 BaseColor,
@@ -1688,13 +1761,13 @@ internal static class EmissionStyles
     /// We bias particles toward a set of "spokes" distributed over the full sphere,
     /// then apply isotropic 3D jitter around each spoke so each cluster is a narrow cone (not a plane).
     /// </summary>
-    public static Vector3[] EmitChrysanthemum(int count)
+    public static Vector3[] EmitChrysanthemum(int count, BurstEmissionSettings settings)
     {
         // More spokes => more distinct "radial streaks" without looking like only a few sheets.
-        const int spokeCount = 24;
+        int spokeCount = settings.ChrysanthemumSpokeCount;
 
         // How wide each spoke's cone is (bigger => less spiky / more peony-like).
-        const float spokeJitter = 0.12f;
+        float spokeJitter = settings.ChrysanthemumSpokeJitter;
 
         // Precompute spoke directions across the *full* sphere (not locked to a plane).
         var spokes = new Vector3[spokeCount];
@@ -1722,9 +1795,9 @@ internal static class EmissionStyles
     /// Willow: still roughly spherical, but each direction is gently blended toward "down"
     /// so gravity + extended lifetime produce long drooping arcs.
     /// </summary>
-    public static Vector3[] EmitWillow(int count)
+    public static Vector3[] EmitWillow(int count, BurstEmissionSettings settings)
     {
-        const float downwardBlend = 0.35f; // 0 = peony-like, 1 = straight down
+        float downwardBlend = settings.WillowDownwardBlend; // 0 = peony-like, 1 = straight down
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
@@ -1746,18 +1819,18 @@ internal static class EmissionStyles
     /// Palm: a small number of strong comet-like "fronds" radiating from near the zenith.
     /// Each frond is a narrow cone so it reads as a streak rather than a fuzzy blob.
     /// </summary>
-    public static Vector3[] EmitPalm(int count)
+    public static Vector3[] EmitPalm(int count, BurstEmissionSettings settings)
     {
         // Fewer, stronger fronds = clearer palm shape.
-        const int frondCount = 7;
+        int frondCount = settings.PalmFrondCount;
 
         // Angle of fronds away from +Y (0 = straight up, pi/2 = horizontal).
         // ~35–40° feels very palm-like.
-        const float frondConeAngle = 0.65f; // radians
+        float frondConeAngle = settings.PalmFrondConeAngleRadians;
 
         // How much we let each particle deviate from its frond direction.
         // Smaller => tighter fronds.
-        const float frondJitterAngle = 0.08f; // radians
+        float frondJitterAngle = settings.PalmFrondJitterAngleRadians;
 
         var frondDirs = new Vector3[frondCount];
 
@@ -1836,31 +1909,43 @@ internal static class EmissionStyles
     /// Similar to a willow but with much stronger downward bias and
     /// minimal upward components, so gravity makes a thick drooping tail.
     /// </summary>
-    public static Vector3[] EmitHorsetail(int count)
+    public static Vector3[] EmitHorsetail(int count, BurstEmissionSettings settings)
+        => EmitHorsetail(count, axis: Vector3.UnitY, settings: settings);
+
+    /// <summary>
+    /// Horsetail, oriented: like <see cref="EmitHorsetail(int)"/>, but the tail direction is based on an axis.
+    /// The emission is biased toward <c>-axis</c>.
+    /// </summary>
+    public static Vector3[] EmitHorsetail(int count, Vector3 axis, BurstEmissionSettings settings)
     {
         var dirs = new Vector3[count];
 
-        const float downwardBlend = 0.75f;   // how hard we pull toward straight down
-        const float minDownY = -0.25f;  // don't let stars start too horizontal/upward
-        const float jitterAngle = 0.15f;   // small cone jitter for variation
+        float downwardBlend = settings.HorsetailDownwardBlend;   // how hard we pull toward the tail direction
+        float minUpDot = settings.HorsetailMinDownDot;           // clamp so it never starts too aligned with +axis
+        float jitterAngle = settings.HorsetailJitterAngleRadians;
 
-        Vector3 down = new(0f, -1f, 0f);
+        axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
+        Vector3 tailDir = -axis;
 
         for (int i = 0; i < count; i++)
         {
             // Start from a random direction
             Vector3 d = RandomUnitVector();
 
-            // Ensure it's at least somewhat downward: clamp Y so it's never near +Y
-            if (d.Y > minDownY)
+            // Ensure it's at least somewhat toward the tail direction by clamping against +axis.
+            // When dot(d, +axis) is too large, remove some component along +axis.
+            float upDot = Vector3.Dot(d, axis);
+            if (upDot > minUpDot)
             {
-                d.Y = minDownY;
+                // Move d away from +axis and renormalize. Slight randomness helps avoid patterns.
+                d -= axis * (upDot - minUpDot);
+                if (d.LengthSquared() < 1e-8f)
+                    d = tailDir;
+                d = Vector3.Normalize(d);
             }
 
-            d = Vector3.Normalize(d);
-
-            // Strongly bias toward straight down
-            d = Vector3.Normalize(Vector3.Lerp(d, down, downwardBlend));
+            // Strongly bias toward tail direction
+            d = Vector3.Normalize(Vector3.Lerp(d, tailDir, downwardBlend));
 
             // Add a bit of cone jitter so it isn't a razor-thin column
             d = JitterDirection(d, jitterAngle);

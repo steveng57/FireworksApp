@@ -228,26 +228,62 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         p.Position += p.Velocity * dt;
     }
 
-    // Kill particles that fall below ground (y=0).
-    // Prevents sparks/smoke rendering through the ground plane.
-    if (p.Position.y < 0.0f)
+    // Ground interaction:
+    // - Sparks (Kind==2): fade out smoothly as they approach the ground to avoid a hard cutoff.
+    // - Others: keep the existing hard kill below ground to prevent rendering through the plane.
+    if (p.Kind == 2)
     {
-        p.Kind = 0;
-        p.Color = float4(0, 0, 0, 0);
-        Particles[i] = p;
-        return;
+        // Fade band thickness in meters above y=0.
+        // y >= band => no attenuation, y <= 0 => fully gone (and then killed).
+        const float GroundFadeBand = 2.0f;
+        float groundFade = saturate(p.Position.y / GroundFadeBand);
+
+        if (groundFade <= 0.001f)
+        {
+            // Past the ground plane: drop the particle.
+            p.Kind = 0;
+            p.Color = float4(0, 0, 0, 0);
+            Particles[i] = p;
+            return;
+        }
+
+        // Store the ground fade factor in alpha temporarily; Kind==2 shading will apply it.
+        p.Color.a = groundFade;
+    }
+    else
+    {
+        // Kill particles that fall below ground (y=0).
+        // Prevents smoke/crackle/etc rendering through the ground plane.
+        if (p.Position.y < 0.0f)
+        {
+            p.Kind = 0;
+            p.Color = float4(0, 0, 0, 0);
+            Particles[i] = p;
+            return;
+        }
     }
 
     if (p.Kind == 2)
     {
+        // Apply ground fade (if any). Non-spark kinds never set this.
+        float groundFade = (p.Color.a > 0.0f) ? p.Color.a : 1.0f;
+
         // Use immutable base color for the ramp to prevent per-frame feedback.
         p.Color = ColorRampSpark(t, p.BaseColor);
+
+        // De-sync fade so sparks don't all hit the same fade band together.
+        // Keep hue/brightness logic from ColorRampSpark; only override alpha.
+        uint seed = p._pad.z ^ (i * 747796405u);
+        float uFade = Hash01(seed);
+        float fadeStart = lerp(0.55f, 0.85f, uFade);
+        float tColor = pow(saturate(t), 0.7f);
+        float a = 1.0f - smoothstep(fadeStart, 1.0f, tColor);
+        p.Color.a = a * groundFade;
 
         // Sparkle/twinkle: brightness-only modulation of burst particles.
         // Stored as float bits in pads.
         float sparkleRateHz = asfloat(p._pad.x);
         float sparkleIntensity = asfloat(p._pad.y);
-        uint seed = p._pad.z ^ (i * 747796405u);
         float mul = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
         p.Color.rgb *= mul;
     }

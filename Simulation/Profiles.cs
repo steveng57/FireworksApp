@@ -134,20 +134,56 @@ public sealed record class FireworkShellProfile(
     float ExplosionRadius,
     int ParticleCount,
     float ParticleLifetimeSeconds,
+    float? BurstSpeed = null,
     // Sparkle/twinkle for burst particles only (visual brightness modulation in shader).
     // Rate is in Hz (sparkles per second). Intensity is roughly 0..1 (can go higher for "glitter bombs").
         float BurstSparkleRateHz = 0.0f,
         float BurstSparkleIntensity = 0.0f,
+        // Terminal behavior: allow shells to end without an explosion by fading out their trail.
+        // If SuppressBurst is true, no burst particles are spawned when FuseTimeSeconds elapses.
+        // If TerminalFadeOutSeconds > 0, the shell remains alive for that duration and its trail emission fades to zero.
+        bool SuppressBurst = false,
+        float TerminalFadeOutSeconds = 0.0f,
+        // Shell trail emission parameters (used during flight/fall, not the burst).
+        int TrailParticleCount = 12,
+        float TrailParticleLifetimeSeconds = 0.6f,
+        float TrailSpeed = 5.0f,
+        float TrailSmokeChance = 0.2f,
         Vector3? RingAxis = null,
         float RingAxisRandomTiltDegrees = 0.0f,
+        BurstEmissionSettings? Emission = null,
         FinaleSaluteParams? FinaleSalute = null,
         CometParams? Comet = null,
         PeonyToWillowParams? PeonyToWillow = null)
     {
+        public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
         public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
         public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
         public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
     }
+
+public sealed record BurstEmissionSettings(
+    int ChrysanthemumSpokeCount,
+    float ChrysanthemumSpokeJitter,
+    float WillowDownwardBlend,
+    int PalmFrondCount,
+    float PalmFrondConeAngleRadians,
+    float PalmFrondJitterAngleRadians,
+    float HorsetailDownwardBlend,
+    float HorsetailMinDownDot,
+    float HorsetailJitterAngleRadians)
+{
+    public static BurstEmissionSettings Defaults { get; } = new(
+        ChrysanthemumSpokeCount: 24,
+        ChrysanthemumSpokeJitter: 0.12f,
+        WillowDownwardBlend: 0.35f,
+        PalmFrondCount: 7,
+        PalmFrondConeAngleRadians: 0.65f,
+        PalmFrondJitterAngleRadians: 0.08f,
+        HorsetailDownwardBlend: 0.75f,
+        HorsetailMinDownDot: -0.25f,
+        HorsetailJitterAngleRadians: 0.15f);
+}
 
 public sealed record PeonyToWillowParams(
     int PeonySparkCount,

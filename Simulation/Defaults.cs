@@ -108,10 +108,11 @@ public static class DefaultProfiles
                 ColorSchemeId: "warm",
                 FuseTimeSeconds: 3.8f,
                 ExplosionRadius: 12.0f,
-                ParticleCount: 6000,
-                ParticleLifetimeSeconds: 5.2f,
+                ParticleCount: 5000,
+                ParticleLifetimeSeconds: 2.5f,
                 BurstSparkleRateHz: 12.0f,
-                BurstSparkleIntensity: 0.35f),
+                BurstSparkleIntensity: 0.35f, 
+                BurstSpeed: 9.0f),
 
             ["chrys"] = new FireworkShellProfile(
                 Id: "chrys",
@@ -119,10 +120,15 @@ public static class DefaultProfiles
                 ColorSchemeId: "mixed",
                 FuseTimeSeconds: 3.9f,
                 ExplosionRadius: 13.0f,
-                ParticleCount: 6500,
+                ParticleCount: 5500,
                 ParticleLifetimeSeconds: 5.0f,
                 BurstSparkleRateHz: 14.0f,
-                BurstSparkleIntensity: 0.45f),
+                BurstSparkleIntensity: 0.45f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    ChrysanthemumSpokeCount = 24,
+                    ChrysanthemumSpokeJitter = 0.12f,
+                }),
 
             ["willow"] = new FireworkShellProfile(
                 Id: "willow",
@@ -130,10 +136,14 @@ public static class DefaultProfiles
                 ColorSchemeId: "pastel",
                 FuseTimeSeconds: 4.2f,
                 ExplosionRadius: 15.0f,
-                ParticleCount: 7000,
+                ParticleCount: 5000,
                 ParticleLifetimeSeconds: 6.0f,
                 BurstSparkleRateHz: 8.0f,
-                BurstSparkleIntensity: 0.25f),
+                BurstSparkleIntensity: 0.25f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    WillowDownwardBlend = 0.35f,
+                }),
 
             ["palm"] = new FireworkShellProfile(
                 Id: "palm",
@@ -142,9 +152,15 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 16.0f,
                 ParticleCount: 5000,
-                ParticleLifetimeSeconds: 5.5f,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 18.0f,
-                BurstSparkleIntensity: 0.65f),
+                BurstSparkleIntensity: 0.65f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    PalmFrondCount = 7,
+                    PalmFrondConeAngleRadians = 0.65f,
+                    PalmFrondJitterAngleRadians = 0.08f,
+                }),
 
             ["donut"] = new FireworkShellProfile(
                 Id: "donut",
@@ -152,7 +168,7 @@ public static class DefaultProfiles
                 ColorSchemeId: "cool",
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 14.0f,
-                ParticleCount: 7000,
+                ParticleCount: 5000,
                 ParticleLifetimeSeconds: 3.2f,
                 BurstSparkleRateHz: 5.0f,
                 BurstSparkleIntensity: 0.65f,
@@ -164,12 +180,12 @@ public static class DefaultProfiles
                 ColorSchemeId: "Gold",
                 FuseTimeSeconds: 3.2f,             // whatever works with your canister
                 ExplosionRadius: 45.0f,
-                ParticleCount: 3000,
-                ParticleLifetimeSeconds: 3.5f,
+                ParticleCount: 4000,
+                ParticleLifetimeSeconds: 1.5f,
                 BurstSparkleRateHz: 6.0f,
                 BurstSparkleIntensity: 0.20f,
-                RingAxis: null,
-                RingAxisRandomTiltDegrees: 0.0f
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 25.0f
             ),
             ["double_ring"] = new FireworkShellProfile(
                 Id: "double_ring",
@@ -177,8 +193,8 @@ public static class DefaultProfiles
                 ColorSchemeId: "gold",   // nice classy gold rings
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 16.0f,
-                ParticleCount: 6500,
-                ParticleLifetimeSeconds: 5.5f,
+                ParticleCount: 4500,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 2.0f,
                 BurstSparkleIntensity: 0.65f,
                 RingAxis: Vector3.UnitY,
@@ -191,10 +207,26 @@ public static class DefaultProfiles
                 ColorSchemeId: "neon",   // loud & colorful
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 14.0f,
-                ParticleCount: 6200,
-                ParticleLifetimeSeconds: 5.0f,
+                ParticleCount: 5500,
+                ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 16.0f,
                 BurstSparkleIntensity: 0.55f
+            ),
+
+            ["willow_trail_only"] = new FireworkShellProfile(
+                Id: "willow_trail_only",
+                BurstShape: FireworkBurstShape.Willow,
+                ColorSchemeId: "pastel",
+                FuseTimeSeconds: 2.0f,
+                ExplosionRadius: 0.0f,
+                ParticleCount: 0,
+                ParticleLifetimeSeconds: 0.0f,
+                SuppressBurst: true,
+                TerminalFadeOutSeconds: 1.5f,
+                TrailParticleCount: 12,
+                TrailParticleLifetimeSeconds: 0.8f,
+                TrailSpeed: 5.0f,
+                TrailSmokeChance: 0.2f
             ),
 
             ["peony_to_willow"] = new FireworkShellProfile(
@@ -203,17 +235,18 @@ public static class DefaultProfiles
                 ColorSchemeId: "gold",
                 FuseTimeSeconds: 4.0f,
                 ExplosionRadius: 14.0f,
-                ParticleCount: 3000,
-                ParticleLifetimeSeconds: 5.5f,
+                ParticleCount: 100,
+                ParticleLifetimeSeconds: 3.0f,
                 BurstSparkleRateHz: 10.0f,
                 BurstSparkleIntensity: 0.40f,
                 PeonyToWillow: PeonyToWillowParams.Defaults with
                 {
-                    WillowSubshellProfileId = "subshell_basic_pop",
+                    WillowSubshellProfileId = "subshell_willow_trail_only",
+                    //WillowSubshellProfileId = "subshell_ring_sparkle",
                     WillowVelocityScale = 0.50f,
                     WillowGravityMultiplier = 2.2f,
                     WillowDragMultiplier = 2.4f,
-                    WillowLifetimeMultiplier = 3.2f,
+                    WillowLifetimeMultiplier = 2.2f,
                     WillowTrailSpawnRate = 8f,
                     WillowTrailSpeed = 2.2f
                 }
@@ -307,6 +340,23 @@ public static class DefaultProfiles
             ["subshell_basic_pop"] = new SubShellProfile(
                 Id: "subshell_basic_pop",
                 ShellProfileId: "basic",
+                Count: 12,
+                SpawnMode: SubShellSpawnMode.Sphere,
+                DelaySeconds: 0.15f,
+                InheritParentVelocity: 0.2f,
+                AddedSpeed: 18.0f,
+                DirectionJitter: 0.08f,
+                SpeedJitter: 0.25f,
+                PositionJitter: 0.6f,
+                ChildTimeScale: 1.0f,
+                ColorSchemeId: null,
+                BurstShapeOverride: null,
+                MinAltitudeToSpawn: 5.0f,
+                MaxSubshellDepth: 1),
+
+            ["subshell_willow_trail_only"] = new SubShellProfile(
+                Id: "subshell_willow_trail_only",
+                ShellProfileId: "willow_trail_only",
                 Count: 12,
                 SpawnMode: SubShellSpawnMode.Sphere,
                 DelaySeconds: 0.15f,
@@ -564,21 +614,21 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
+        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "willow_trail_only")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
-        
-        for (int i = 0; i < 100; i += gridSize)
+        int mainCanisters = 25;
+        for (int i = 0; i < 50; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)
             {
                 string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
-                
-                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % profiles.Canisters.Count);
+
+                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
                 string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
                 float? muzzleVelocity = null;
 
                 // debug variations
-                //shellId = "double_ring";
+                //shellId = "basic";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
@@ -590,12 +640,33 @@ public static class DefaultShow
                     MuzzleVelocity: muzzleVelocity);
                 events.Add(showEvent);
 
-                t += 0.25f;
+                t += 0.20f;
             }
-            t += 1f;
+            t += 5f;
         }
 
         t += 4.0f;
+
+        for (int n = 0; n < 20; n += 2)
+        {
+            string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
+            var finaleEvent = new ShowEvent(
+                TimeSeconds: t,
+                CanisterId: canisterId,
+                ShellProfileId: "comet_neon");
+            events.Add(finaleEvent);
+            t += 0.5f;
+
+            canisterId = profiles.Canisters.Keys.ElementAt((n + 1) % mainCanisters);
+            finaleEvent = new ShowEvent(
+                TimeSeconds: t,
+                CanisterId: canisterId,
+                ShellProfileId: "peony_to_willow");
+            events.Add(finaleEvent);
+            t += 0.5f;
+        }
+
+        t += 8.0f;
 
         for (int n = 0; n < 10; n++)
         {
