@@ -655,7 +655,7 @@ public static class DefaultShow
                 CanisterId: canisterId,
                 ShellProfileId: "comet_neon");
             events.Add(finaleEvent);
-            t += 0.5f;
+            t += 1.0f;
 
             canisterId = profiles.Canisters.Keys.ElementAt((n + 1) % mainCanisters);
             finaleEvent = new ShowEvent(
@@ -663,7 +663,7 @@ public static class DefaultShow
                 CanisterId: canisterId,
                 ShellProfileId: "peony_to_willow");
             events.Add(finaleEvent);
-            t += 0.5f;
+            t += 1.0f;
         }
 
         t += 8.0f;
