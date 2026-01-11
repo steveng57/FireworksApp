@@ -198,6 +198,18 @@ public static class DefaultProfiles
                 BurstSparkleIntensity: 0.55f
             ),
 
+            ["willow_trail_only"] = new FireworkShellProfile(
+                Id: "willow_trail_only",
+                BurstShape: FireworkBurstShape.Willow,
+                ColorSchemeId: "pastel",
+                FuseTimeSeconds: 2.0f,
+                ExplosionRadius: 0.0f,
+                ParticleCount: 0,
+                ParticleLifetimeSeconds: 0.0f,
+                SuppressBurst: true,
+                TerminalFadeOutSeconds: 1.5f
+            ),
+
             ["peony_to_willow"] = new FireworkShellProfile(
                 Id: "peony_to_willow",
                 BurstShape: FireworkBurstShape.PeonyToWillow,
@@ -210,7 +222,7 @@ public static class DefaultProfiles
                 BurstSparkleIntensity: 0.40f,
                 PeonyToWillow: PeonyToWillowParams.Defaults with
                 {
-                    WillowSubshellProfileId = "subshell_basic_pop",
+                    WillowSubshellProfileId = "subshell_willow_trail_only",
                     //WillowSubshellProfileId = "subshell_ring_sparkle",
                     WillowVelocityScale = 0.50f,
                     WillowGravityMultiplier = 2.2f,
@@ -309,6 +321,23 @@ public static class DefaultProfiles
             ["subshell_basic_pop"] = new SubShellProfile(
                 Id: "subshell_basic_pop",
                 ShellProfileId: "basic",
+                Count: 12,
+                SpawnMode: SubShellSpawnMode.Sphere,
+                DelaySeconds: 0.15f,
+                InheritParentVelocity: 0.2f,
+                AddedSpeed: 18.0f,
+                DirectionJitter: 0.08f,
+                SpeedJitter: 0.25f,
+                PositionJitter: 0.6f,
+                ChildTimeScale: 1.0f,
+                ColorSchemeId: null,
+                BurstShapeOverride: null,
+                MinAltitudeToSpawn: 5.0f,
+                MaxSubshellDepth: 1),
+
+            ["subshell_willow_trail_only"] = new SubShellProfile(
+                Id: "subshell_willow_trail_only",
+                ShellProfileId: "willow_trail_only",
                 Count: 12,
                 SpawnMode: SubShellSpawnMode.Sphere,
                 DelaySeconds: 0.15f,
@@ -566,71 +595,70 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
+        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "willow_trail_only")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
         int mainCanisters = 25;
-        //for (int i = 0; i < 1000; i += gridSize)
-        //{
-        //    for (int j = 0; j < gridSize; j++)
-        //    {
-        //        string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
-                
-        //        string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
-        //        string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
-        //        float? muzzleVelocity = null;
+        for (int i = 0; i < 50; i += gridSize)
+        {
+            for (int j = 0; j < gridSize; j++)
+            {
+                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
-        //        // debug variations
-        //        //shellId = "basic";
-        //        //canisterId = "c2";
-        //        //colorSchemeId = "debug";
+                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
+                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+                float? muzzleVelocity = null;
 
-        //        var showEvent = new ShowEvent(
-        //            TimeSeconds: t,
-        //            CanisterId: canisterId,
-        //            ShellProfileId: shellId,
-        //            ColorSchemeId: colorSchemeId,
-        //            MuzzleVelocity: muzzleVelocity);
-        //        events.Add(showEvent);
+                // debug variations
+                //shellId = "basic";
+                //canisterId = "c2";
+                //colorSchemeId = "debug";
 
-        //        t += 0.25f;
-        //    }
-        //    t += 5f;
-        //}
+                var showEvent = new ShowEvent(
+                    TimeSeconds: t,
+                    CanisterId: canisterId,
+                    ShellProfileId: shellId,
+                    ColorSchemeId: colorSchemeId,
+                    MuzzleVelocity: muzzleVelocity);
+                events.Add(showEvent);
 
-        // t += 4.0f;
+                t += 0.25f;
+            }
+            t += 5f;
+        }
 
-        //for (int n = 0; n < 6; n+=2)
-        //{
-            //string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
-            //var finaleEvent = new ShowEvent(
-            //    TimeSeconds: t,
-            //    CanisterId: canisterId,
-            //    ShellProfileId: "comet_neon");
-            //events.Add(finaleEvent);
-            //t += 0.5f;
+        t += 4.0f;
 
-            //var canisterId = profiles.Canisters.Keys.ElementAt((n + 1 ) % mainCanisters);
-            var canisterId = profiles.Canisters.Keys.ElementAt(5);
+        for (int n = 0; n < 20; n += 2)
+        {
+            string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
             var finaleEvent = new ShowEvent(
+                TimeSeconds: t,
+                CanisterId: canisterId,
+                ShellProfileId: "comet_neon");
+            events.Add(finaleEvent);
+            t += 0.5f;
+
+            canisterId = profiles.Canisters.Keys.ElementAt((n + 1) % mainCanisters);
+            finaleEvent = new ShowEvent(
                 TimeSeconds: t,
                 CanisterId: canisterId,
                 ShellProfileId: "peony_to_willow");
             events.Add(finaleEvent);
             t += 0.5f;
-        //}
+        }
 
-        //t += 10.0f;
+        t += 10.0f;
 
-        //for (int n = 0; n < 10; n++)
-        //{
-        //    string canisterId = profiles.Canisters.Keys.ElementAt(n % 25);
-        //    var finaleEvent = new ShowEvent(
-        //        TimeSeconds: t,
-        //        CanisterId: canisterId,
-        //        ShellProfileId: "finale_salute");
-        //    events.Add(finaleEvent);
-        //    t += 1.5f;
-        //}
+        for (int n = 0; n < 10; n++)
+        {
+            string canisterId = profiles.Canisters.Keys.ElementAt(n % 25);
+            var finaleEvent = new ShowEvent(
+                TimeSeconds: t,
+                CanisterId: canisterId,
+                ShellProfileId: "finale_salute");
+            events.Add(finaleEvent);
+            t += 1.5f;
+        }
 
         var showScript = new ShowScript(events);
         return showScript;

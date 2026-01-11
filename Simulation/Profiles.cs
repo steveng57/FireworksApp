@@ -139,6 +139,11 @@ public sealed record class FireworkShellProfile(
     // Rate is in Hz (sparkles per second). Intensity is roughly 0..1 (can go higher for "glitter bombs").
         float BurstSparkleRateHz = 0.0f,
         float BurstSparkleIntensity = 0.0f,
+        // Terminal behavior: allow shells to end without an explosion by fading out their trail.
+        // If SuppressBurst is true, no burst particles are spawned when FuseTimeSeconds elapses.
+        // If TerminalFadeOutSeconds > 0, the shell remains alive for that duration and its trail emission fades to zero.
+        bool SuppressBurst = false,
+        float TerminalFadeOutSeconds = 0.0f,
         Vector3? RingAxis = null,
         float RingAxisRandomTiltDegrees = 0.0f,
         FinaleSaluteParams? FinaleSalute = null,

@@ -192,6 +192,11 @@ public sealed class FireworksEngine
 
                 _shells.RemoveAt(i);
             }
+            else if (shell.IsTerminalFading)
+            {
+                if (!shell.Alive)
+                    _shells.RemoveAt(i);
+            }
             else if (!shell.Alive)
             {
                 _shells.RemoveAt(i);
@@ -1507,6 +1512,16 @@ public sealed class FireworkShell
     public float DragK { get; private set; }
     public float FuseTimeSeconds { get; }
 
+    private enum ShellTerminalState
+    {
+        Active,
+        Fading
+    }
+
+    private ShellTerminalState _terminalState = ShellTerminalState.Active;
+    private float _fadeRemainingSeconds;
+    private float _fadeDurationSeconds;
+
     // *** CHANGED: new constructor signature
     public FireworkShell(
         FireworkShellProfile profile,
@@ -1541,6 +1556,16 @@ public sealed class FireworkShell
         Position += Velocity * dt;
         AgeSeconds += dt;
 
+        if (_terminalState == ShellTerminalState.Fading)
+        {
+            _fadeRemainingSeconds = MathF.Max(0.0f, _fadeRemainingSeconds - dt);
+            if (_fadeRemainingSeconds <= 0.0f)
+            {
+                Alive = false;
+                return;
+            }
+        }
+
         if (Position.Y <= GroundY)
             Alive = false;
     }
@@ -1573,6 +1598,13 @@ public sealed class FireworkShell
 
         // LOCAL trail color
         var trailColor = new Vector4(1.0f, 0.85f, 0.5f, 1.0f);
+
+        if (_terminalState == ShellTerminalState.Fading)
+        {
+            float t = _fadeDurationSeconds > 1e-4f ? (_fadeRemainingSeconds / _fadeDurationSeconds) : 0.0f;
+            t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+            trailColor *= t;
+        }
         // trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green for debugging
 
         renderer.SpawnBurstDirected(
@@ -1588,6 +1620,24 @@ public sealed class FireworkShell
         }
     }
 
+    public bool IsTerminalFading => _terminalState == ShellTerminalState.Fading;
+
+    public void BeginTerminalFade(float seconds)
+    {
+        if (!Alive)
+            return;
+
+        if (_terminalState == ShellTerminalState.Fading)
+            return;
+
+        _fadeDurationSeconds = MathF.Max(0.0f, seconds);
+        _fadeRemainingSeconds = _fadeDurationSeconds;
+        _terminalState = ShellTerminalState.Fading;
+
+        if (_fadeDurationSeconds <= 0.0f)
+            Alive = false;
+    }
+
     public bool TryExplode(out ShellExplosion explosion)
     {
         if (!Alive)
@@ -1596,9 +1646,22 @@ public sealed class FireworkShell
             return false;
         }
 
+        if (_terminalState == ShellTerminalState.Fading)
+        {
+            explosion = default;
+            return false;
+        }
+
         // *** CHANGED: use per-shell fuse, not profile's fixed value
         if (AgeSeconds < FuseTimeSeconds)
         {
+            explosion = default;
+            return false;
+        }
+
+        if (Profile.SuppressBurst)
+        {
+            BeginTerminalFade(Profile.TerminalFadeOutSeconds);
             explosion = default;
             return false;
         }
