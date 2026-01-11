@@ -8,6 +8,7 @@ using Vortice.D3DCompiler;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using System.Diagnostics;
+using FireworksApp.Simulation;
 
 namespace FireworksApp.Rendering;
 
@@ -466,6 +467,9 @@ internal sealed class ParticlesPipeline : IDisposable
             DeltaTime = scaledDt,
             CameraUpWS = up,
             Time = (float)(Environment.TickCount64 / 1000.0),
+
+            SmokeFadeInFraction = Tunables.SmokeFadeInFraction,
+            SmokeFadeOutStartFraction = Tunables.SmokeFadeOutStartFraction,
 
             CrackleBaseColor = ParticleConstants.CrackleBaseColor,
             CrackleBaseSize = ParticleConstants.CrackleBaseSize,

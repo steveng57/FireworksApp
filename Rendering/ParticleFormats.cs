@@ -68,6 +68,10 @@ internal struct FrameCBData
     public Vector3 CameraUpWS;
     public float Time;
 
+    public float SmokeFadeInFraction;
+    public float SmokeFadeOutStartFraction;
+    public Vector2 _smokePad;
+
     public Vector3 CrackleBaseColor;
     public float CrackleBaseSize;
     public Vector3 CracklePeakColor;

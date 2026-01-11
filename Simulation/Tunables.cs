@@ -10,6 +10,12 @@ internal static class Tunables
     // Physics integration
     internal const float ShellDragK = 0.020f;
 
+    // Smoke tuning
+    internal const float SmokeLifetimeMinSeconds = 1.0f;
+    internal const float SmokeLifetimeMaxSeconds = 5.0f;
+    internal const float SmokeFadeInFraction = 0.20f;
+    internal const float SmokeFadeOutStartFraction = 0.60f;
+
     // Particle GPU budgets (must be large enough to avoid drops; impacts memory)
     internal static class ParticleBudgets
     {
@@ -28,6 +34,24 @@ internal static class Tunables
 
         if (ShellDragK < 0)
             throw new InvalidOperationException($"{nameof(ShellDragK)} must be >= 0.");
+
+        if (SmokeLifetimeMinSeconds < 0)
+            throw new InvalidOperationException($"{nameof(SmokeLifetimeMinSeconds)} must be >= 0.");
+
+        if (SmokeLifetimeMaxSeconds < 0)
+            throw new InvalidOperationException($"{nameof(SmokeLifetimeMaxSeconds)} must be >= 0.");
+
+        if (SmokeLifetimeMaxSeconds < SmokeLifetimeMinSeconds)
+            throw new InvalidOperationException($"{nameof(SmokeLifetimeMaxSeconds)} must be >= {nameof(SmokeLifetimeMinSeconds)}.");
+
+        if (SmokeFadeInFraction is < 0.0f or > 1.0f)
+            throw new InvalidOperationException($"{nameof(SmokeFadeInFraction)} must be in [0,1].");
+
+        if (SmokeFadeOutStartFraction is < 0.0f or > 1.0f)
+            throw new InvalidOperationException($"{nameof(SmokeFadeOutStartFraction)} must be in [0,1].");
+
+        if (SmokeFadeOutStartFraction < SmokeFadeInFraction)
+            throw new InvalidOperationException($"{nameof(SmokeFadeOutStartFraction)} must be >= {nameof(SmokeFadeInFraction)}.");
 
         if (ParticleBudgets.Shell <= 0)
             throw new InvalidOperationException($"{nameof(ParticleBudgets.Shell)} must be > 0.");

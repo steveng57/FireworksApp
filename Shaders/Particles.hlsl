@@ -9,6 +9,10 @@ cbuffer FrameCB : register(b0)
     float3 CameraUpWS;
     float Time;
 
+    float SmokeFadeInFraction;
+    float SmokeFadeOutStartFraction;
+    float2 _smokePad;
+
     float3 CrackleBaseColor;
     float CrackleBaseSize;
     float3 CracklePeakColor;
@@ -295,11 +299,15 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         float3 endC = float3(0.24f, 0.25f, 0.27f);
         float3 c = lerp(startC, endC, life01);
 
+        float fadeInEnd = saturate(SmokeFadeInFraction);
+        float fadeOutStart = saturate(SmokeFadeOutStartFraction);
+        fadeOutStart = max(fadeOutStart, fadeInEnd);
+
         float a;
-        if (life01 < 0.2f)
-            a = smoothstep(0.0f, 0.2f, life01);
-        else if (life01 > 0.8f)
-            a = smoothstep(1.0f, 0.8f, life01);
+        if (life01 < fadeInEnd)
+            a = smoothstep(0.0f, max(1e-4f, fadeInEnd), life01);
+        else if (life01 > fadeOutStart)
+            a = smoothstep(1.0f, fadeOutStart, life01);
         else
             a = 1.0f;
 

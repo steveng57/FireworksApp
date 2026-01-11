@@ -15,6 +15,8 @@ using System.Windows;
 
 namespace FireworksApp.Rendering;
 
+using FireworksApp.Simulation;
+
 // Simple vertex for the launch pad (just a position in 3D).
 [StructLayout(LayoutKind.Sequential)]
 public struct PadVertex
@@ -639,7 +641,9 @@ public sealed class D3D11Renderer : IDisposable
 
                 Vector3 vel = outward * 0.7f + up;
 
-                float lifetime = 4.0f + (float)_rng.NextDouble() * 4.0f;
+                float minLife = System.Math.Max(0.0f, Tunables.SmokeLifetimeMinSeconds);
+                float maxLife = System.Math.Max(minLife, Tunables.SmokeLifetimeMaxSeconds);
+                float lifetime = minLife + (float)_rng.NextDouble() * (maxLife - minLife);
 
                 staging[i] = new GpuParticle
                 {
