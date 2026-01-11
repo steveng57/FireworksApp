@@ -18,6 +18,10 @@ internal sealed class PerfTelemetry
     private long _uploadBytesAccum;
     private long _uploadCalls;
 
+    private double _mapMsAccum;
+    private double _mapMsMax;
+    private long _mapCalls;
+
     public bool Enabled { get; set; } = true;
 
     public void RecordUpload(TimeSpan elapsed, int bytes)
@@ -30,6 +34,16 @@ internal sealed class PerfTelemetry
         _uploadMsMax = System.MathF.Max((float)_uploadMsMax, (float)ms);
         _uploadBytesAccum += bytes;
         _uploadCalls++;
+    }
+
+    public void RecordMap(double elapsedMilliseconds)
+    {
+        if (!Enabled)
+            return;
+
+        _mapMsAccum += elapsedMilliseconds;
+        _mapMsMax = System.MathF.Max((float)_mapMsMax, (float)elapsedMilliseconds);
+        _mapCalls++;
     }
 
     public void RecordUpload(double elapsedMilliseconds, int bytes)
@@ -86,14 +100,21 @@ internal sealed class PerfTelemetry
         double uploadMaxMs = _uploadMsMax;
         double uploadMbPerSec = seconds > 1e-6 ? (_uploadBytesAccum / (1024.0 * 1024.0)) / seconds : 0.0;
 
+        double mapAvgMs = _mapCalls > 0 ? (_mapMsAccum / _mapCalls) : 0.0;
+        double mapMaxMs = _mapMsMax;
+
         _uploadMsAccum = 0.0;
         _uploadMsMax = 0.0;
         _uploadBytesAccum = 0;
         _uploadCalls = 0;
 
+        _mapMsAccum = 0.0;
+        _mapMsMax = 0.0;
+        _mapCalls = 0;
+
         _lastReportTimestamp = now;
 
-        Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
+        Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} map(avg/max)={mapAvgMs:F3}/{mapMaxMs:F3}ms upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
         appendDetails?.Invoke();
         Debug.WriteLine(string.Empty);
     }

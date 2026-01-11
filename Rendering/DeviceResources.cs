@@ -25,10 +25,36 @@ internal sealed class DeviceResources : IDisposable
     public void CreateDeviceAndSwapChain(int width, int height)
     {
         var creationFlags = DeviceCreationFlags.BgraSupport;
-#if DEBUG
-        creationFlags |= DeviceCreationFlags.Debug;
-#endif
 
+#if DEBUG
+        // The D3D11 debug layer is not always present (e.g., on machines without Graphics Tools installed).
+        // If enabling it fails, fall back to normal device creation instead of crashing on startup.
+        ID3D11Device? device = null;
+        ID3D11DeviceContext? context = null;
+        try
+        {
+            D3D11CreateDevice(
+                adapter: null,
+                driverType: DriverType.Hardware,
+                flags: creationFlags | DeviceCreationFlags.Debug,
+                featureLevels: null,
+                device: out device,
+                immediateContext: out context);
+        }
+        catch
+        {
+            device?.Dispose();
+            context?.Dispose();
+
+            D3D11CreateDevice(
+                adapter: null,
+                driverType: DriverType.Hardware,
+                flags: creationFlags,
+                featureLevels: null,
+                device: out device,
+                immediateContext: out context);
+        }
+#else
         D3D11CreateDevice(
             adapter: null,
             driverType: DriverType.Hardware,
@@ -36,6 +62,7 @@ internal sealed class DeviceResources : IDisposable
             featureLevels: null,
             device: out var device,
             immediateContext: out var context);
+#endif
 
         Device = device;
         Context = context;

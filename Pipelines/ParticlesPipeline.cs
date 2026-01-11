@@ -138,8 +138,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         // Ring of small upload buffers:
         // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
-        const int uploadRingSize = 32;
-        const int uploadChunkElements = 32_768;
+        int uploadRingSize = Tunables.ParticleUpload.UploadRingSize;
+        int uploadChunkElements = Tunables.ParticleUpload.UploadChunkElements;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
         _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
         _uploadBufferIndex = 0;
@@ -185,19 +185,33 @@ internal sealed class ParticlesPipeline : IDisposable
                 if (upload is null)
                     break;
 
-                var mapped = ctx.Map(upload, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-                try
+                if (Tunables.ParticleUpload.UseUpdateSubresource)
                 {
-                    unsafe
-                    {
-                        var dst = (GpuParticle*)mapped.DataPointer;
-                        for (int i = 0; i < chunkElements; i++)
-                            dst[i] = dead;
-                    }
+                    // DEFAULT buffers are not mappable. Seed the upload buffer via UpdateSubresource.
+                    // We only need to ensure the particle buffer is fully initialized; a small temporary
+                    // chunk is acceptable during startup/resize.
+                    var temp = new GpuParticle[chunkElements];
+                    for (int i = 0; i < temp.Length; i++)
+                        temp[i] = dead;
+
+                    ctx.UpdateSubresource(temp, upload);
                 }
-                finally
+                else
                 {
-                    ctx.Unmap(upload, 0);
+                    var mapped = ctx.Map(upload, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                    try
+                    {
+                        unsafe
+                        {
+                            var dst = (GpuParticle*)mapped.DataPointer;
+                            for (int i = 0; i < chunkElements; i++)
+                                dst[i] = dead;
+                        }
+                    }
+                    finally
+                    {
+                        ctx.Unmap(upload, 0);
+                    }
                 }
 
                 var srcBox = new Box

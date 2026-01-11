@@ -420,7 +420,10 @@ public sealed class D3D11Renderer : IDisposable
             _pad2 = PackFloat(System.Math.Max(0.0f, fadeGamma))
         };
 
+        long map0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        long map1 = System.Diagnostics.Stopwatch.GetTimestamp();
+        _perf.RecordMap((map1 - map0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
         try
         {
             unsafe
@@ -857,7 +860,10 @@ public sealed class D3D11Renderer : IDisposable
 
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
+            long map0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+            long map1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _perf.RecordMap(ToMilliseconds(map0, map1));
             try
             {
                 nint basePtr = mapped.DataPointer;
@@ -943,13 +949,102 @@ public sealed class D3D11Renderer : IDisposable
         // If the list upload is larger than the upload buffer capacity, fall back to chunked upload.
         if (count > uploadCap)
         {
-            // Reuse the array chunk path to keep logic in one place.
-            WriteParticlesToBuffer(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging).ToArray(), start, count, particleBuffer, uploadBuffer);
+            var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging);
+
+            int producedOffset = 0;
+            int remainingToUpload = count;
+            while (remainingToUpload > 0)
+            {
+                int chunkCount = System.Math.Min(remainingToUpload, uploadCap);
+                int chunkStart = (start + producedOffset) % _particleCapacity;
+
+                // Each chunk uses its own staging buffer from the ring.
+                var chunkUploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+                if (chunkUploadBuffer is null)
+                    return;
+
+                // If wrapping occurs, split this chunk into two segments.
+                int firstChunkCount = System.Math.Min(chunkCount, _particleCapacity - chunkStart);
+                int secondChunkCount = chunkCount - firstChunkCount;
+
+                long ct0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                long map0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                var mappedChunk = _context.Map(chunkUploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+                long map1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordMap(ToMilliseconds(map0, map1));
+                try
+                {
+                    nint basePtr = mappedChunk.DataPointer;
+                    unsafe
+                    {
+                        if (firstChunkCount > 0)
+                        {
+                            fixed (GpuParticle* srcPtr = &span[producedOffset])
+                            {
+                                Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstChunkCount * stride, firstChunkCount * stride);
+                            }
+                        }
+
+                        if (secondChunkCount > 0)
+                        {
+                            fixed (GpuParticle* srcPtr = &span[producedOffset + firstChunkCount])
+                            {
+                                nint dst = basePtr + (firstChunkCount * stride);
+                                Buffer.MemoryCopy(srcPtr, (void*)dst, secondChunkCount * stride, secondChunkCount * stride);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    _context.Unmap(chunkUploadBuffer, 0);
+                    long ct1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                    _perf.RecordUpload(ToMilliseconds(ct0, ct1), checked(chunkCount * stride));
+                }
+
+                if (firstChunkCount > 0)
+                {
+                    var srcBox = new Box
+                    {
+                        Left = 0,
+                        Right = (int)(firstChunkCount * stride),
+                        Top = 0,
+                        Bottom = 1,
+                        Front = 0,
+                        Back = 1
+                    };
+
+                    _context.CopySubresourceRegion(particleBuffer, 0, (uint)(chunkStart * stride), 0, 0, chunkUploadBuffer, 0, srcBox);
+                }
+
+                if (secondChunkCount > 0)
+                {
+                    var srcBox = new Box
+                    {
+                        Left = (int)(firstChunkCount * stride),
+                        Right = (int)(chunkCount * stride),
+                        Top = 0,
+                        Bottom = 1,
+                        Front = 0,
+                        Back = 1
+                    };
+
+                    _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, chunkUploadBuffer, 0, srcBox);
+                }
+
+                producedOffset += chunkCount;
+                remainingToUpload -= chunkCount;
+            }
+
             return;
         }
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        long mapStart = System.Diagnostics.Stopwatch.GetTimestamp();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        long mapEnd = System.Diagnostics.Stopwatch.GetTimestamp();
+        _perf.RecordMap(ToMilliseconds(mapStart, mapEnd));
         try
         {
             nint basePtr = mapped.DataPointer;
