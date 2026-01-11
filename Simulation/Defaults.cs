@@ -123,7 +123,12 @@ public static class DefaultProfiles
                 ParticleCount: 5500,
                 ParticleLifetimeSeconds: 5.0f,
                 BurstSparkleRateHz: 14.0f,
-                BurstSparkleIntensity: 0.45f),
+                BurstSparkleIntensity: 0.45f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    ChrysanthemumSpokeCount = 24,
+                    ChrysanthemumSpokeJitter = 0.12f,
+                }),
 
             ["willow"] = new FireworkShellProfile(
                 Id: "willow",
@@ -134,7 +139,11 @@ public static class DefaultProfiles
                 ParticleCount: 5000,
                 ParticleLifetimeSeconds: 6.0f,
                 BurstSparkleRateHz: 8.0f,
-                BurstSparkleIntensity: 0.25f),
+                BurstSparkleIntensity: 0.25f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    WillowDownwardBlend = 0.35f,
+                }),
 
             ["palm"] = new FireworkShellProfile(
                 Id: "palm",
@@ -145,7 +154,13 @@ public static class DefaultProfiles
                 ParticleCount: 5000,
                 ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 18.0f,
-                BurstSparkleIntensity: 0.65f),
+                BurstSparkleIntensity: 0.65f,
+                Emission: BurstEmissionSettings.Defaults with
+                {
+                    PalmFrondCount = 7,
+                    PalmFrondConeAngleRadians = 0.65f,
+                    PalmFrondJitterAngleRadians = 0.08f,
+                }),
 
             ["donut"] = new FireworkShellProfile(
                 Id: "donut",

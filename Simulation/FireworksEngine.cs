@@ -1324,11 +1324,11 @@ public sealed class FireworksEngine
         var dirsDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
-            FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount),
-            FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
-            FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
+              FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount, explosion.Emission),
+              FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount, explosion.Emission),
+              FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount, explosion.Emission),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
-             FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount, axis: ringAxis),
+              FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount, axis: ringAxis, settings: explosion.Emission),
             FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(explosion.ParticleCount, axis: ringAxis),
             FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
@@ -1386,7 +1386,7 @@ public sealed class FireworksEngine
 
         int count = Math.Max(1, (int)MathF.Round(pending.Params.PeonySparkCount * pending.Params.HandoffFraction));
         // Use willow emission: bias downward like willow
-        var dirs = EmissionStyles.EmitWillow(count);
+        var dirs = EmissionStyles.EmitWillow(count, BurstEmissionSettings.Defaults);
 
         for (int i = 0; i < dirs.Length; i++)
         {
@@ -1683,6 +1683,7 @@ public sealed class FireworkShell
             BurstSparkleIntensity: Profile.BurstSparkleIntensity,
             RingAxis: Profile.RingAxis,
             RingAxisRandomTiltDegrees: Profile.RingAxisRandomTiltDegrees,
+            Emission: Profile.EmissionSettings,
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
@@ -1705,6 +1706,7 @@ public readonly record struct ShellExplosion(
     float BurstSparkleIntensity,
     Vector3? RingAxis,
     float RingAxisRandomTiltDegrees,
+    BurstEmissionSettings Emission,
     FinaleSaluteParams FinaleSalute,
     CometParams Comet,
     Vector4 BaseColor,
@@ -1759,13 +1761,13 @@ internal static class EmissionStyles
     /// We bias particles toward a set of "spokes" distributed over the full sphere,
     /// then apply isotropic 3D jitter around each spoke so each cluster is a narrow cone (not a plane).
     /// </summary>
-    public static Vector3[] EmitChrysanthemum(int count)
+    public static Vector3[] EmitChrysanthemum(int count, BurstEmissionSettings settings)
     {
         // More spokes => more distinct "radial streaks" without looking like only a few sheets.
-        int spokeCount = Tunables.Emission.ChrysanthemumSpokeCount;
+        int spokeCount = settings.ChrysanthemumSpokeCount;
 
         // How wide each spoke's cone is (bigger => less spiky / more peony-like).
-        float spokeJitter = Tunables.Emission.ChrysanthemumSpokeJitter;
+        float spokeJitter = settings.ChrysanthemumSpokeJitter;
 
         // Precompute spoke directions across the *full* sphere (not locked to a plane).
         var spokes = new Vector3[spokeCount];
@@ -1793,9 +1795,9 @@ internal static class EmissionStyles
     /// Willow: still roughly spherical, but each direction is gently blended toward "down"
     /// so gravity + extended lifetime produce long drooping arcs.
     /// </summary>
-    public static Vector3[] EmitWillow(int count)
+    public static Vector3[] EmitWillow(int count, BurstEmissionSettings settings)
     {
-        float downwardBlend = Tunables.Emission.WillowDownwardBlend; // 0 = peony-like, 1 = straight down
+        float downwardBlend = settings.WillowDownwardBlend; // 0 = peony-like, 1 = straight down
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
@@ -1817,18 +1819,18 @@ internal static class EmissionStyles
     /// Palm: a small number of strong comet-like "fronds" radiating from near the zenith.
     /// Each frond is a narrow cone so it reads as a streak rather than a fuzzy blob.
     /// </summary>
-    public static Vector3[] EmitPalm(int count)
+    public static Vector3[] EmitPalm(int count, BurstEmissionSettings settings)
     {
         // Fewer, stronger fronds = clearer palm shape.
-        int frondCount = Tunables.Emission.PalmFrondCount;
+        int frondCount = settings.PalmFrondCount;
 
         // Angle of fronds away from +Y (0 = straight up, pi/2 = horizontal).
         // ~35–40° feels very palm-like.
-        float frondConeAngle = Tunables.Emission.PalmFrondConeAngleRadians;
+        float frondConeAngle = settings.PalmFrondConeAngleRadians;
 
         // How much we let each particle deviate from its frond direction.
         // Smaller => tighter fronds.
-        float frondJitterAngle = Tunables.Emission.PalmFrondJitterAngleRadians;
+        float frondJitterAngle = settings.PalmFrondJitterAngleRadians;
 
         var frondDirs = new Vector3[frondCount];
 
@@ -1907,20 +1909,20 @@ internal static class EmissionStyles
     /// Similar to a willow but with much stronger downward bias and
     /// minimal upward components, so gravity makes a thick drooping tail.
     /// </summary>
-    public static Vector3[] EmitHorsetail(int count)
-        => EmitHorsetail(count, axis: Vector3.UnitY);
+    public static Vector3[] EmitHorsetail(int count, BurstEmissionSettings settings)
+        => EmitHorsetail(count, axis: Vector3.UnitY, settings: settings);
 
     /// <summary>
     /// Horsetail, oriented: like <see cref="EmitHorsetail(int)"/>, but the tail direction is based on an axis.
     /// The emission is biased toward <c>-axis</c>.
     /// </summary>
-    public static Vector3[] EmitHorsetail(int count, Vector3 axis)
+    public static Vector3[] EmitHorsetail(int count, Vector3 axis, BurstEmissionSettings settings)
     {
         var dirs = new Vector3[count];
 
-        float downwardBlend = Tunables.Emission.HorsetailDownwardBlend;   // how hard we pull toward the tail direction
-        float minUpDot = Tunables.Emission.HorsetailMinDownDot;           // clamp so it never starts too aligned with +axis
-        float jitterAngle = Tunables.Emission.HorsetailJitterAngleRadians;
+        float downwardBlend = settings.HorsetailDownwardBlend;   // how hard we pull toward the tail direction
+        float minUpDot = settings.HorsetailMinDownDot;           // clamp so it never starts too aligned with +axis
+        float jitterAngle = settings.HorsetailJitterAngleRadians;
 
         axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
         Vector3 tailDir = -axis;
