@@ -208,7 +208,7 @@ public static class DefaultProfiles
                 ParticleLifetimeSeconds: 0.0f,
                 SuppressBurst: true,
                 TerminalFadeOutSeconds: 1.5f,
-                TrailParticleCount: 16,
+                TrailParticleCount: 12,
                 TrailParticleLifetimeSeconds: 0.8f,
                 TrailSpeed: 5.0f,
                 TrailSmokeChance: 0.2f
