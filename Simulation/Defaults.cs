@@ -625,7 +625,7 @@ public static class DefaultShow
                     MuzzleVelocity: muzzleVelocity);
                 events.Add(showEvent);
 
-                t += 0.25f;
+                t += 0.20f;
             }
             t += 5f;
         }
@@ -651,7 +651,7 @@ public static class DefaultShow
             t += 0.5f;
         }
 
-        t += 10.0f;
+        t += 8.0f;
 
         for (int n = 0; n < 10; n++)
         {
