@@ -77,6 +77,13 @@ public sealed class D3D11Renderer : IDisposable
     private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _canisters = Array.Empty<CanisterRenderState>();
 
     private System.Collections.Generic.IReadOnlyList<ShellRenderState> _shells = Array.Empty<ShellRenderState>();
+
+    private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _prevCanisters = Array.Empty<CanisterRenderState>();
+    private System.Collections.Generic.IReadOnlyList<ShellRenderState> _prevShells = Array.Empty<ShellRenderState>();
+
+    private ShellRenderState[]? _interpShells;
+    private CanisterRenderState[]? _interpCanisters;
+    private bool _hasInterpolatedState;
     private long _lastTick;
     private readonly System.Random _rng = new();
 
@@ -257,6 +264,11 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || _rtv is null || _swapChain is null)
             return;
 
+        // Interpolation state is per-render-callback; caller may set it before `Render`.
+        // Reset here so subsequent frames don't accidentally reuse it.
+        bool useInterpolatedState = _hasInterpolatedState;
+        _hasInterpolatedState = false;
+
         if (scaledDt < 0.0f)
             scaledDt = 0.0f;
         if (scaledDt > 0.05f)
@@ -303,9 +315,9 @@ public sealed class D3D11Renderer : IDisposable
         // Draw the simple launch pad
         DrawLaunchPad();
 
-        DrawCanisters();
+        DrawCanisters(useInterpolatedState);
 
-        DrawShells();
+        DrawShells(useInterpolatedState);
 
         DrawParticles(additive: true);
         DrawParticles(additive: false);
@@ -323,12 +335,60 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SetShells(System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
     {
+        _prevShells = _shells;
         _shells = shells ?? Array.Empty<ShellRenderState>();
+        _hasInterpolatedState = false;
     }
 
     public void SetCanisters(System.Collections.Generic.IReadOnlyList<CanisterRenderState> canisters)
     {
+        _prevCanisters = _canisters;
         _canisters = canisters ?? Array.Empty<CanisterRenderState>();
+        _hasInterpolatedState = false;
+    }
+
+    public void ApplyInterpolation(float alpha)
+    {
+        alpha = System.Math.Clamp(alpha, 0.0f, 1.0f);
+
+        if (alpha <= 0.0f)
+            return;
+
+        if (_prevShells.Count == 0 || _prevCanisters.Count == 0)
+            return;
+
+        if (_prevShells.Count != _shells.Count || _prevCanisters.Count != _canisters.Count)
+            return;
+
+        int shellCount = _shells.Count;
+        if (_interpShells is null || _interpShells.Length != shellCount)
+            _interpShells = shellCount == 0 ? null : new ShellRenderState[shellCount];
+
+        if (_interpShells is not null)
+        {
+            for (int i = 0; i < shellCount; i++)
+            {
+                var a = _prevShells[i].Position;
+                var b = _shells[i].Position;
+                _interpShells[i] = new ShellRenderState(Vector3.Lerp(a, b, alpha));
+            }
+        }
+
+        int canisterCount = _canisters.Count;
+        if (_interpCanisters is null || _interpCanisters.Length != canisterCount)
+            _interpCanisters = canisterCount == 0 ? null : new CanisterRenderState[canisterCount];
+
+        if (_interpCanisters is not null)
+        {
+            for (int i = 0; i < canisterCount; i++)
+            {
+                var aPos = _prevCanisters[i].Position;
+                var bPos = _canisters[i].Position;
+                _interpCanisters[i] = new CanisterRenderState(Vector3.Lerp(aPos, bPos, alpha), _canisters[i].Direction);
+            }
+        }
+
+        _hasInterpolatedState = true;
     }
 
     private static uint PackFloat(float value)
@@ -1040,12 +1100,16 @@ public sealed class D3D11Renderer : IDisposable
         _particlesPipeline.Draw(_context, _view, _proj, _schemeTint, _depthStencilState, additive);
     }
 
-    private void DrawShells()
+    private void DrawShells(bool useInterpolatedState)
     {
         if (_context is null)
             return;
 
-        _shellPipeline.Draw(_context, _shells, _view, _proj, _sceneCB, _objectCB);
+        var shells = (useInterpolatedState && _interpShells is not null)
+            ? (System.Collections.Generic.IReadOnlyList<ShellRenderState>)_interpShells
+            : _shells;
+
+        _shellPipeline.Draw(_context, shells, _view, _proj, _sceneCB, _objectCB);
     }
 
     private void LoadCanisterShadersAndGeometry()
@@ -1056,14 +1120,18 @@ public sealed class D3D11Renderer : IDisposable
         _canisterPipeline.Initialize(_device);
     }
 
-    private void DrawCanisters()
+    private void DrawCanisters(bool useInterpolatedState)
     {
         if (_context is null)
             return;
 
+        var canisters = (useInterpolatedState && _interpCanisters is not null)
+            ? (System.Collections.Generic.IReadOnlyList<CanisterRenderState>)_interpCanisters
+            : _canisters;
+
         _canisterPipeline.Draw(
             _context,
-            _canisters,
+            canisters,
             _view,
             _proj,
             _sceneCB,

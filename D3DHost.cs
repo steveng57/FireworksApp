@@ -31,6 +31,9 @@ public sealed class D3DHost : HwndHost
     private bool _isPanning;
     private Point _lastMouse;
 
+    private readonly Stopwatch _frameTimer = new();
+    private double _accumulatedSimSeconds;
+
     public int MouseMoveCount { get; private set; }
     public int MouseDownCount { get; private set; }
     public int MouseUpCount { get; private set; }
@@ -52,8 +55,6 @@ public sealed class D3DHost : HwndHost
         MouseUp += OnMouseUp;
         MouseMove += OnMouseMove;
         MouseWheel += OnMouseWheel;
-
-        CompositionTarget.Rendering += OnRendering;
     }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
@@ -164,6 +165,8 @@ public sealed class D3DHost : HwndHost
         var window = Window.GetWindow(this);
         window?.KeyDown += OnWindowKeyDown;
 
+        _accumulatedSimSeconds = 0;
+        _frameTimer.Restart();
         CompositionTarget.Rendering += OnRendering;
         _started = true;
     }
@@ -177,6 +180,9 @@ public sealed class D3DHost : HwndHost
 
         // Stop simulation updates immediately so visuals stop.
         CompositionTarget.Rendering -= OnRendering;
+
+        _frameTimer.Stop();
+        _accumulatedSimSeconds = 0;
 
         if (_engine is not null)
             _engine.SoundEvent -= OnSoundEvent;
@@ -378,23 +384,51 @@ public sealed class D3DHost : HwndHost
         if (_renderer is null)
             return;
 
-        const float dt = 1.0f / 60.0f;
+        const double fixedStepSeconds = 1.0 / 60.0;
+        const double maxFrameSeconds = 0.25;
 
-        float scaledDt = dt;
+        if (!_frameTimer.IsRunning)
+            _frameTimer.Restart();
 
-        if (_engine is not null)
+        double realDtSeconds = _frameTimer.Elapsed.TotalSeconds;
+        _frameTimer.Restart();
+
+        if (realDtSeconds < 0)
+            realDtSeconds = 0;
+        if (realDtSeconds > maxFrameSeconds)
+            realDtSeconds = maxFrameSeconds;
+
+        float timeScale = _engine?.TimeScale ?? 1.0f;
+        double scaledFixedStepSeconds = fixedStepSeconds * timeScale;
+        _accumulatedSimSeconds += realDtSeconds * timeScale;
+
+        int steps = 0;
+        const int maxStepsPerFrame = 8;
+
+        while (_accumulatedSimSeconds >= scaledFixedStepSeconds && steps < maxStepsPerFrame)
         {
-            _engine.Update(dt, _renderer);
-            scaledDt = dt * _engine.TimeScale;
+            _engine?.UpdateUnscaled((float)scaledFixedStepSeconds, _renderer);
+            _accumulatedSimSeconds -= scaledFixedStepSeconds;
+            steps++;
         }
+
+        if (steps == maxStepsPerFrame)
+            _accumulatedSimSeconds = 0;
+
+        float alpha = scaledFixedStepSeconds > 1e-9
+            ? (float)(_accumulatedSimSeconds / scaledFixedStepSeconds)
+            : 0.0f;
+        alpha = System.Math.Clamp(alpha, 0.0f, 1.0f);
+
+        _renderer.ApplyInterpolation(alpha);
 
         if (_audio is not null)
         {
             _audio.ListenerPosition = _renderer.CameraPosition;
-            _audio.Update(TimeSpan.FromSeconds(scaledDt));
+            _audio.Update(TimeSpan.FromSeconds(scaledFixedStepSeconds));
         }
 
-        _renderer.Render(scaledDt);
+        _renderer.Render((float)scaledFixedStepSeconds);
     }
 
     private void OnSoundEvent(SoundEvent ev)
