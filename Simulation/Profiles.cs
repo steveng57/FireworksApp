@@ -144,6 +144,11 @@ public sealed record class FireworkShellProfile(
         // If TerminalFadeOutSeconds > 0, the shell remains alive for that duration and its trail emission fades to zero.
         bool SuppressBurst = false,
         float TerminalFadeOutSeconds = 0.0f,
+        // Shell trail emission parameters (used during flight/fall, not the burst).
+        int TrailParticleCount = 12,
+        float TrailParticleLifetimeSeconds = 0.6f,
+        float TrailSpeed = 5.0f,
+        float TrailSmokeChance = 0.2f,
         Vector3? RingAxis = null,
         float RingAxisRandomTiltDegrees = 0.0f,
         FinaleSaluteParams? FinaleSalute = null,

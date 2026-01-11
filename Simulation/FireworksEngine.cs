@@ -1577,7 +1577,12 @@ public sealed class FireworkShell
 
         Vector3 dir = Vector3.Normalize(Velocity);
 
-        Span<Vector3> dirs = stackalloc Vector3[12];
+        int particleCount = Math.Clamp(Profile.TrailParticleCount, 1, 64);
+        Span<Vector3> dirs = particleCount <= 64
+            ? stackalloc Vector3[64]
+            : new Vector3[particleCount];
+
+        dirs = dirs.Slice(0, particleCount);
         for (int i = 0; i < dirs.Length; i++)
         {
             Vector3 baseDir = -dir;
@@ -1610,11 +1615,11 @@ public sealed class FireworkShell
         renderer.SpawnBurstDirected(
             Position,
             trailColor,
-            speed: 5.0f,
+            speed: MathF.Max(0.0f, Profile.TrailSpeed),
             directions: dirs,
-            particleLifetimeSeconds: 0.6f);
+            particleLifetimeSeconds: MathF.Max(0.01f, Profile.TrailParticleLifetimeSeconds));
 
-        if (_rng.NextDouble() < 0.2)
+        if (_rng.NextDouble() < Math.Clamp(Profile.TrailSmokeChance, 0.0f, 1.0f))
         {
             renderer.SpawnSmoke(Position);
         }

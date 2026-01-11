@@ -207,7 +207,11 @@ public static class DefaultProfiles
                 ParticleCount: 0,
                 ParticleLifetimeSeconds: 0.0f,
                 SuppressBurst: true,
-                TerminalFadeOutSeconds: 1.5f
+                TerminalFadeOutSeconds: 1.5f,
+                TrailParticleCount: 16,
+                TrailParticleLifetimeSeconds: 0.8f,
+                TrailSpeed: 5.0f,
+                TrailSmokeChance: 0.2f
             ),
 
             ["peony_to_willow"] = new FireworkShellProfile(
