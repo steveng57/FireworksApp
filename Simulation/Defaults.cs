@@ -169,8 +169,8 @@ public static class DefaultProfiles
                 ParticleLifetimeSeconds: 1.5f,
                 BurstSparkleRateHz: 6.0f,
                 BurstSparkleIntensity: 0.20f,
-                RingAxis: null,
-                RingAxisRandomTiltDegrees: 0.0f
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 25.0f
             ),
             ["double_ring"] = new FireworkShellProfile(
                 Id: "double_ring",

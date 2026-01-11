@@ -73,16 +73,17 @@ public sealed class FireworksEngine
     private ShowScript _show = ShowScript.Empty;
     private int _nextEventIndex;
 
-    // *** CHANGED: drag for shells (must match FireworkShell.Update usage)
-    private const float ShellDragK = 0.020f;
+    // drag for shells (must match FireworkShell.Update usage)
+    private const float ShellDragK = Tunables.ShellDragK;
 
     public float ShowTimeSeconds { get; private set; }
 
     // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
-    public float TimeScale { get; set; } = 0.55f;
+    public float TimeScale { get; set; } = Tunables.DefaultTimeScale;
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
+        Tunables.Validate();
         _profiles = profiles;
         _canisters = profiles.Canisters.Values.Select(cp => new Canister(cp)).ToList();
     }
@@ -1327,7 +1328,7 @@ public sealed class FireworksEngine
             FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount),
             FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
-            FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount),
+             FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount, axis: ringAxis),
             FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(explosion.ParticleCount, axis: ringAxis),
             FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
@@ -1761,10 +1762,10 @@ internal static class EmissionStyles
     public static Vector3[] EmitChrysanthemum(int count)
     {
         // More spokes => more distinct "radial streaks" without looking like only a few sheets.
-        const int spokeCount = 24;
+        int spokeCount = Tunables.Emission.ChrysanthemumSpokeCount;
 
         // How wide each spoke's cone is (bigger => less spiky / more peony-like).
-        const float spokeJitter = 0.12f;
+        float spokeJitter = Tunables.Emission.ChrysanthemumSpokeJitter;
 
         // Precompute spoke directions across the *full* sphere (not locked to a plane).
         var spokes = new Vector3[spokeCount];
@@ -1794,7 +1795,7 @@ internal static class EmissionStyles
     /// </summary>
     public static Vector3[] EmitWillow(int count)
     {
-        const float downwardBlend = 0.35f; // 0 = peony-like, 1 = straight down
+        float downwardBlend = Tunables.Emission.WillowDownwardBlend; // 0 = peony-like, 1 = straight down
 
         var dirs = new Vector3[count];
         for (int i = 0; i < count; i++)
@@ -1819,15 +1820,15 @@ internal static class EmissionStyles
     public static Vector3[] EmitPalm(int count)
     {
         // Fewer, stronger fronds = clearer palm shape.
-        const int frondCount = 7;
+        int frondCount = Tunables.Emission.PalmFrondCount;
 
         // Angle of fronds away from +Y (0 = straight up, pi/2 = horizontal).
         // ~35–40° feels very palm-like.
-        const float frondConeAngle = 0.65f; // radians
+        float frondConeAngle = Tunables.Emission.PalmFrondConeAngleRadians;
 
         // How much we let each particle deviate from its frond direction.
         // Smaller => tighter fronds.
-        const float frondJitterAngle = 0.08f; // radians
+        float frondJitterAngle = Tunables.Emission.PalmFrondJitterAngleRadians;
 
         var frondDirs = new Vector3[frondCount];
 
@@ -1907,30 +1908,42 @@ internal static class EmissionStyles
     /// minimal upward components, so gravity makes a thick drooping tail.
     /// </summary>
     public static Vector3[] EmitHorsetail(int count)
+        => EmitHorsetail(count, axis: Vector3.UnitY);
+
+    /// <summary>
+    /// Horsetail, oriented: like <see cref="EmitHorsetail(int)"/>, but the tail direction is based on an axis.
+    /// The emission is biased toward <c>-axis</c>.
+    /// </summary>
+    public static Vector3[] EmitHorsetail(int count, Vector3 axis)
     {
         var dirs = new Vector3[count];
 
-        const float downwardBlend = 0.75f;   // how hard we pull toward straight down
-        const float minDownY = -0.25f;  // don't let stars start too horizontal/upward
-        const float jitterAngle = 0.15f;   // small cone jitter for variation
+        float downwardBlend = Tunables.Emission.HorsetailDownwardBlend;   // how hard we pull toward the tail direction
+        float minUpDot = Tunables.Emission.HorsetailMinDownDot;           // clamp so it never starts too aligned with +axis
+        float jitterAngle = Tunables.Emission.HorsetailJitterAngleRadians;
 
-        Vector3 down = new(0f, -1f, 0f);
+        axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
+        Vector3 tailDir = -axis;
 
         for (int i = 0; i < count; i++)
         {
             // Start from a random direction
             Vector3 d = RandomUnitVector();
 
-            // Ensure it's at least somewhat downward: clamp Y so it's never near +Y
-            if (d.Y > minDownY)
+            // Ensure it's at least somewhat toward the tail direction by clamping against +axis.
+            // When dot(d, +axis) is too large, remove some component along +axis.
+            float upDot = Vector3.Dot(d, axis);
+            if (upDot > minUpDot)
             {
-                d.Y = minDownY;
+                // Move d away from +axis and renormalize. Slight randomness helps avoid patterns.
+                d -= axis * (upDot - minUpDot);
+                if (d.LengthSquared() < 1e-8f)
+                    d = tailDir;
+                d = Vector3.Normalize(d);
             }
 
-            d = Vector3.Normalize(d);
-
-            // Strongly bias toward straight down
-            d = Vector3.Normalize(Vector3.Lerp(d, down, downwardBlend));
+            // Strongly bias toward tail direction
+            d = Vector3.Normalize(Vector3.Lerp(d, tailDir, downwardBlend));
 
             // Add a bit of cone jitter so it isn't a razor-thin column
             d = JitterDirection(d, jitterAngle);
