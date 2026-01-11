@@ -99,6 +99,86 @@ public sealed class D3D11Renderer : IDisposable
 
     private static readonly ArrayPool<GpuParticle> s_particleArrayPool = ArrayPool<GpuParticle>.Shared;
 
+    private readonly struct PendingParticleBatch
+    {
+        public readonly ParticleKind Kind;
+        public readonly GpuParticle[] Buffer;
+        public readonly int Count;
+
+        public PendingParticleBatch(ParticleKind kind, GpuParticle[] buffer, int count)
+        {
+            Kind = kind;
+            Buffer = buffer;
+            Count = count;
+        }
+    }
+
+    private int DrainParticleUploadQueueCritical(int popFlashBudget, int finaleBudget, int smokeBudget)
+    {
+        if (_context is null)
+            return 0;
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        if (particleBuffer is null)
+            return 0;
+
+        int uploaded = 0;
+
+        uploaded += DrainKind(_pendingPopFlash, ref _pendingParticlesPopFlash, System.Math.Max(0, popFlashBudget));
+        uploaded += DrainKind(_pendingFinale, ref _pendingParticlesFinale, System.Math.Max(0, finaleBudget));
+        uploaded += DrainKind(_pendingSmoke, ref _pendingParticlesSmoke, System.Math.Max(0, smokeBudget));
+
+        return uploaded;
+
+        int DrainKind(System.Collections.Generic.Queue<PendingParticleBatch> q, ref int pendingCount, int budget)
+        {
+            if (budget <= 0)
+                return 0;
+
+            int kindUploaded = 0;
+            while (q.Count > 0)
+            {
+                var b = q.Peek();
+                if (b.Count > (budget - kindUploaded))
+                    break;
+
+                var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+                if (uploadBuffer is null)
+                    break;
+
+                WriteParticlesToBuffer(b.Buffer, _particleWriteCursor, b.Count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (_particleWriteCursor + b.Count) % _particleCapacity;
+
+                kindUploaded += b.Count;
+                pendingCount = System.Math.Max(0, pendingCount - b.Count);
+
+                q.Dequeue();
+                ReturnParticleArray(b.Buffer);
+
+                if (kindUploaded >= budget)
+                    break;
+            }
+
+            return kindUploaded;
+        }
+    }
+
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingPopFlash = new();
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingShell = new();
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingFinale = new();
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingSmoke = new();
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingCrackle = new();
+    private readonly System.Collections.Generic.Queue<PendingParticleBatch> _pendingSpark = new();
+
+    private int _pendingParticlesPopFlash;
+    private int _pendingParticlesShell;
+    private int _pendingParticlesFinale;
+    private int _pendingParticlesSmoke;
+    private int _pendingParticlesCrackle;
+    private int _pendingParticlesSpark;
+
+    private long _droppedQueuedParticles;
+
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
@@ -113,6 +193,186 @@ public sealed class D3D11Renderer : IDisposable
             return;
 
         s_particleArrayPool.Return(buffer, clearArray: false);
+    }
+
+    private static System.Collections.Generic.Queue<PendingParticleBatch> GetQueueForKind(
+        ParticleKind kind,
+        System.Collections.Generic.Queue<PendingParticleBatch> popFlash,
+        System.Collections.Generic.Queue<PendingParticleBatch> shell,
+        System.Collections.Generic.Queue<PendingParticleBatch> finale,
+        System.Collections.Generic.Queue<PendingParticleBatch> smoke,
+        System.Collections.Generic.Queue<PendingParticleBatch> crackle,
+        System.Collections.Generic.Queue<PendingParticleBatch> spark)
+        => kind switch
+        {
+            ParticleKind.PopFlash => popFlash,
+            ParticleKind.Shell => shell,
+            ParticleKind.FinaleSpark => finale,
+            ParticleKind.Smoke => smoke,
+            ParticleKind.Crackle => crackle,
+            _ => spark
+        };
+
+    private void DropOneLowestPriorityBatch()
+    {
+        // Lowest to highest priority: Spark -> Crackle -> Smoke -> Finale -> Shell -> PopFlash
+        if (TryDropFrom(_pendingSpark, ref _pendingParticlesSpark)) return;
+        if (TryDropFrom(_pendingCrackle, ref _pendingParticlesCrackle)) return;
+        if (TryDropFrom(_pendingSmoke, ref _pendingParticlesSmoke)) return;
+        if (TryDropFrom(_pendingFinale, ref _pendingParticlesFinale)) return;
+        if (TryDropFrom(_pendingShell, ref _pendingParticlesShell)) return;
+        _ = TryDropFrom(_pendingPopFlash, ref _pendingParticlesPopFlash);
+
+        bool TryDropFrom(System.Collections.Generic.Queue<PendingParticleBatch> q, ref int pending)
+        {
+            if (q.Count == 0)
+                return false;
+            var b = q.Dequeue();
+            pending = System.Math.Max(0, pending - b.Count);
+            _droppedQueuedParticles += b.Count;
+            ReturnParticleArray(b.Buffer);
+            return true;
+        }
+    }
+
+    private void EnqueueParticleBatch(ParticleKind kind, GpuParticle[] buffer, int count)
+    {
+        if (count <= 0)
+        {
+            ReturnParticleArray(buffer);
+            return;
+        }
+
+        int maxPerKind = Tunables.ParticleUpload.MaxQueuedParticlesPerKind;
+
+        int pending = kind switch
+        {
+            ParticleKind.PopFlash => _pendingParticlesPopFlash,
+            ParticleKind.Shell => _pendingParticlesShell,
+            ParticleKind.FinaleSpark => _pendingParticlesFinale,
+            ParticleKind.Smoke => _pendingParticlesSmoke,
+            ParticleKind.Crackle => _pendingParticlesCrackle,
+            _ => _pendingParticlesSpark
+        };
+
+        // If this kind would exceed its cap, drop from this kind first (keep higher priority kinds).
+        while (pending + count > maxPerKind)
+        {
+            var q = GetQueueForKind(kind, _pendingPopFlash, _pendingShell, _pendingFinale, _pendingSmoke, _pendingCrackle, _pendingSpark);
+            if (q.Count == 0)
+                continue;
+            var dropped = q.Dequeue();
+            pending = System.Math.Max(0, pending - dropped.Count);
+            _droppedQueuedParticles += dropped.Count;
+            ReturnParticleArray(dropped.Buffer);
+        }
+
+        // If still over cap, make room by dropping the lowest-priority queued batch.
+        while (pending + count > maxPerKind)
+            DropOneLowestPriorityBatch();
+
+        switch (kind)
+        {
+            case ParticleKind.PopFlash:
+                _pendingParticlesPopFlash = pending;
+                break;
+            case ParticleKind.Shell:
+                _pendingParticlesShell = pending;
+                break;
+            case ParticleKind.FinaleSpark:
+                _pendingParticlesFinale = pending;
+                break;
+            case ParticleKind.Smoke:
+                _pendingParticlesSmoke = pending;
+                break;
+            case ParticleKind.Crackle:
+                _pendingParticlesCrackle = pending;
+                break;
+            default:
+                _pendingParticlesSpark = pending;
+                break;
+        }
+
+        var queue = GetQueueForKind(kind, _pendingPopFlash, _pendingShell, _pendingFinale, _pendingSmoke, _pendingCrackle, _pendingSpark);
+        queue.Enqueue(new PendingParticleBatch(kind, buffer, count));
+
+        pending += count;
+        switch (kind)
+        {
+            case ParticleKind.PopFlash:
+                _pendingParticlesPopFlash = pending;
+                break;
+            case ParticleKind.Shell:
+                _pendingParticlesShell = pending;
+                break;
+            case ParticleKind.FinaleSpark:
+                _pendingParticlesFinale = pending;
+                break;
+            case ParticleKind.Smoke:
+                _pendingParticlesSmoke = pending;
+                break;
+            case ParticleKind.Crackle:
+                _pendingParticlesCrackle = pending;
+                break;
+            default:
+                _pendingParticlesSpark = pending;
+                break;
+        }
+    }
+
+    private int DrainParticleUploadQueue(int maxParticles)
+    {
+        if (_context is null)
+            return 0;
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        if (particleBuffer is null)
+            return 0;
+
+        int uploaded = 0;
+
+        // Highest to lowest priority
+        uploaded += DrainFrom(_pendingPopFlash, ref _pendingParticlesPopFlash);
+        if (uploaded >= maxParticles) return uploaded;
+        uploaded += DrainFrom(_pendingShell, ref _pendingParticlesShell);
+        if (uploaded >= maxParticles) return uploaded;
+        uploaded += DrainFrom(_pendingFinale, ref _pendingParticlesFinale);
+        if (uploaded >= maxParticles) return uploaded;
+        uploaded += DrainFrom(_pendingSmoke, ref _pendingParticlesSmoke);
+        if (uploaded >= maxParticles) return uploaded;
+        uploaded += DrainFrom(_pendingCrackle, ref _pendingParticlesCrackle);
+        if (uploaded >= maxParticles) return uploaded;
+        uploaded += DrainFrom(_pendingSpark, ref _pendingParticlesSpark);
+
+        return uploaded;
+
+        int DrainFrom(System.Collections.Generic.Queue<PendingParticleBatch> q, ref int pendingCount)
+        {
+            int localUploaded = 0;
+            while (q.Count > 0 && uploaded + localUploaded < maxParticles)
+            {
+                var b = q.Peek();
+                int remainingBudget = maxParticles - (uploaded + localUploaded);
+
+                // Only upload whole batches; if it doesn't fit, defer it.
+                if (b.Count > remainingBudget)
+                    break;
+
+                var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+                if (uploadBuffer is null)
+                    break;
+
+                WriteParticlesToBuffer(b.Buffer, _particleWriteCursor, b.Count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (_particleWriteCursor + b.Count) % _particleCapacity;
+
+                localUploaded += b.Count;
+                pendingCount = System.Math.Max(0, pendingCount - b.Count);
+
+                q.Dequeue();
+                ReturnParticleArray(b.Buffer);
+            }
+            return localUploaded;
+        }
     }
 
     public readonly record struct ShellRenderState(Vector3 Position);
@@ -262,6 +522,29 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
+        if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+        {
+            float fps = scaledDt > 1e-6f ? (1.0f / scaledDt) : 9999.0f;
+            bool lowFps = fps < Tunables.ParticleUpload.DrainTargetFps;
+
+            if (lowFps)
+            {
+                // Preserve key beats under load by draining critical kinds first.
+                _ = DrainParticleUploadQueueCritical(
+                    Tunables.ParticleUpload.LowFpsBudgetPopFlash,
+                    Tunables.ParticleUpload.LowFpsBudgetFinaleSpark,
+                    Tunables.ParticleUpload.LowFpsBudgetSmoke);
+
+                int budget = Tunables.ParticleUpload.MaxParticlesUploadedPerFrameLowFps;
+                if (budget > 0)
+                    _ = DrainParticleUploadQueue(budget);
+            }
+            else
+            {
+                _ = DrainParticleUploadQueue(Tunables.ParticleUpload.MaxParticlesUploadedPerFrame);
+            }
+        }
+
         UpdateParticles(scaledDt);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
@@ -313,6 +596,10 @@ public sealed class D3D11Renderer : IDisposable
         // Present
         _swapChain.Present(1, PresentFlags.None);
 
+        long queued = (long)_pendingParticlesPopFlash + _pendingParticlesShell + _pendingParticlesFinale + _pendingParticlesSmoke + _pendingParticlesCrackle + _pendingParticlesSpark;
+        _perf.RecordQueue(queued, _droppedQueuedParticles);
+        _droppedQueuedParticles = 0;
+
         _perf.Tick("Render", appendDetails: () =>
         {
             var counters = _particlesPipeline.GetPerfCountersSummary();
@@ -336,15 +623,10 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
 
         var staging = RentParticleArray(count);
         try
@@ -386,25 +668,33 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+            {
+                // Mixed kinds; treat as Spark priority for budgeting (still safe for visuals).
+                EnqueueParticleBatch(ParticleKind.Spark, staging, count);
+                staging = Array.Empty<GpuParticle>();
+                return;
+            }
+
+            var particleBuffer = _particlesPipeline.ParticleBuffer;
+            var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (particleBuffer is not null && uploadBuffer is not null)
+            {
+                int start = _particleWriteCursor;
+                WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (start + count) % _particleCapacity;
+            }
         }
         finally
         {
             ReturnParticleArray(staging);
         }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
 
         var p = new GpuParticle
         {
@@ -419,6 +709,22 @@ public sealed class D3D11Renderer : IDisposable
             _pad1 = PackFloat(System.Math.Max(0.0f, peakIntensity)),
             _pad2 = PackFloat(System.Math.Max(0.0f, fadeGamma))
         };
+
+        if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+        {
+            var staging = RentParticleArray(1);
+            staging[0] = p;
+            EnqueueParticleBatch(ParticleKind.PopFlash, staging, 1);
+            return;
+        }
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return;
+
+        int stride = Marshal.SizeOf<GpuParticle>();
+        int start = _particleWriteCursor;
 
         long map0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -467,15 +773,10 @@ public sealed class D3D11Renderer : IDisposable
         float microSpeedMulMin,
         float microSpeedMulMax)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         int count = System.Math.Clamp(particleCount, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
-        int start = _particleWriteCursor;
 
         // We may add micros; keep within particle budget.
         int maxExtra = (int)System.MathF.Min(_particleCapacity - count, count * 0.9f);
@@ -580,9 +881,21 @@ public sealed class D3D11Renderer : IDisposable
 
             int total = System.Math.Clamp(produced, 1, _particleCapacity);
 
-            WriteParticlesToBuffer(staging, start, total, particleBuffer, uploadBuffer);
+            if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+            {
+                EnqueueParticleBatch(ParticleKind.FinaleSpark, staging, total);
+                staging = Array.Empty<GpuParticle>();
+                return;
+            }
 
-            _particleWriteCursor = (start + total) % _particleCapacity;
+            var particleBuffer = _particlesPipeline.ParticleBuffer;
+            var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (particleBuffer is not null && uploadBuffer is not null)
+            {
+                int start = _particleWriteCursor;
+                WriteParticlesToBuffer(staging, start, total, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (start + total) % _particleCapacity;
+            }
         }
         finally
         {
@@ -615,15 +928,11 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnSmoke(Vector3 burstCenter)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         int count = _rng.Next(200, 601);
         count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int start = _particleWriteCursor;
 
         var staging = RentParticleArray(count);
 
@@ -663,14 +972,26 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+            {
+                EnqueueParticleBatch(ParticleKind.Smoke, staging, count);
+                staging = Array.Empty<GpuParticle>();
+                return;
+            }
+
+            var particleBuffer = _particlesPipeline.ParticleBuffer;
+            var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (particleBuffer is not null && uploadBuffer is not null)
+            {
+                int start = _particleWriteCursor;
+                WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (start + count) % _particleCapacity;
+            }
         }
         finally
         {
             ReturnParticleArray(staging);
         }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     public void SpawnBurstDirected(
@@ -682,14 +1003,10 @@ public sealed class D3D11Renderer : IDisposable
         float sparkleRateHz = 0.0f,
         float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
-
-        int start = _particleWriteCursor;
 
         var staging = RentParticleArray(count);
         try
@@ -739,14 +1056,27 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+            {
+                // Mixed kinds; treat as Spark priority for budgeting.
+                EnqueueParticleBatch(ParticleKind.Spark, staging, count);
+                staging = Array.Empty<GpuParticle>();
+                return;
+            }
+
+            var particleBuffer = _particlesPipeline.ParticleBuffer;
+            var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (particleBuffer is not null && uploadBuffer is not null)
+            {
+                int start = _particleWriteCursor;
+                WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (start + count) % _particleCapacity;
+            }
         }
         finally
         {
             ReturnParticleArray(staging);
         }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     
@@ -766,17 +1096,13 @@ public sealed class D3D11Renderer : IDisposable
 
     private void SpawnShellTrail(Vector3 position, Vector3 velocity, int count)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
 
         // Trail is a slightly warm white and additive blended in the first particle pass.
         Vector4 color = new(1.0f, 0.92f, 0.55f, 1.0f);
-
-        int start = _particleWriteCursor;
 
         var staging = RentParticleArray(count);
 
@@ -811,14 +1137,26 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            if (Tunables.ParticleUpload.UseUploadBudgetQueue)
+            {
+                EnqueueParticleBatch(ParticleKind.Spark, staging, count);
+                staging = Array.Empty<GpuParticle>();
+                return;
+            }
+
+            var particleBuffer = _particlesPipeline.ParticleBuffer;
+            var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            if (particleBuffer is not null && uploadBuffer is not null)
+            {
+                int start = _particleWriteCursor;
+                WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+                _particleWriteCursor = (start + count) % _particleCapacity;
+            }
         }
         finally
         {
             ReturnParticleArray(staging);
         }
-
-        _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
     private Vector3 RandomUnitVector()

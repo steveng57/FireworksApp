@@ -22,7 +22,19 @@ internal sealed class PerfTelemetry
     private double _mapMsMax;
     private long _mapCalls;
 
+    private long _queuedParticles;
+    private long _droppedParticles;
+
     public bool Enabled { get; set; } = true;
+
+    public void RecordQueue(long queuedParticles, long droppedParticles)
+    {
+        if (!Enabled)
+            return;
+
+        _queuedParticles = queuedParticles;
+        _droppedParticles += droppedParticles;
+    }
 
     public void RecordUpload(TimeSpan elapsed, int bytes)
     {
@@ -115,7 +127,12 @@ internal sealed class PerfTelemetry
         _lastReportTimestamp = now;
 
         Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} map(avg/max)={mapAvgMs:F3}/{mapMaxMs:F3}ms upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
+        if (_queuedParticles > 0 || _droppedParticles > 0)
+            Debug.Write($" queue(pend/drop)={_queuedParticles}/{_droppedParticles}");
         appendDetails?.Invoke();
         Debug.WriteLine(string.Empty);
+
+        _queuedParticles = 0;
+        _droppedParticles = 0;
     }
 }

@@ -39,7 +39,7 @@ internal static class Tunables
         internal const int UploadRingSize = 128;
 
         // Element capacity per upload buffer (in particles). This is the max chunk size for a single Map/Copy.
-        internal const int UploadChunkElements = 32_768;
+        internal const int UploadChunkElements = 8_192;
 
         // Upload budget queue
         // When enabled, particle spawns are queued and drained during Render up to a fixed per-frame budget.
@@ -47,10 +47,23 @@ internal static class Tunables
         internal const bool UseUploadBudgetQueue = true;
 
         // Max number of particles uploaded per frame from queued spawns.
-        internal const int MaxParticlesUploadedPerFrame = 65_536;
+        internal const int MaxParticlesUploadedPerFrame = 16_384;
 
         // Max queued particles per kind (overflow will drop least-important kinds first).
-        internal const int MaxQueuedParticlesPerKind = 250_000;
+        internal const int MaxQueuedParticlesPerKind = 1_000_000;
+
+        // Adaptive draining: when FPS is below this threshold, reduce or skip draining to avoid Map stalls.
+        internal const float DrainTargetFps = 55.0f;
+
+        // When FPS is below `DrainTargetFps`, drain at most this many particles per frame.
+        // Set to 0 to skip draining entirely while under the threshold.
+        internal const int MaxParticlesUploadedPerFrameLowFps = 1024;
+
+        // Per-kind low-FPS drain allowances (absolute counts per frame).
+        // These keep key visual beats (flash/salute) intact even when general spark uploads are throttled.
+        internal const int LowFpsBudgetPopFlash = 256;
+        internal const int LowFpsBudgetFinaleSpark = 2_048;
+        internal const int LowFpsBudgetSmoke = 512;
     }
 
     internal static void Validate()
@@ -108,5 +121,20 @@ internal static class Tunables
 
         if (ParticleUpload.MaxQueuedParticlesPerKind <= 0)
             throw new InvalidOperationException($"{nameof(ParticleUpload.MaxQueuedParticlesPerKind)} must be > 0.");
+
+        if (ParticleUpload.DrainTargetFps <= 0)
+            throw new InvalidOperationException($"{nameof(ParticleUpload.DrainTargetFps)} must be > 0.");
+
+        if (ParticleUpload.MaxParticlesUploadedPerFrameLowFps < 0)
+            throw new InvalidOperationException($"{nameof(ParticleUpload.MaxParticlesUploadedPerFrameLowFps)} must be >= 0.");
+
+        if (ParticleUpload.LowFpsBudgetPopFlash < 0)
+            throw new InvalidOperationException($"{nameof(ParticleUpload.LowFpsBudgetPopFlash)} must be >= 0.");
+
+        if (ParticleUpload.LowFpsBudgetFinaleSpark < 0)
+            throw new InvalidOperationException($"{nameof(ParticleUpload.LowFpsBudgetFinaleSpark)} must be >= 0.");
+
+        if (ParticleUpload.LowFpsBudgetSmoke < 0)
+            throw new InvalidOperationException($"{nameof(ParticleUpload.LowFpsBudgetSmoke)} must be >= 0.");
     }
 }
