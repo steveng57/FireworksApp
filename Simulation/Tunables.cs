@@ -14,7 +14,7 @@ internal static class Tunables
     internal static class ParticleBudgets
     {
         internal const int Shell = 50_000;
-        internal const int Spark = 2_500_000;
+        internal const int Spark = 2_000_000;
         internal const int Smoke = 100_000;
         internal const int Crackle = 500_000;
         internal const int PopFlash = 50_000;

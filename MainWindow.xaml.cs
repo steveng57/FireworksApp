@@ -2,6 +2,7 @@
 using System.Windows.Media;
 using System.Windows.Interop;
 using System.Runtime.InteropServices;
+using System.Windows.Threading;
 
 namespace FireworksApp;
 
@@ -33,7 +34,7 @@ public partial class MainWindow : Window
 
             DxView.Start();
             _toolbarWindow.Show();
-            UpdateToolbarLocation();
+            Dispatcher.InvokeAsync(UpdateToolbarLocation, DispatcherPriority.Loaded);
         };
 
         Unloaded += (_, _) =>
