@@ -77,6 +77,9 @@ public sealed class D3D11Renderer : IDisposable
     private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _canisters = Array.Empty<CanisterRenderState>();
 
     private System.Collections.Generic.IReadOnlyList<ShellRenderState> _shells = Array.Empty<ShellRenderState>();
+
+    private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _prevCanisters = Array.Empty<CanisterRenderState>();
+    private System.Collections.Generic.IReadOnlyList<ShellRenderState> _prevShells = Array.Empty<ShellRenderState>();
     private long _lastTick;
     private readonly System.Random _rng = new();
 
@@ -323,12 +326,46 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SetShells(System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
     {
+        _prevShells = _shells;
         _shells = shells ?? Array.Empty<ShellRenderState>();
     }
 
     public void SetCanisters(System.Collections.Generic.IReadOnlyList<CanisterRenderState> canisters)
     {
+        _prevCanisters = _canisters;
         _canisters = canisters ?? Array.Empty<CanisterRenderState>();
+    }
+
+    public void ApplyInterpolation(float alpha)
+    {
+        alpha = System.Math.Clamp(alpha, 0.0f, 1.0f);
+
+        if (alpha <= 0.0f)
+            return;
+
+        if (_prevShells.Count == 0 || _prevCanisters.Count == 0)
+            return;
+
+        if (_prevShells.Count != _shells.Count || _prevCanisters.Count != _canisters.Count)
+            return;
+
+        var shells = new ShellRenderState[_shells.Count];
+        for (int i = 0; i < shells.Length; i++)
+        {
+            var a = _prevShells[i].Position;
+            var b = _shells[i].Position;
+            shells[i] = new ShellRenderState(Vector3.Lerp(a, b, alpha));
+        }
+        _shells = shells;
+
+        var canisters = new CanisterRenderState[_canisters.Count];
+        for (int i = 0; i < canisters.Length; i++)
+        {
+            var aPos = _prevCanisters[i].Position;
+            var bPos = _canisters[i].Position;
+            canisters[i] = new CanisterRenderState(Vector3.Lerp(aPos, bPos, alpha), _canisters[i].Direction);
+        }
+        _canisters = canisters;
     }
 
     private static uint PackFloat(float value)

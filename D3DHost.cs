@@ -415,6 +415,13 @@ public sealed class D3DHost : HwndHost
         if (steps == maxStepsPerFrame)
             _accumulatedSimSeconds = 0;
 
+        float alpha = scaledFixedStepSeconds > 1e-9
+            ? (float)(_accumulatedSimSeconds / scaledFixedStepSeconds)
+            : 0.0f;
+        alpha = System.Math.Clamp(alpha, 0.0f, 1.0f);
+
+        _renderer.ApplyInterpolation(alpha);
+
         if (_audio is not null)
         {
             _audio.ListenerPosition = _renderer.CameraPosition;
