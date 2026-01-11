@@ -5,7 +5,7 @@ namespace FireworksApp.Simulation;
 internal static class Tunables
 {
     // Simulation pacing
-    internal const float DefaultTimeScale = 0.55f;
+    internal const float DefaultTimeScale = 0.80f;
 
     // Physics integration
     internal const float ShellDragK = 0.020f;
