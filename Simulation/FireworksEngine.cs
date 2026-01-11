@@ -111,19 +111,28 @@ public sealed class FireworksEngine
     }
     public void Update(float dt, D3D11Renderer renderer)
     {
+        UpdateCore(dt, renderer, applyTimeScale: true);
+    }
+
+    internal void UpdateUnscaled(float dt, D3D11Renderer renderer)
+    {
+        UpdateCore(dt, renderer, applyTimeScale: false);
+    }
+
+    private void UpdateCore(float dt, D3D11Renderer renderer, bool applyTimeScale)
+    {
         if (dt <= 0)
             return;
 
-        // Apply global timescale
-        float scaledDt = dt * TimeScale;
-        if (scaledDt <= 0)
+        float stepDt = applyTimeScale ? (dt * TimeScale) : dt;
+        if (stepDt <= 0)
             return;
 
-        ShowTimeSeconds += scaledDt;
+        ShowTimeSeconds += stepDt;
 
         // Update canister reload timers.
         foreach (var c in _canisters)
-            c.Update(scaledDt);
+            c.Update(stepDt);
 
         // Fire show events.
         var events = _show.Events;
@@ -137,10 +146,10 @@ public sealed class FireworksEngine
         for (int i = _shells.Count - 1; i >= 0; i--)
         {
             var shell = _shells[i];
-            shell.Update(scaledDt);
+            shell.Update(stepDt);
 
             // trail
-            shell.EmitTrail(renderer, scaledDt);
+            shell.EmitTrail(renderer, stepDt);
 
             if (shell.TryExplode(out var explosion))
             {
@@ -204,8 +213,8 @@ public sealed class FireworksEngine
             }
         }
 
-        UpdateSubShells(scaledDt, renderer);
-        UpdateComets(scaledDt, renderer);
+        UpdateSubShells(stepDt, renderer);
+        UpdateComets(stepDt, renderer);
 
         // Process delayed willow handoffs
         if (_pendingWillow.Count > 0)
@@ -239,11 +248,11 @@ public sealed class FireworksEngine
         for (int i = _groundEffects.Count - 1; i >= 0; i--)
         {
             var ge = _groundEffects[i];
-            ge.Update(scaledDt);
+            ge.Update(stepDt);
 
             if (ge.Alive)
             {
-                EmitGroundEffect(ge, scaledDt, ShowTimeSeconds, renderer);
+                EmitGroundEffect(ge, stepDt, ShowTimeSeconds, renderer);
             }
             else
             {
