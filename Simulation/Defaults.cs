@@ -166,7 +166,7 @@ public static class DefaultProfiles
                 FuseTimeSeconds: 3.2f,             // whatever works with your canister
                 ExplosionRadius: 45.0f,
                 ParticleCount: 3000,
-                ParticleLifetimeSeconds: 3.0f,
+                ParticleLifetimeSeconds: 1.5f,
                 BurstSparkleRateHz: 6.0f,
                 BurstSparkleIntensity: 0.20f,
                 RingAxis: null,
@@ -178,7 +178,7 @@ public static class DefaultProfiles
                 ColorSchemeId: "gold",   // nice classy gold rings
                 FuseTimeSeconds: 4.1f,
                 ExplosionRadius: 16.0f,
-                ParticleCount: 6500,
+                ParticleCount: 4500,
                 ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 2.0f,
                 BurstSparkleIntensity: 0.65f,
@@ -211,10 +211,11 @@ public static class DefaultProfiles
                 PeonyToWillow: PeonyToWillowParams.Defaults with
                 {
                     WillowSubshellProfileId = "subshell_basic_pop",
+                    //WillowSubshellProfileId = "subshell_ring_sparkle",
                     WillowVelocityScale = 0.50f,
                     WillowGravityMultiplier = 2.2f,
                     WillowDragMultiplier = 2.4f,
-                    WillowLifetimeMultiplier = 3.2f,
+                    WillowLifetimeMultiplier = 2.2f,
                     WillowTrailSpawnRate = 8f,
                     WillowTrailSpeed = 2.2f
                 }
@@ -567,47 +568,69 @@ public static class DefaultShow
 
         var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
-        
-        for (int i = 0; i < 100; i += gridSize)
-        {
-            for (int j = 0; j < gridSize; j++)
-            {
-                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
+        int mainCanisters = 25;
+        //for (int i = 0; i < 1000; i += gridSize)
+        //{
+        //    for (int j = 0; j < gridSize; j++)
+        //    {
+        //        string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
                 
-                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % profiles.Canisters.Count);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
-                float? muzzleVelocity = null;
+        //        string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
+        //        string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+        //        float? muzzleVelocity = null;
 
-                // debug variations
-                //shellId = "basic";
-                //canisterId = "c2";
-                //colorSchemeId = "debug";
+        //        // debug variations
+        //        //shellId = "basic";
+        //        //canisterId = "c2";
+        //        //colorSchemeId = "debug";
 
-                var showEvent = new ShowEvent(
-                    TimeSeconds: t,
-                    CanisterId: canisterId,
-                    ShellProfileId: shellId,
-                    ColorSchemeId: colorSchemeId,
-                    MuzzleVelocity: muzzleVelocity);
-                events.Add(showEvent);
+        //        var showEvent = new ShowEvent(
+        //            TimeSeconds: t,
+        //            CanisterId: canisterId,
+        //            ShellProfileId: shellId,
+        //            ColorSchemeId: colorSchemeId,
+        //            MuzzleVelocity: muzzleVelocity);
+        //        events.Add(showEvent);
 
-                t += 0.25f;
-            }
-            t += 1f;
-        }
+        //        t += 0.25f;
+        //    }
+        //    t += 5f;
+        //}
 
-        t += 4.0f;
+        // t += 4.0f;
 
-        for (int n = 0; n < 10; n++)
-        {
-            string canisterId = profiles.Canisters.Keys.ElementAt(n % 25);
+        //for (int n = 0; n < 6; n+=2)
+        //{
+            //string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
+            //var finaleEvent = new ShowEvent(
+            //    TimeSeconds: t,
+            //    CanisterId: canisterId,
+            //    ShellProfileId: "comet_neon");
+            //events.Add(finaleEvent);
+            //t += 0.5f;
+
+            //var canisterId = profiles.Canisters.Keys.ElementAt((n + 1 ) % mainCanisters);
+            var canisterId = profiles.Canisters.Keys.ElementAt(5);
             var finaleEvent = new ShowEvent(
                 TimeSeconds: t,
                 CanisterId: canisterId,
-                ShellProfileId: "finale_salute");
+                ShellProfileId: "peony_to_willow");
             events.Add(finaleEvent);
-            t += 1.5f;
-        }
+            t += 0.5f;
+        //}
+
+        //t += 10.0f;
+
+        //for (int n = 0; n < 10; n++)
+        //{
+        //    string canisterId = profiles.Canisters.Keys.ElementAt(n % 25);
+        //    var finaleEvent = new ShowEvent(
+        //        TimeSeconds: t,
+        //        CanisterId: canisterId,
+        //        ShellProfileId: "finale_salute");
+        //    events.Add(finaleEvent);
+        //    t += 1.5f;
+        //}
 
         var showScript = new ShowScript(events);
         return showScript;
