@@ -138,8 +138,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         // Ring of small upload buffers:
         // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
-        const int uploadRingSize = 32;
-        const int uploadChunkElements = 32_768;
+        int uploadRingSize = Tunables.GpuUpload.UploadRingSize;
+        int uploadChunkElements = Tunables.GpuUpload.UploadChunkElements;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
         _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
         _uploadBufferIndex = 0;

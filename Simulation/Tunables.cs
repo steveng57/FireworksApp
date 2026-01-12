@@ -27,6 +27,16 @@ internal static class Tunables
         internal const int FinaleSpark = 800_000;
     }
 
+    // GPU upload buffer tuning (impacts CPU-GPU sync and memory usage)
+    internal static class GpuUpload
+    {
+        // Number of upload buffers in the ring (more = less stalling, more memory)
+        internal const int UploadRingSize = 64;
+
+        // Max particles per upload chunk (larger = fewer uploads, more memory per buffer)
+        internal const int UploadChunkElements = 32_768;
+    }
+
     internal static void Validate()
     {
         if (DefaultTimeScale < 0)
