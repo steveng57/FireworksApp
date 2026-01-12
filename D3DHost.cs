@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FireworksApp.Audio;
 using FireworksApp.Rendering;
 using FireworksApp.Simulation;
@@ -33,6 +34,11 @@ public sealed class D3DHost : HwndHost
 
     private readonly Stopwatch _frameTimer = new();
     private double _accumulatedSimSeconds;
+
+    private readonly DispatcherTimer _simTimer;
+    private const double FixedStepSeconds = 1.0 / 60.0;
+    // When the UI thread is starved, avoid doing an unbounded amount of catch-up work.
+    private const int MaxSimStepsPerTick = 8;
 
     private readonly Stopwatch _sectionTimer = new();
     private long _frameIndex;
@@ -67,6 +73,12 @@ public sealed class D3DHost : HwndHost
     public D3DHost()
     {
         Focusable = true;
+
+        _simTimer = new DispatcherTimer(DispatcherPriority.Send)
+        {
+            Interval = TimeSpan.FromSeconds(FixedStepSeconds)
+        };
+        _simTimer.Tick += OnSimTick;
 
         MouseDown += OnMouseDown;
         MouseUp += OnMouseUp;
@@ -184,6 +196,7 @@ public sealed class D3DHost : HwndHost
 
         _accumulatedSimSeconds = 0;
         _frameTimer.Restart();
+        _simTimer.Start();
         CompositionTarget.Rendering += OnRendering;
         _started = true;
     }
@@ -196,6 +209,7 @@ public sealed class D3DHost : HwndHost
         _renderPaused = true;
 
         // Stop simulation updates immediately so visuals stop.
+        _simTimer.Stop();
         CompositionTarget.Rendering -= OnRendering;
 
         _frameTimer.Stop();
@@ -211,6 +225,52 @@ public sealed class D3DHost : HwndHost
         window?.KeyDown -= OnWindowKeyDown;
 
         _started = false;
+    }
+
+    private void OnSimTick(object? sender, EventArgs e)
+    {
+        if (_renderPaused)
+            return;
+
+        if (_engine is null || _renderer is null)
+            return;
+
+        // Timer ticks may be delayed; accumulate using measured elapsed time and consume fixed steps.
+        // Clamp to avoid spiral of death.
+        const double maxFrameSeconds = 0.25;
+
+        if (!_frameTimer.IsRunning)
+            _frameTimer.Restart();
+
+        double realDtSeconds = _frameTimer.Elapsed.TotalSeconds;
+        _frameTimer.Restart();
+
+        if (realDtSeconds < 0)
+            realDtSeconds = 0;
+        if (realDtSeconds > maxFrameSeconds)
+            realDtSeconds = maxFrameSeconds;
+
+        float timeScale = _engine.TimeScale;
+        double scaledFixedStepSeconds = FixedStepSeconds * timeScale;
+
+        _accumulatedSimSeconds += realDtSeconds * timeScale;
+
+        int steps = 0;
+        _sectionTimer.Restart();
+        while (_accumulatedSimSeconds >= scaledFixedStepSeconds && steps < MaxSimStepsPerTick)
+        {
+            _engine.UpdateUnscaled((float)scaledFixedStepSeconds, _renderer);
+            _accumulatedSimSeconds -= scaledFixedStepSeconds;
+            steps++;
+        }
+
+        if (steps == MaxSimStepsPerTick)
+            _accumulatedSimSeconds = 0;
+
+        long simTicks = _sectionTimer.ElapsedTicks;
+        _perfSimTicks += simTicks;
+        if (simTicks > _perfSimMaxTicks)
+            _perfSimMaxTicks = simTicks;
     }
 
     public void PauseRendering()
@@ -413,55 +473,21 @@ public sealed class D3DHost : HwndHost
 
         long frameStart = callbackNow;
 
-        const double fixedStepSeconds = 1.0 / 60.0;
-        const double maxFrameSeconds = 0.25;
-
-        if (!_frameTimer.IsRunning)
-            _frameTimer.Restart();
-
-        double realDtSeconds = _frameTimer.Elapsed.TotalSeconds;
-        _frameTimer.Restart();
-
-        if (realDtSeconds < 0)
-            realDtSeconds = 0;
-        if (realDtSeconds > maxFrameSeconds)
-            realDtSeconds = maxFrameSeconds;
-
+        // Render can be called irregularly; use it only for interpolation and draw.
+        // For a stable sim delta, sim happens on `_simTimer`.
         float timeScale = _engine?.TimeScale ?? 1.0f;
-        double scaledFixedStepSeconds = fixedStepSeconds * timeScale;
-        _accumulatedSimSeconds += realDtSeconds * timeScale;
-
-        int steps = 0;
-        const int maxStepsPerFrame = 8;
-
-        _sectionTimer.Restart();
-
-        while (_accumulatedSimSeconds >= scaledFixedStepSeconds && steps < maxStepsPerFrame)
-        {
-            _engine?.UpdateUnscaled((float)scaledFixedStepSeconds, _renderer);
-            _accumulatedSimSeconds -= scaledFixedStepSeconds;
-            steps++;
-        }
-
-        long simTicks = _sectionTimer.ElapsedTicks;
-        _perfSimTicks += simTicks;
-        if (simTicks > _perfSimMaxTicks)
-            _perfSimMaxTicks = simTicks;
-
-        if (steps == maxStepsPerFrame)
-            _accumulatedSimSeconds = 0;
-
+        double scaledFixedStepSeconds = FixedStepSeconds * timeScale;
         float alpha = scaledFixedStepSeconds > 1e-9
             ? (float)(_accumulatedSimSeconds / scaledFixedStepSeconds)
             : 0.0f;
         alpha = System.Math.Clamp(alpha, 0.0f, 1.0f);
-
         _renderer.ApplyInterpolation(alpha);
 
         if (_audio is not null)
         {
             _sectionTimer.Restart();
             _audio.ListenerPosition = _renderer.CameraPosition;
+            // Audio is updated on the render callback; keep dt small and stable to avoid big jumps.
             _audio.Update(TimeSpan.FromSeconds(scaledFixedStepSeconds));
             long audioTicks = _sectionTimer.ElapsedTicks;
             _perfAudioTicks += audioTicks;

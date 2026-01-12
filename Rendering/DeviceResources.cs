@@ -10,12 +10,16 @@ internal sealed class DeviceResources : IDisposable
 {
     private readonly nint _hwnd;
 
+    private bool _allowTearing;
+
     public ID3D11Device? Device { get; private set; }
     public ID3D11DeviceContext? Context { get; private set; }
     public IDXGISwapChain? SwapChain { get; private set; }
     public ID3D11RenderTargetView? RenderTargetView { get; private set; }
     public ID3D11Texture2D? DepthTexture { get; private set; }
     public ID3D11DepthStencilView? DepthStencilView { get; private set; }
+
+    public bool IsTearingSupported => _allowTearing;
 
     public DeviceResources(nint hwnd)
     {
@@ -44,6 +48,19 @@ internal sealed class DeviceResources : IDisposable
         using var adapter = dxgiDevice.GetAdapter();
         using var factory = adapter.GetParent<IDXGIFactory2>();
 
+        _allowTearing = false;
+        if (factory.QueryInterfaceOrNull<IDXGIFactory5>() is { } factory5)
+        {
+            try
+            {
+                _allowTearing = factory5.PresentAllowTearing;
+            }
+            finally
+            {
+                factory5.Dispose();
+            }
+        }
+
         var desc = new SwapChainDescription1
         {
             Width = (uint)width,
@@ -56,7 +73,7 @@ internal sealed class DeviceResources : IDisposable
             Scaling = Scaling.Stretch,
             Stereo = false,
             AlphaMode = AlphaMode.Ignore,
-            Flags = SwapChainFlags.None
+            Flags = _allowTearing ? SwapChainFlags.AllowTearing : SwapChainFlags.None
         };
 
         SwapChain = factory.CreateSwapChainForHwnd(Device, _hwnd, desc);
@@ -114,7 +131,7 @@ internal sealed class DeviceResources : IDisposable
         DepthTexture?.Dispose();
         DepthTexture = null;
 
-        SwapChain.ResizeBuffers(0, (uint)width, (uint)height, Format.Unknown, SwapChainFlags.None);
+        SwapChain.ResizeBuffers(0, (uint)width, (uint)height, Format.Unknown, _allowTearing ? SwapChainFlags.AllowTearing : SwapChainFlags.None);
 
         CreateRenderTarget();
         CreateDepthStencil(width, height);

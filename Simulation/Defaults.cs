@@ -617,33 +617,33 @@ public static class DefaultShow
         var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "willow_trail_only")).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
         int mainCanisters = 25;
-        for (int i = 0; i < 50; i += gridSize)
-        {
-            for (int j = 0; j < gridSize; j++)
-            {
-                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
+        //for (int i = 0; i < 50; i += gridSize)
+        //{
+        //    for (int j = 0; j < gridSize; j++)
+        //    {
+        //        string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
-                string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
-                float? muzzleVelocity = null;
+        //        string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
+        //        string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+        //        float? muzzleVelocity = null;
 
-                // debug variations
-                //shellId = "basic";
-                //canisterId = "c2";
-                //colorSchemeId = "debug";
+        //        // debug variations
+        //        //shellId = "basic";
+        //        //canisterId = "c2";
+        //        //colorSchemeId = "debug";
 
-                var showEvent = new ShowEvent(
-                    TimeSeconds: t,
-                    CanisterId: canisterId,
-                    ShellProfileId: shellId,
-                    ColorSchemeId: colorSchemeId,
-                    MuzzleVelocity: muzzleVelocity);
-                events.Add(showEvent);
+        //        var showEvent = new ShowEvent(
+        //            TimeSeconds: t,
+        //            CanisterId: canisterId,
+        //            ShellProfileId: shellId,
+        //            ColorSchemeId: colorSchemeId,
+        //            MuzzleVelocity: muzzleVelocity);
+        //        events.Add(showEvent);
 
-                t += 0.20f;
-            }
-            t += 5f;
-        }
+        //        t += 0.20f;
+        //    }
+        //    t += 5f;
+        //}
 
         t += 4.0f;
 

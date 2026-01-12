@@ -46,6 +46,11 @@ public sealed class D3D11Renderer : IDisposable
 {
     private static readonly int s_gpuParticleStride = Unsafe.SizeOf<GpuParticle>();
 
+    // Hard caps to reduce worst-case driver stalls during Map/CopySubresourceRegion.
+    // These caps trade throughput for smoother frame pacing.
+    private const int ParticleUploadMaxBytesPerChunk = 256 * 1024;
+    private const double ParticleUploadMaxMillisecondsPerFrame = 1.5;
+
     private readonly nint _hwnd;
 
     private readonly DeviceResources _deviceResources;
@@ -109,6 +114,112 @@ public sealed class D3D11Renderer : IDisposable
 
     private static readonly ArrayPool<GpuParticle> s_particleArrayPool = ArrayPool<GpuParticle>.Shared;
 
+    private readonly record struct PendingParticleUploadSegment(GpuParticle[] Buffer, int Count, int Start, uint Kind);
+
+    private sealed class PendingParticleUpload
+    {
+        public readonly System.Collections.Generic.List<PendingParticleUploadSegment> Segments = new(capacity: 4);
+        public int SegmentIndex;
+        public int SegmentOffset;
+        public int TotalCount;
+        public uint Kind;
+    }
+
+    private readonly System.Collections.Generic.Queue<PendingParticleUpload> _pendingParticleUploads = new();
+    private PendingParticleUpload? _pendingParticleUploadsTail;
+    private int _pendingParticleUploadBytes;
+    private const int MaxPendingParticleUploadBytes = 256 * 1024 * 1024;
+    private const int ParticleUploadBudgetBytesPerFrame = 2 * 1024 * 1024;
+    private const int ParticleUploadBudgetBytesPerFrameMax = 16 * 1024 * 1024;
+    private const int ParticleUploadBacklogSoftLimitBytes = 64 * 1024 * 1024;
+    private const int ParticleUploadBacklogHardLimitBytes = 192 * 1024 * 1024;
+
+    private const int PendingUploadMaxSegmentsPerJob = 128;
+    private const int PendingUploadSmallMergeMaxParticles = 512;
+
+    public int PendingParticleUploadCount => _pendingParticleUploads.Count;
+    public int PendingParticleUploadBytes => _pendingParticleUploadBytes;
+
+    private bool IsParticleUploadBackloggedHard => _pendingParticleUploadBytes >= ParticleUploadBacklogHardLimitBytes;
+
+    private static int GetKindPriority(uint kind)
+    {
+        // Higher value == less important (drop first).
+        return (ParticleKind)kind switch
+        {
+            ParticleKind.Smoke => 100,
+            ParticleKind.Crackle => 80,
+            ParticleKind.Spark => 70,
+            ParticleKind.FinaleSpark => 60,
+            ParticleKind.PopFlash => 20,
+            ParticleKind.Shell => 0,
+            _ => 50
+        };
+    }
+
+    private static uint GetFirstParticleKind(GpuParticle[] buffer)
+        => buffer.Length == 0 ? (uint)ParticleKind.Dead : buffer[0].Kind;
+
+    private void DropOldestUploadsByBytes(int bytesToDrop)
+    {
+        if (bytesToDrop <= 0)
+            return;
+
+        while (bytesToDrop > 0 && _pendingParticleUploads.Count > 0)
+        {
+            var job = _pendingParticleUploads.Dequeue();
+            if (ReferenceEquals(job, _pendingParticleUploadsTail))
+                _pendingParticleUploadsTail = null;
+            int bytes = checked(job.TotalCount * s_gpuParticleStride);
+            _pendingParticleUploadBytes -= bytes;
+            for (int i = 0; i < job.Segments.Count; i++)
+                ReturnParticleArray(job.Segments[i].Buffer);
+            bytesToDrop -= bytes;
+        }
+
+        if (_pendingParticleUploadBytes < 0)
+            _pendingParticleUploadBytes = 0;
+    }
+
+    private void DropWorstPriorityUploadsUntilBelow(int targetBytes)
+    {
+        if (_pendingParticleUploadBytes <= targetBytes)
+            return;
+
+        if (_pendingParticleUploads.Count == 0)
+            return;
+
+        // O(n) passes by priority bucket. This prevents catastrophic behavior when the queue is large.
+        // Largest number == least important.
+        ReadOnlySpan<int> priorities = [100, 80, 70, 60, 50, 20, 0];
+        for (int pi = 0; pi < priorities.Length && _pendingParticleUploadBytes > targetBytes; pi++)
+        {
+            int dropPriority = priorities[pi];
+            int count = _pendingParticleUploads.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var job = _pendingParticleUploads.Dequeue();
+                bool shouldDrop = _pendingParticleUploadBytes > targetBytes && GetKindPriority(job.Kind) >= dropPriority;
+                if (shouldDrop)
+                {
+                    if (ReferenceEquals(job, _pendingParticleUploadsTail))
+                        _pendingParticleUploadsTail = null;
+
+                    _pendingParticleUploadBytes -= checked(job.TotalCount * s_gpuParticleStride);
+                    for (int s = 0; s < job.Segments.Count; s++)
+                        ReturnParticleArray(job.Segments[s].Buffer);
+                }
+                else
+                {
+                    _pendingParticleUploads.Enqueue(job);
+                }
+            }
+        }
+
+        if (_pendingParticleUploadBytes < 0)
+            _pendingParticleUploadBytes = 0;
+    }
+
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
 
@@ -123,6 +234,224 @@ public sealed class D3D11Renderer : IDisposable
             return;
 
         s_particleArrayPool.Return(buffer, clearArray: false);
+    }
+
+    private void EnqueueParticleUpload(GpuParticle[] staging, int start, int count)
+    {
+        if (count <= 0)
+        {
+            ReturnParticleArray(staging);
+            return;
+        }
+
+        int bytes = checked(count * s_gpuParticleStride);
+
+        // Early drop: if we're already behind, prefer visual degradation over hitching.
+        // 1) If we're over the hard limit, drop old work immediately.
+        if (_pendingParticleUploadBytes > ParticleUploadBacklogHardLimitBytes)
+        {
+            int toDrop = _pendingParticleUploadBytes - ParticleUploadBacklogSoftLimitBytes;
+            DropOldestUploadsByBytes(toDrop);
+        }
+
+        // 2) If the incoming upload would push us over the hard limit, drop worst-priority work.
+        if (_pendingParticleUploadBytes + bytes > ParticleUploadBacklogHardLimitBytes)
+        {
+            DropWorstPriorityUploadsUntilBelow(ParticleUploadBacklogSoftLimitBytes);
+        }
+
+        if (_pendingParticleUploadBytes + bytes > MaxPendingParticleUploadBytes)
+        {
+            ReturnParticleArray(staging);
+            return;
+        }
+
+        uint kind = GetFirstParticleKind(staging);
+
+        // Prefer appending to the tail job when possible to reduce queue item count.
+        // Keep it simple: only coalesce if final start index is contiguous and Kind matches.
+        if (_pendingParticleUploadsTail is not null)
+        {
+            var tail = _pendingParticleUploadsTail;
+            if (tail.Kind == kind && tail.Segments.Count > 0 && tail.Segments.Count < PendingUploadMaxSegmentsPerJob)
+            {
+                var lastSeg = tail.Segments[^1];
+                int expectedStart = (lastSeg.Start + lastSeg.Count) % _particleCapacity;
+                if (expectedStart == start)
+                {
+                    // Small merge: avoid creating yet another segment by copying into the last segment's buffer.
+                    // This is only safe if the last segment's rented buffer has spare capacity.
+                    if (count <= PendingUploadSmallMergeMaxParticles && lastSeg.Buffer.Length >= lastSeg.Count + count)
+                    {
+                        Array.Copy(staging, 0, lastSeg.Buffer, lastSeg.Count, count);
+                        tail.Segments[^1] = new PendingParticleUploadSegment(lastSeg.Buffer, lastSeg.Count + count, lastSeg.Start, lastSeg.Kind);
+                        tail.TotalCount = checked(tail.TotalCount + count);
+                        _pendingParticleUploadBytes += bytes;
+                        ReturnParticleArray(staging);
+                        return;
+                    }
+
+                    tail.Segments.Add(new PendingParticleUploadSegment(staging, count, start, kind));
+                    tail.TotalCount = checked(tail.TotalCount + count);
+                    _pendingParticleUploadBytes += bytes;
+                    return;
+                }
+            }
+        }
+
+        var job = new PendingParticleUpload
+        {
+            SegmentIndex = 0,
+            SegmentOffset = 0,
+            TotalCount = count,
+            Kind = kind
+        };
+        job.Segments.Add(new PendingParticleUploadSegment(staging, count, start, kind));
+        _pendingParticleUploads.Enqueue(job);
+        _pendingParticleUploadsTail = job;
+        _pendingParticleUploadBytes += bytes;
+    }
+
+    private void DrainParticleUploads(int budgetBytes)
+    {
+        if (budgetBytes <= 0)
+            return;
+
+        if (_context is null)
+            return;
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        if (particleBuffer is null)
+            return;
+
+        int remainingBudget = budgetBytes;
+        long drainStart = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        while (remainingBudget > 0 && _pendingParticleUploads.Count > 0)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            double elapsedMs = (now - drainStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (elapsedMs >= ParticleUploadMaxMillisecondsPerFrame)
+                break;
+
+            var job = _pendingParticleUploads.Peek();
+            while (job.SegmentIndex < job.Segments.Count && job.SegmentOffset >= job.Segments[job.SegmentIndex].Count)
+            {
+                job.SegmentIndex++;
+                job.SegmentOffset = 0;
+            }
+
+            if (job.SegmentIndex >= job.Segments.Count)
+            {
+                _pendingParticleUploads.Dequeue();
+                if (ReferenceEquals(job, _pendingParticleUploadsTail))
+                    _pendingParticleUploadsTail = null;
+
+                _pendingParticleUploadBytes -= checked(job.TotalCount * s_gpuParticleStride);
+                for (int i = 0; i < job.Segments.Count; i++)
+                    ReturnParticleArray(job.Segments[i].Buffer);
+                continue;
+            }
+
+            var seg = job.Segments[job.SegmentIndex];
+            int remaining = seg.Count - job.SegmentOffset;
+            if (remaining <= 0)
+                continue;
+
+            int maxElementsByBudget = System.Math.Max(1, remainingBudget / s_gpuParticleStride);
+            int maxElementsByChunkCap = System.Math.Max(1, ParticleUploadMaxBytesPerChunk / s_gpuParticleStride);
+            int uploadCap = _particlesPipeline.UploadBufferElementCapacity;
+            if (uploadCap <= 0)
+                uploadCap = 1;
+
+            int chunkCount = System.Math.Min(remaining, System.Math.Min(uploadCap, System.Math.Min(maxElementsByBudget, maxElementsByChunkCap)));
+            int chunkStart = (seg.Start + job.SegmentOffset) % _particleCapacity;
+
+            // Prefer the no-overwrite ring upload path (single dynamic buffer + ring allocator).
+            // Fallback to the existing per-buffer ring.
+            var uploadSpan = _particlesPipeline.TryAcquireUploadSpan(chunkCount);
+            var chunkUploadBuffer = uploadSpan?.Buffer ?? _particlesPipeline.GetNextUploadBuffer();
+            if (chunkUploadBuffer is null)
+                return;
+
+            int firstCount = System.Math.Min(chunkCount, _particleCapacity - chunkStart);
+            int secondCount = chunkCount - firstCount;
+
+            static double ToMilliseconds(long start, long end)
+                => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            MapMode mapMode = uploadSpan?.MapMode ?? MapMode.WriteDiscard;
+            var mapped = _context.Map(chunkUploadBuffer, 0, mapMode, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                nint basePtr = mapped.DataPointer + (uploadSpan?.ByteOffset ?? 0);
+                unsafe
+                {
+                    if (firstCount > 0)
+                    {
+                        fixed (GpuParticle* srcPtr = &seg.Buffer[job.SegmentOffset])
+                        {
+                            Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstCount * s_gpuParticleStride, firstCount * s_gpuParticleStride);
+                        }
+                    }
+
+                    if (secondCount > 0)
+                    {
+                        fixed (GpuParticle* srcPtr = &seg.Buffer[job.SegmentOffset + firstCount])
+                        {
+                            nint dst = basePtr + (firstCount * s_gpuParticleStride);
+                            Buffer.MemoryCopy(srcPtr, (void*)dst, secondCount * s_gpuParticleStride, secondCount * s_gpuParticleStride);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _context.Unmap(chunkUploadBuffer, 0);
+                long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordUpload(ToMilliseconds(t0, t1), checked(chunkCount * s_gpuParticleStride));
+            }
+
+            if (firstCount > 0)
+            {
+                var srcBox = new Box
+                {
+                    Left = uploadSpan?.ByteOffset ?? 0,
+                    Right = (uploadSpan?.ByteOffset ?? 0) + (int)(firstCount * s_gpuParticleStride),
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
+
+                long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _context.CopySubresourceRegion(particleBuffer, 0, (uint)(chunkStart * s_gpuParticleStride), 0, 0, chunkUploadBuffer, 0, srcBox);
+                long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(firstCount * s_gpuParticleStride));
+            }
+
+            if (secondCount > 0)
+            {
+                var srcBox = new Box
+                {
+                    Left = (uploadSpan?.ByteOffset ?? 0) + (int)(firstCount * s_gpuParticleStride),
+                    Right = (uploadSpan?.ByteOffset ?? 0) + (int)(chunkCount * s_gpuParticleStride),
+                    Top = 0,
+                    Bottom = 1,
+                    Front = 0,
+                    Back = 1
+                };
+
+                long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, chunkUploadBuffer, 0, srcBox);
+                long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(secondCount * s_gpuParticleStride));
+            }
+
+            job.SegmentOffset += chunkCount;
+            remainingBudget -= checked(chunkCount * s_gpuParticleStride);
+        }
     }
 
     public readonly record struct ShellRenderState(Vector3 Position);
@@ -277,6 +606,34 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
+        // Drain queued particle uploads with an adaptive budget. This prevents bursty spawns from
+        // building an unbounded backlog (GC/memory spikes) while still capping work per frame.
+        int budget = ParticleUploadBudgetBytesPerFrame;
+        if (_pendingParticleUploadBytes > ParticleUploadBacklogSoftLimitBytes)
+        {
+            // If we're behind, proactively throw out least-important work so the queue doesn't grow
+            // into a hitch-inducing backlog.
+            int target = ParticleUploadBacklogSoftLimitBytes / 2;
+            DropWorstPriorityUploadsUntilBelow(target);
+
+            int extra = (_pendingParticleUploadBytes - ParticleUploadBacklogSoftLimitBytes) / 4;
+            budget = System.Math.Min(ParticleUploadBudgetBytesPerFrameMax, checked(budget + extra));
+        }
+
+        // Present stalls typically indicate the compositor/GPU queue is saturated.
+        // Avoid scheduling additional upload work in that state.
+        if (_perf.LastPresentMilliseconds >= 10.0)
+        {
+            budget = 0;
+            // If Present is stalling, uploads are not helping; drain queue pressure aggressively.
+            DropWorstPriorityUploadsUntilBelow(ParticleUploadBacklogSoftLimitBytes / 2);
+        }
+        else if (_perf.LastPresentMilliseconds >= 4.0)
+        {
+            budget = System.Math.Min(budget, ParticleUploadBudgetBytesPerFrame);
+        }
+        DrainParticleUploads(budget);
+
         UpdateParticles(scaledDt);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
@@ -330,7 +687,11 @@ public sealed class D3D11Renderer : IDisposable
             => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 
         long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        _swapChain.Present(1, PresentFlags.None);
+        PresentFlags flags = PresentFlags.None;
+        if (_deviceResources.IsTearingSupported)
+            flags |= PresentFlags.AllowTearing;
+
+        _swapChain.Present(0, flags);
         long p1 = System.Diagnostics.Stopwatch.GetTimestamp();
         _perf.RecordPresent(ToMilliseconds(p0, p1));
 
@@ -339,6 +700,9 @@ public sealed class D3D11Renderer : IDisposable
             var counters = _particlesPipeline.GetPerfCountersSummary();
             if (!string.IsNullOrEmpty(counters))
                 System.Diagnostics.Debug.Write($" kinds[{counters}]");
+
+            if (PendingParticleUploadCount > 0)
+                System.Diagnostics.Debug.Write($" pendingUploads={PendingParticleUploadCount} pendingBytes={PendingParticleUploadBytes / (1024.0 * 1024.0):F1}MB");
         });
     }
 
@@ -405,9 +769,12 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
+            return;
+
+        // Backpressure: finales can enqueue massive uploads; when we're already far behind,
+        // drop this burst to keep the app responsive.
+        if (IsParticleUploadBackloggedHard)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
@@ -455,7 +822,8 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            EnqueueParticleUpload(staging, start, count);
+            staging = Array.Empty<GpuParticle>();
         }
         finally
         {
@@ -646,7 +1014,9 @@ public sealed class D3D11Renderer : IDisposable
 
             int total = System.Math.Clamp(produced, 1, _particleCapacity);
 
-            WriteParticlesToBuffer(staging, start, total, particleBuffer, uploadBuffer);
+            // Queue upload to avoid large Map stalls during intense bursts.
+            EnqueueParticleUpload(staging, start, total);
+            staging = Array.Empty<GpuParticle>();
 
             _particleWriteCursor = (start + total) % _particleCapacity;
         }
@@ -681,9 +1051,11 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnSmoke(Vector3 burstCenter)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
+            return;
+
+        // Backpressure: smoke is visually nice but not critical. Skip if we're far behind.
+        if (IsParticleUploadBackloggedHard)
             return;
 
         int count = _rng.Next(200, 601);
@@ -729,7 +1101,8 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            EnqueueParticleUpload(staging, start, count);
+            staging = Array.Empty<GpuParticle>();
         }
         finally
         {
@@ -748,10 +1121,16 @@ public sealed class D3D11Renderer : IDisposable
         float sparkleRateHz = 0.0f,
         float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
+
+        // Backpressure: cap burst size when backlog is large (keeps visuals plausible without runaway allocation).
+        if (_pendingParticleUploadBytes > ParticleUploadBacklogSoftLimitBytes)
+        {
+            int maxDirs = IsParticleUploadBackloggedHard ? 64 : 256;
+            if (directions.Length > maxDirs)
+                directions = directions[..maxDirs];
+        }
 
         int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
 
@@ -805,7 +1184,8 @@ public sealed class D3D11Renderer : IDisposable
                 };
             }
 
-            WriteParticlesToBuffer(staging, start, count, particleBuffer, uploadBuffer);
+            EnqueueParticleUpload(staging, start, count);
+            staging = Array.Empty<GpuParticle>();
         }
         finally
         {
@@ -835,6 +1215,14 @@ public sealed class D3D11Renderer : IDisposable
         var particleBuffer = _particlesPipeline.ParticleBuffer;
         var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
         if (_context is null || particleBuffer is null || uploadBuffer is null)
+            return;
+
+        // Backpressure: trails are a prime source of many small enqueues.
+        if (IsParticleUploadBackloggedHard)
+            return;
+
+        // Backpressure: trails are a prime source of many small enqueues.
+        if (IsParticleUploadBackloggedHard)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);

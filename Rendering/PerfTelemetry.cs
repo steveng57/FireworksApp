@@ -27,6 +27,8 @@ internal sealed class PerfTelemetry
     private double _presentMsMax;
     private long _presentCalls;
 
+    public double LastPresentMilliseconds { get; private set; }
+
     public bool Enabled { get; set; } = true;
 
     public void RecordUpload(TimeSpan elapsed, int bytes)
@@ -57,6 +59,7 @@ internal sealed class PerfTelemetry
         if (!Enabled)
             return;
 
+        LastPresentMilliseconds = elapsedMilliseconds;
         _presentMsAccum += elapsedMilliseconds;
         _presentMsMax = System.MathF.Max((float)_presentMsMax, (float)elapsedMilliseconds);
         _presentCalls++;

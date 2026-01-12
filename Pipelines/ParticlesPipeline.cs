@@ -21,6 +21,12 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer?[]? _particleUploadBuffers;
     private int _uploadBufferIndex;
     private int _uploadBufferElementCapacity;
+
+    private ID3D11Buffer? _particleUploadRingBuffer;
+    private int _uploadRingWriteOffsetBytes;
+    private int _uploadRingCapacityBytes;
+    private int _uploadRingStrideBytes;
+    private bool _useNoOverwriteRing;
     private ID3D11ShaderResourceView? _particleSRV;
     private ID3D11UnorderedAccessView? _particleUAV;
 
@@ -74,6 +80,40 @@ internal sealed class ParticlesPipeline : IDisposable
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
 
     public int UploadBufferElementCapacity => _uploadBufferElementCapacity;
+
+    public bool UseNoOverwriteRing => _useNoOverwriteRing;
+
+    public (ID3D11Buffer Buffer, int ByteOffset, MapMode MapMode)? TryAcquireUploadSpan(int elementCount)
+    {
+        if (!_useNoOverwriteRing || _particleUploadRingBuffer is null)
+            return null;
+
+        if (elementCount <= 0)
+            return null;
+
+        int bytes = checked(elementCount * _uploadRingStrideBytes);
+        if (bytes > _uploadRingCapacityBytes)
+            return null;
+
+        // Keep alignment to element stride.
+        int offset = _uploadRingWriteOffsetBytes;
+        if (offset < 0 || offset >= _uploadRingCapacityBytes || (offset % _uploadRingStrideBytes) != 0)
+            offset = 0;
+
+        MapMode mapMode;
+        if (offset + bytes > _uploadRingCapacityBytes)
+        {
+            offset = 0;
+            mapMode = MapMode.WriteDiscard;
+        }
+        else
+        {
+            mapMode = offset == 0 ? MapMode.WriteDiscard : MapMode.WriteNoOverwrite;
+        }
+
+        _uploadRingWriteOffsetBytes = checked(offset + bytes);
+        return (_particleUploadRingBuffer, offset, mapMode);
+    }
 
     public ID3D11Buffer? GetNextUploadBuffer()
     {
@@ -144,8 +184,37 @@ internal sealed class ParticlesPipeline : IDisposable
                 _particleUploadBuffers[i]?.Dispose();
         }
 
-        // Ring of small upload buffers:
-        // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
+        _useNoOverwriteRing = false;
+        _particleUploadRingBuffer?.Dispose();
+        _particleUploadRingBuffer = null;
+
+        // Preferred path: a single large dynamic upload ring buffer.
+        // We advance a CPU-side write offset and map with WriteNoOverwrite to reduce driver sync.
+        // When wrapping, use WriteDiscard to rotate the backing store.
+        try
+        {
+            const int uploadRingCapacityBytes = 16 * 1024 * 1024;
+            _uploadRingStrideBytes = stride;
+            _uploadRingCapacityBytes = uploadRingCapacityBytes - (uploadRingCapacityBytes % stride);
+            _uploadRingWriteOffsetBytes = 0;
+            _particleUploadRingBuffer = device.CreateBuffer(new BufferDescription
+            {
+                BindFlags = BindFlags.None,
+                Usage = ResourceUsage.Dynamic,
+                CPUAccessFlags = CpuAccessFlags.Write,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = (uint)_uploadRingCapacityBytes,
+                StructureByteStride = 0
+            });
+            _useNoOverwriteRing = true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Warning: Failed to create no-overwrite upload ring buffer: {ex.Message}");
+            _useNoOverwriteRing = false;
+        }
+
+        // Fallback: ring of small upload buffers.
         const int uploadRingSize = 96;
         const int uploadChunkElements = 16_384;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
@@ -153,25 +222,17 @@ internal sealed class ParticlesPipeline : IDisposable
         _uploadBufferIndex = 0;
 
         uint byteWidth = (uint)(stride * _uploadBufferElementCapacity);
-        try
+        for (int i = 0; i < uploadRingSize; i++)
         {
-            for (int i = 0; i < uploadRingSize; i++)
+            _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
             {
-                _particleUploadBuffers[i] = device.CreateBuffer(new BufferDescription
-                {
-                    BindFlags = BindFlags.VertexBuffer,
-                    Usage = ResourceUsage.Dynamic,
-                    CPUAccessFlags = CpuAccessFlags.Write,
-                    MiscFlags = ResourceOptionFlags.None,
-                    ByteWidth = byteWidth,
-                    StructureByteStride = 0
-                });
-            }
-        }
-        catch (Exception ex) 
-        {
-            Debug.WriteLine($"Warning: Failed to create full upload buffer ring: {ex.Message}");
-            throw;
+                BindFlags = BindFlags.VertexBuffer,
+                Usage = ResourceUsage.Dynamic,
+                CPUAccessFlags = CpuAccessFlags.Write,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = byteWidth,
+                StructureByteStride = 0
+            });
         }
 
         // Clear the newly created particle buffer to Dead/Zero without allocating a huge managed array.
