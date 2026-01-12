@@ -3,6 +3,7 @@ using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.D3DCompiler;
@@ -43,6 +44,8 @@ public struct PadVertex
 
 public sealed class D3D11Renderer : IDisposable
 {
+    private static readonly int s_gpuParticleStride = Unsafe.SizeOf<GpuParticle>();
+
     private readonly nint _hwnd;
 
     private readonly DeviceResources _deviceResources;
@@ -323,7 +326,13 @@ public sealed class D3D11Renderer : IDisposable
         DrawParticles(additive: false);
 
         // Present
+        static double ToMilliseconds(long start, long end)
+            => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+        long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _swapChain.Present(1, PresentFlags.None);
+        long p1 = System.Diagnostics.Stopwatch.GetTimestamp();
+        _perf.RecordPresent(ToMilliseconds(p0, p1));
 
         _perf.Tick("Render", appendDetails: () =>
         {
@@ -496,14 +505,14 @@ public sealed class D3D11Renderer : IDisposable
         var srcBox = new Box
         {
             Left = 0,
-            Right = stride,
+            Right = s_gpuParticleStride,
             Top = 0,
             Bottom = 1,
             Front = 0,
             Back = 1
         };
 
-        _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+        _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * s_gpuParticleStride), 0, 0, uploadBuffer, 0, srcBox);
 
         _particleWriteCursor = (start + 1) % _particleCapacity;
     }
@@ -889,7 +898,7 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null)
             return;
 
-        int stride = Marshal.SizeOf<GpuParticle>();
+        int stride = s_gpuParticleStride;
 
         static double ToMilliseconds(long start, long end)
             => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -960,7 +969,10 @@ public sealed class D3D11Renderer : IDisposable
                     Back = 1
                 };
 
+                long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _context.CopySubresourceRegion(particleBuffer, 0, (uint)(chunkStart * stride), 0, 0, chunkUploadBuffer, 0, srcBox);
+                long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(firstCount * stride));
             }
 
             if (secondCount > 0)
@@ -975,7 +987,10 @@ public sealed class D3D11Renderer : IDisposable
                     Back = 1
                 };
 
+                long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, chunkUploadBuffer, 0, srcBox);
+                long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(secondCount * stride));
             }
 
             producedOffset += chunkCount;
@@ -988,7 +1003,7 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null)
             return;
 
-        int stride = Marshal.SizeOf<GpuParticle>();
+        int stride = s_gpuParticleStride;
 
         static double ToMilliseconds(long start, long end)
             => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -1004,7 +1019,17 @@ public sealed class D3D11Renderer : IDisposable
         if (count > uploadCap)
         {
             // Reuse the array chunk path to keep logic in one place.
-            WriteParticlesToBuffer(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging).ToArray(), start, count, particleBuffer, uploadBuffer);
+            var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging);
+            var rented = count <= 0 ? Array.Empty<GpuParticle>() : s_particleArrayPool.Rent(count);
+            try
+            {
+                span.CopyTo(rented);
+                WriteParticlesToBuffer(rented, start, count, particleBuffer, uploadBuffer);
+            }
+            finally
+            {
+                ReturnParticleArray(rented);
+            }
             return;
         }
 
@@ -1057,7 +1082,10 @@ public sealed class D3D11Renderer : IDisposable
                 Back = 1
             };
 
+            long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
             _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
+            long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(firstCount * stride));
         }
 
         if (remaining > 0)
@@ -1072,7 +1100,10 @@ public sealed class D3D11Renderer : IDisposable
                 Back = 1
             };
 
+            long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
             _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
+            long c1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _perf.RecordGpuCopy(ToMilliseconds(c0, c1), checked(remaining * stride));
         }
     }
 

@@ -8,6 +8,7 @@ using Vortice.D3DCompiler;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using System.Diagnostics;
+using System.Text;
 using FireworksApp.Simulation;
 
 namespace FireworksApp.Rendering;
@@ -91,21 +92,28 @@ internal sealed class ParticlesPipeline : IDisposable
 
     public string GetPerfCountersSummary()
     {
-        // Avoid allocations beyond small concatenations; called at ~1Hz.
+        // Called at ~1Hz; keep it allocation-light.
         try
         {
             var kinds = s_allKinds;
-            var s = string.Empty;
+            var sb = new StringBuilder(128);
             for (int i = 0; i < kinds.Length; i++)
             {
                 ParticleKind kind = kinds[i];
                 _lastAliveCountByKind.TryGetValue(kind, out int alive);
                 _totalDroppedByKind.TryGetValue(kind, out int dropped);
-                if (s.Length > 0)
-                    s += " ";
-                s += $"{kind}:{alive}(-{dropped})";
+
+                if (i > 0)
+                    sb.Append(' ');
+
+                sb.Append(kind);
+                sb.Append(':');
+                sb.Append(alive);
+                sb.Append("(-");
+                sb.Append(dropped);
+                sb.Append(')');
             }
-            return s;
+            return sb.ToString();
         }
         catch
         {
@@ -138,8 +146,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         // Ring of small upload buffers:
         // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
-        const int uploadRingSize = 32;
-        const int uploadChunkElements = 32_768;
+        const int uploadRingSize = 96;
+        const int uploadChunkElements = 16_384;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
         _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
         _uploadBufferIndex = 0;

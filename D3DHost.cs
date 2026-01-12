@@ -34,6 +34,23 @@ public sealed class D3DHost : HwndHost
     private readonly Stopwatch _frameTimer = new();
     private double _accumulatedSimSeconds;
 
+    private readonly Stopwatch _sectionTimer = new();
+    private long _frameIndex;
+    private long _perfLastLogTimestamp;
+    private long _perfSimTicks;
+    private long _perfSimMaxTicks;
+    private long _perfAudioTicks;
+    private long _perfAudioMaxTicks;
+    private long _perfRenderTicks;
+    private long _perfRenderMaxTicks;
+    private long _perfFrameTicks;
+    private long _perfFrameMaxTicks;
+    private int _perfFrames;
+
+    private long _perfCallbackDeltaTicks;
+    private long _perfCallbackDeltaMaxTicks;
+    private long _perfLastCallbackTimestamp;
+
     public int MouseMoveCount { get; private set; }
     public int MouseDownCount { get; private set; }
     public int MouseUpCount { get; private set; }
@@ -384,6 +401,18 @@ public sealed class D3DHost : HwndHost
         if (_renderer is null)
             return;
 
+        long callbackNow = Stopwatch.GetTimestamp();
+        if (_perfLastCallbackTimestamp != 0)
+        {
+            long cbDelta = callbackNow - _perfLastCallbackTimestamp;
+            _perfCallbackDeltaTicks += cbDelta;
+            if (cbDelta > _perfCallbackDeltaMaxTicks)
+                _perfCallbackDeltaMaxTicks = cbDelta;
+        }
+        _perfLastCallbackTimestamp = callbackNow;
+
+        long frameStart = callbackNow;
+
         const double fixedStepSeconds = 1.0 / 60.0;
         const double maxFrameSeconds = 0.25;
 
@@ -405,12 +434,19 @@ public sealed class D3DHost : HwndHost
         int steps = 0;
         const int maxStepsPerFrame = 8;
 
+        _sectionTimer.Restart();
+
         while (_accumulatedSimSeconds >= scaledFixedStepSeconds && steps < maxStepsPerFrame)
         {
             _engine?.UpdateUnscaled((float)scaledFixedStepSeconds, _renderer);
             _accumulatedSimSeconds -= scaledFixedStepSeconds;
             steps++;
         }
+
+        long simTicks = _sectionTimer.ElapsedTicks;
+        _perfSimTicks += simTicks;
+        if (simTicks > _perfSimMaxTicks)
+            _perfSimMaxTicks = simTicks;
 
         if (steps == maxStepsPerFrame)
             _accumulatedSimSeconds = 0;
@@ -424,11 +460,60 @@ public sealed class D3DHost : HwndHost
 
         if (_audio is not null)
         {
+            _sectionTimer.Restart();
             _audio.ListenerPosition = _renderer.CameraPosition;
             _audio.Update(TimeSpan.FromSeconds(scaledFixedStepSeconds));
+            long audioTicks = _sectionTimer.ElapsedTicks;
+            _perfAudioTicks += audioTicks;
+            if (audioTicks > _perfAudioMaxTicks)
+                _perfAudioMaxTicks = audioTicks;
         }
 
+        _sectionTimer.Restart();
         _renderer.Render((float)scaledFixedStepSeconds);
+        long renderTicks = _sectionTimer.ElapsedTicks;
+        _perfRenderTicks += renderTicks;
+        if (renderTicks > _perfRenderMaxTicks)
+            _perfRenderMaxTicks = renderTicks;
+
+        long frameTicks = Stopwatch.GetTimestamp() - frameStart;
+        _perfFrameTicks += frameTicks;
+        if (frameTicks > _perfFrameMaxTicks)
+            _perfFrameMaxTicks = frameTicks;
+
+        _perfFrames++;
+        _frameIndex++;
+
+        long now = Stopwatch.GetTimestamp();
+        if (_perfLastLogTimestamp == 0)
+            _perfLastLogTimestamp = now;
+
+        const double logIntervalSeconds = 2.0;
+        if ((now - _perfLastLogTimestamp) >= logIntervalSeconds * Stopwatch.Frequency)
+        {
+            double toMs = 1000.0 / Stopwatch.Frequency;
+            double frames = System.Math.Max(1, _perfFrames);
+            Debug.WriteLine(
+                $"[Perf] fps={(frames / logIntervalSeconds):F1} " +
+                $"frame(avg/max)={((_perfFrameTicks / frames) * toMs):F3}/{(_perfFrameMaxTicks * toMs):F3}ms " +
+                $"cbDelta(avg/max)={((_perfCallbackDeltaTicks / frames) * toMs):F3}/{(_perfCallbackDeltaMaxTicks * toMs):F3}ms " +
+                $"sim(avg/max)={((_perfSimTicks / frames) * toMs):F3}/{(_perfSimMaxTicks * toMs):F3}ms " +
+                $"audio(avg/max)={((_perfAudioTicks / frames) * toMs):F3}/{(_perfAudioMaxTicks * toMs):F3}ms " +
+                $"render(avg/max)={((_perfRenderTicks / frames) * toMs):F3}/{(_perfRenderMaxTicks * toMs):F3}ms");
+
+            _perfSimTicks = 0;
+            _perfSimMaxTicks = 0;
+            _perfAudioTicks = 0;
+            _perfAudioMaxTicks = 0;
+            _perfRenderTicks = 0;
+            _perfRenderMaxTicks = 0;
+            _perfFrameTicks = 0;
+            _perfFrameMaxTicks = 0;
+            _perfCallbackDeltaTicks = 0;
+            _perfCallbackDeltaMaxTicks = 0;
+            _perfFrames = 0;
+            _perfLastLogTimestamp = now;
+        }
     }
 
     private void OnSoundEvent(SoundEvent ev)

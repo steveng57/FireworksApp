@@ -18,6 +18,15 @@ internal sealed class PerfTelemetry
     private long _uploadBytesAccum;
     private long _uploadCalls;
 
+    private double _gpuCopyMsAccum;
+    private double _gpuCopyMsMax;
+    private long _gpuCopyBytesAccum;
+    private long _gpuCopyCalls;
+
+    private double _presentMsAccum;
+    private double _presentMsMax;
+    private long _presentCalls;
+
     public bool Enabled { get; set; } = true;
 
     public void RecordUpload(TimeSpan elapsed, int bytes)
@@ -30,6 +39,27 @@ internal sealed class PerfTelemetry
         _uploadMsMax = System.MathF.Max((float)_uploadMsMax, (float)ms);
         _uploadBytesAccum += bytes;
         _uploadCalls++;
+    }
+
+    public void RecordGpuCopy(double elapsedMilliseconds, int bytes)
+    {
+        if (!Enabled)
+            return;
+
+        _gpuCopyMsAccum += elapsedMilliseconds;
+        _gpuCopyMsMax = System.MathF.Max((float)_gpuCopyMsMax, (float)elapsedMilliseconds);
+        _gpuCopyBytesAccum += bytes;
+        _gpuCopyCalls++;
+    }
+
+    public void RecordPresent(double elapsedMilliseconds)
+    {
+        if (!Enabled)
+            return;
+
+        _presentMsAccum += elapsedMilliseconds;
+        _presentMsMax = System.MathF.Max((float)_presentMsMax, (float)elapsedMilliseconds);
+        _presentCalls++;
     }
 
     public void RecordUpload(double elapsedMilliseconds, int bytes)
@@ -86,14 +116,30 @@ internal sealed class PerfTelemetry
         double uploadMaxMs = _uploadMsMax;
         double uploadMbPerSec = seconds > 1e-6 ? (_uploadBytesAccum / (1024.0 * 1024.0)) / seconds : 0.0;
 
+        double copyAvgMs = _gpuCopyCalls > 0 ? (_gpuCopyMsAccum / _gpuCopyCalls) : 0.0;
+        double copyMaxMs = _gpuCopyMsMax;
+        double copyMbPerSec = seconds > 1e-6 ? (_gpuCopyBytesAccum / (1024.0 * 1024.0)) / seconds : 0.0;
+
+        double presentAvgMs = _presentCalls > 0 ? (_presentMsAccum / _presentCalls) : 0.0;
+        double presentMaxMs = _presentMsMax;
+
         _uploadMsAccum = 0.0;
         _uploadMsMax = 0.0;
         _uploadBytesAccum = 0;
         _uploadCalls = 0;
 
+        _gpuCopyMsAccum = 0.0;
+        _gpuCopyMsMax = 0.0;
+        _gpuCopyBytesAccum = 0;
+        _gpuCopyCalls = 0;
+
+        _presentMsAccum = 0.0;
+        _presentMsMax = 0.0;
+        _presentCalls = 0;
+
         _lastReportTimestamp = now;
 
-        Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
+        Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s gpuCopy(avg/max)={copyAvgMs:F3}/{copyMaxMs:F3}ms gpuCopy={copyMbPerSec:F2}MB/s present(avg/max)={presentAvgMs:F3}/{presentMaxMs:F3}ms");
         appendDetails?.Invoke();
         Debug.WriteLine(string.Empty);
     }
