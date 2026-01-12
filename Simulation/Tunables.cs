@@ -31,7 +31,7 @@ internal static class Tunables
     internal static class GpuUpload
     {
         // Number of upload buffers in the ring (more = less stalling, more memory)
-        internal const int UploadRingSize = 64;
+        internal const int UploadRingSize = 128;
 
         // Max particles per upload chunk (larger = fewer uploads, more memory per buffer)
         internal const int UploadChunkElements = 32_768;
