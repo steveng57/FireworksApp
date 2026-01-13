@@ -466,6 +466,10 @@ public sealed class FireworksEngine
             {
                 EmitSubShellTrail(s, finalePop, renderer);
             }
+            else if (s.Kind == SubShellKind.SpokeWheelPop && s.SpokeWheelPop is { } wheelPop && wheelPop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
+            {
+                EmitSpokeWheelSubShellTrail(s, wheelPop, renderer);
+            }
 
             // Integrate (semi-implicit Euler)
             s.Velocity += gravity * s.GravityScale * dt;
@@ -935,6 +939,50 @@ public sealed class FireworksEngine
             speed: p.TrailSpeed,
             directions: dirs,
             particleLifetimeSeconds: p.TrailParticleLifetime);
+
+        if (_rng.NextDouble() < p.TrailSmokeChance)
+        {
+            renderer.SpawnSmoke(s.Position);
+        }
+    }
+
+    private void EmitSpokeWheelSubShellTrail(SubShell s, SubShellSpokeWheelPopParams p, D3D11Renderer renderer)
+    {
+        if (!p.EnableSubShellTrails || s.Velocity.LengthSquared() < 1e-4f)
+            return;
+
+        Vector3 dir = Vector3.Normalize(s.Velocity);
+        int particleCount = Math.Clamp(p.TrailParticleCount, 1, 20);
+
+        Span<Vector3> dirs = stackalloc Vector3[20];
+        dirs = dirs.Slice(0, particleCount);
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 baseDir = -dir;
+
+            // small cone around baseDir
+            float angle = 8f * (MathF.PI / 180f);
+            float yaw = (float)_rng.NextDouble() * MathF.PI * 2f;
+            float pitch = (float)_rng.NextDouble() * angle;
+
+            Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
+            if (axis.LengthSquared() < 1e-6f)
+                axis = Vector3.UnitX;
+
+            var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
+            var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
+            dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
+        }
+
+        // Slightly dimmer than finale trails to keep contrast with pop flash
+        var trailColor = new Vector4(1.0f, 0.8f, 0.55f, 1.0f);
+
+        renderer.SpawnBurstDirected(
+            s.Position,
+            trailColor,
+            speed: p.TrailSpeed,
+            directions: dirs,
+            particleLifetimeSeconds: p.TrailParticleLifetimeSeconds);
 
         if (_rng.NextDouble() < p.TrailSmokeChance)
         {

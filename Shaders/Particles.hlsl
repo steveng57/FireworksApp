@@ -599,14 +599,17 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     }
     else if (p.Kind == 5)
     {
-        // PopFlash: white flash, no flicker, no color-scheme tint.
+        // PopFlash: color can be provided by CPU; default white when BaseColor is unused.
         // CPU packs: _pad0=size, _pad1=peakIntensity, _pad2=fadeGamma
         float size = max(0.0f, asfloat(p._pad.x));
         float peak = max(0.0f, asfloat(p._pad.y));
         float gamma = max(0.001f, asfloat(p._pad.z));
 
         float fade = pow(saturate(1.0f - t), gamma);
-        p.Color = float4(1.0f, 1.0f, 1.0f, saturate(peak * fade));
+        float alpha = saturate(peak * fade);
+
+        float3 baseRgb = (p.BaseColor.a > 0.0f) ? p.BaseColor.rgb : float3(1.0f, 1.0f, 1.0f);
+        p.Color = float4(baseRgb, alpha);
 
         // Store size back into pad so VS can read it without re-packing.
         // (We keep it as-is; VS reads _pad.x.)
@@ -779,7 +782,8 @@ float4 PSParticle(VSOut input) : SV_Target
         if (intensity < 0.01f)
             discard;
 
-        return float4(1.0f, 1.0f, 1.0f, 1.0f) * intensity;
+        // Apply the CPU-provided base color so pop flashes can be tinted per scheme.
+        return float4(c.rgb, 1.0f) * intensity;
     }
 
     // Smoke: keep your existing soft billboard behavior

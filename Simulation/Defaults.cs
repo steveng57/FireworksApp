@@ -70,7 +70,7 @@ public static class DefaultProfiles
             ["mixed"] = new ColorScheme("mixed", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
             ["neon"] = new ColorScheme("neon", new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
             ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f),
-
+            ["white"] = new ColorScheme("white", new[] { Colors.White }, 0.02f, 3.0f),
             ["debug"] = new ColorScheme("debug", new[] { Colors.White, Colors.Red, Colors.Lime, Colors.Blue, Colors.Yellow, Colors.Cyan, Colors.Magenta }, 0.2f, 0.5f),
             // id, base colors[], variation, boost
             ["gold"] = new ColorScheme(
@@ -234,7 +234,7 @@ public static class DefaultProfiles
                     SubShellCount = 12,
                     RingStartAngleDegrees = 0.0f,
                     RingEndAngleDegrees = 360.0f,
-                    RingRadius = 15.0f,
+                    RingRadius = 20.0f,
                     SubShellSpeed = 15.0f,
                     SubShellFuseMinSeconds = 0.25f,
                     SubShellFuseMaxSeconds = 0.9f,
@@ -243,7 +243,7 @@ public static class DefaultProfiles
                     PopFlashRadius = 5.0f,
                     PopFlashIntensity = 2.2f,
                     PopFlashFadeGamma = 2.0f,
-                    PopFlashColorSchemeId = "pastel",
+                    PopFlashColorSchemeId = "white",
                     SubShellGravityScale = 0.95f,
                     SubShellDrag = 0.07f,
                     AngleJitterDegrees = 3.5f,
@@ -664,10 +664,10 @@ public static class DefaultShow
                 string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
-                //string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
 
                 // debug variations
-                shellId = "spoke_wheel_pop";
+                // shellId = "spoke_wheel_pop";
                 // shellId = "spiral";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
@@ -675,8 +675,8 @@ public static class DefaultShow
                 var showEvent = new ShowEvent(
                     TimeSeconds: t,
                     CanisterId: canisterId,
-                    ShellProfileId: shellId
-                  //  ColorSchemeId: colorSchemeId,
+                    ShellProfileId: shellId,
+                    ColorSchemeId: colorSchemeId
                     );
                 events.Add(showEvent);
 

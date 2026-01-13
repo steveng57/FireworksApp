@@ -70,7 +70,12 @@ public sealed record SubShellSpokeWheelPopParams(
     float AngleJitterDegrees = 0.0f,
     float TangentialSpeed = 0.0f,
     Vector3? RingAxis = null,
-    float RingAxisRandomTiltDegrees = 0.0f)
+    float RingAxisRandomTiltDegrees = 0.0f,
+    bool EnableSubShellTrails = true,
+    int TrailParticleCount = 6,
+    float TrailParticleLifetimeSeconds = 0.4f,
+    float TrailSpeed = 3.0f,
+    float TrailSmokeChance = 0.15f)
 {
     public static SubShellSpokeWheelPopParams Defaults { get; } = new(
         SubShellCount: 12,
@@ -92,7 +97,12 @@ public sealed record SubShellSpokeWheelPopParams(
         AngleJitterDegrees: 4.0f,
         TangentialSpeed: 2.5f,
         RingAxis: Vector3.UnitY,
-        RingAxisRandomTiltDegrees: 18.0f);
+        RingAxisRandomTiltDegrees: 18.0f,
+        EnableSubShellTrails: true,
+        TrailParticleCount: 6,
+        TrailParticleLifetimeSeconds: 0.4f,
+        TrailSpeed: 3.0f,
+        TrailSmokeChance: 0.15f);
 }
 
 public sealed record FinaleSaluteParams(
