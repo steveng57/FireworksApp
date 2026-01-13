@@ -151,6 +151,17 @@ public sealed class FireworksEngine
 
         ProcessGpuDetonations(renderer);
 
+        // If GPU rendering became unavailable (device loss or spawn disabled), migrate any GPU-tracked shells back to CPU simulation
+        // so they can finish their fuse and detonate instead of lingering forever.
+        if (!renderer.ShellsGpuRendered && _gpuShells.Count > 0)
+        {
+            foreach (var shell in _gpuShells.Values)
+            {
+                _shells.Add(shell);
+            }
+            _gpuShells.Clear();
+        }
+
         // Fire show events.
         var events = _show.Events;
         while (_nextEventIndex < events.Count && events[_nextEventIndex].TimeSeconds <= ShowTimeSeconds)
@@ -319,6 +330,36 @@ public sealed class FireworksEngine
             var shell = kvp.Value;
 
             shell.Update(dt);
+
+            // Failsafe: if GPU detonation readback misses, detonate on CPU when fuse expires.
+            if (shell.AgeSeconds >= shell.FuseTimeSeconds)
+            {
+                var explosion = new ShellExplosion(
+                    shell.Position,
+                    BurstShape: shell.BurstShapeOverride ?? shell.Profile.BurstShape,
+                    ExplosionRadius: shell.Profile.ExplosionRadius,
+                    ParticleCount: shell.Profile.ParticleCount,
+                    ParticleLifetimeSeconds: shell.Profile.ParticleLifetimeSeconds,
+                    BurstSpeed: shell.Profile.BurstSpeed,
+                    BurstSparkleRateHz: shell.Profile.BurstSparkleRateHz,
+                    BurstSparkleIntensity: shell.Profile.BurstSparkleIntensity,
+                    RingAxis: shell.Profile.RingAxis,
+                    RingAxisRandomTiltDegrees: shell.Profile.RingAxisRandomTiltDegrees,
+                    Emission: shell.Profile.EmissionSettings,
+                    FinaleSalute: shell.Profile.FinaleSaluteParams,
+                    Comet: shell.Profile.CometParams,
+                    BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
+                    PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
+                    SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
+                    ColorScheme: shell.ColorScheme);
+
+                Explode(explosion, renderer);
+
+                toRemove ??= new List<uint>();
+                toRemove.Add(kvp.Key);
+                continue;
+            }
+
             shell.EmitTrail(renderer, dt);
 
             // If the mirror falls below ground or otherwise dies, drop it so trails stop.
@@ -680,8 +721,15 @@ public sealed class FireworksEngine
 
         if (renderer.ShellsGpuRendered)
         {
-            _gpuShells[shell.ShellId] = shell;
-            renderer.QueueShellGpu(launchPos, launchVel, shell.FuseTimeSeconds, ShellDragK, shellBaseColor, shell.ShellId);
+            bool queued = renderer.QueueShellGpu(launchPos, launchVel, shell.FuseTimeSeconds, ShellDragK, shellBaseColor, shell.ShellId);
+            if (queued)
+            {
+                _gpuShells[shell.ShellId] = shell;
+            }
+            else
+            {
+                _shells.Add(shell);
+            }
         }
         else
         {
@@ -1744,8 +1792,15 @@ public sealed class FireworksEngine
 
             if (renderer.ShellsGpuRendered)
             {
-                _gpuShells[child.ShellId] = child;
-                renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * pending.Params.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+                bool queued = renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * pending.Params.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+                if (queued)
+                {
+                    _gpuShells[child.ShellId] = child;
+                }
+                else
+                {
+                    _shells.Add(child);
+                }
             }
             else
             {

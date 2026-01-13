@@ -236,7 +236,7 @@ public static class DefaultProfiles
                     SubShellCount = 12,
                     RingStartAngleDegrees = 0.0f,
                     RingEndAngleDegrees = 360.0f,
-                    RingRadius = 20.0f,
+                    RingRadius = 25.0f,
                     SubShellSpeed = 10.0f,
                     SubShellFuseMinSeconds = 0.50f,
                     SubShellFuseMaxSeconds = 1.5f,

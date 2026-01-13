@@ -50,6 +50,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
     <None Include=".github\workflows\ci.yml" />
     <None Include=".github\workflows\release.yml" />
   </ItemGroup>
