@@ -35,10 +35,6 @@ public struct PadVertex
         Position = new Vector3(x, y, z);
         Color = color;
     }
-
-// ...existing code...
-
-    public int ShellSpawnCount { get; set; }
 }
 
 public sealed class D3D11Renderer : IDisposable
@@ -284,7 +280,7 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
-        UpdateParticles(scaledDt);
+        UpdateParticles(scaledDt, useInterpolatedState);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
         UpdateSceneConstants(scaledDt);
@@ -537,19 +533,25 @@ public sealed class D3D11Renderer : IDisposable
 
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
-
-    private void SpawnShellTrails(float dt)
+    private void UpdateParticles(float scaledDt, bool useInterpolatedState)
     {
         if (_context is null)
             return;
 
-        if (dt <= 0.0f || _shells.Count == 0)
+        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt);
+    }
+    private void SpawnShellTrails(float dt, System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
+    {
+        if (_context is null)
+            return;
+
+        if (dt <= 0.0f || shells.Count == 0)
             return;
 
         float expected = ShellTrailParticlesPerSecond * dt;
         int baseCount = expected > 0 ? (int)expected : 0;
 
-        foreach (var shell in _shells)
+        foreach (var shell in shells)
         {
             var vel = shell.Velocity;
             if (vel.LengthSquared() < 1e-8f)
