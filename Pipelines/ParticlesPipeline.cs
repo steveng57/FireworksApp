@@ -186,6 +186,43 @@ internal sealed class ParticlesPipeline : IDisposable
         return true;
     }
 
+    public bool QueueShellSpawn(
+        int particleStart,
+        Vector3 position,
+        Vector3 velocity,
+        float fuseSeconds,
+        float dragK,
+        Vector4 baseColor,
+        uint seed)
+    {
+        if (!CanGpuSpawn)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 3u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = 1,
+            Origin = position,
+            Speed = 0.0f,
+            Lifetime = System.Math.Max(0.0f, fuseSeconds),
+            CrackleProbability = 0.0f,
+            SparkleRateHz = 0.0f,
+            SparkleIntensity = dragK,
+            Seed = seed,
+            _pad = velocity,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
     public bool QueueSmokeSpawn(
         int particleStart,
         int count,

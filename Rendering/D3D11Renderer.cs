@@ -111,6 +111,8 @@ public sealed class D3D11Renderer : IDisposable
 
     public int ShellSpawnCount { get; set; }
 
+    public bool ShellsGpuRendered => _particlesPipeline.CanGpuSpawn;
+
     private static GpuParticle[] RentParticleArray(int count)
         => count <= 0 ? Array.Empty<GpuParticle>() : s_particleArrayPool.Rent(count);
 
@@ -338,6 +340,29 @@ public sealed class D3D11Renderer : IDisposable
         _prevShells = _shells;
         _shells = shells ?? Array.Empty<ShellRenderState>();
         _hasInterpolatedState = false;
+    }
+
+    public bool QueueShellGpu(Vector3 position, Vector3 velocity, float fuseSeconds, float dragK, Vector4 baseColor)
+    {
+        if (_context is null || !_particlesPipeline.CanGpuSpawn)
+            return false;
+
+        int start = _particleWriteCursor;
+
+        bool queued = _particlesPipeline.QueueShellSpawn(
+            start,
+            position,
+            velocity,
+            fuseSeconds,
+            dragK,
+            baseColor,
+            (uint)_rng.Next());
+
+        if (!queued)
+            return false;
+
+        _particleWriteCursor = (start + 1) % _particleCapacity;
+        return true;
     }
 
     public void SetCanisters(System.Collections.Generic.IReadOnlyList<CanisterRenderState> canisters)

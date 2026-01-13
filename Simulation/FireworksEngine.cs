@@ -268,9 +268,12 @@ public sealed class FireworksEngine
             .ToArray();
         renderer.SetCanisters(canisterStates);
 
-        // Provide shell positions to renderer.
+        // Provide shell positions to renderer (skip when GPU shell rendering is active).
         var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
-        renderer.SetShells(shellStates);
+        if (renderer.ShellsGpuRendered)
+            renderer.SetShells(Array.Empty<D3D11Renderer.ShellRenderState>());
+        else
+            renderer.SetShells(shellStates);
     }
 
     // Attachments resolver: replace missing property access with a method.
@@ -342,6 +345,7 @@ public sealed class FireworksEngine
             };
 
             _shells.Add(child);
+            renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK, ColorUtil.PickBaseColor(childScheme));
         }
     }
 
@@ -574,6 +578,8 @@ public sealed class FireworksEngine
         if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var shellScheme))
             shellScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
 
+        var shellBaseColor = ColorUtil.PickBaseColor(shellScheme);
+
         // *** CHANGED: pass drag and fuse override (burst slightly before apex)
         var shell = new FireworkShell(
             shellProfile,
@@ -584,6 +590,7 @@ public sealed class FireworksEngine
             fuseOverrideSeconds: timeToPeak * 0.95f);
 
         _shells.Add(shell);
+        renderer.QueueShellGpu(launchPos, launchVel, shell.FuseTimeSeconds, ShellDragK, shellBaseColor);
         canister.OnFired();
 
         EmitSound(new SoundEvent(
@@ -1424,6 +1431,7 @@ public sealed class FireworksEngine
             };
 
             _shells.Add(child);
+            renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * pending.Params.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme));
         }
     }
 

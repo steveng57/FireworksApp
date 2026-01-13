@@ -73,7 +73,7 @@ static const float SparkDragK = 0.015f;
 // GPU spawn requests (read-only SRV during CSSpawn)
 struct SpawnRequest
 {
-    uint RequestKind;     // 1 = Spark/Crackle burst with provided directions
+    uint RequestKind;     // 1 = Spark/Crackle burst with provided directions, 2 = Smoke, 3 = Shell
     uint ParticleStart;   // destination start index in particle buffer
     uint DirStart;        // offset into SpawnDirections
     uint Count;           // particle count
@@ -87,7 +87,7 @@ struct SpawnRequest
     float SparkleRateHz;
     float SparkleIntensity;
     uint Seed;
-    float3 _pad;
+    float3 _pad; // repurposed per-kind (e.g., shell velocity)
 
     float4 BaseColor;
 };
@@ -241,6 +241,34 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
             Particles[dst] = p;
         }
     }
+    else if (req.RequestKind == 3)
+    {
+        // Shell: use _pad as initial velocity, Lifetime as fuse, SparkleIntensity as dragK.
+        float3 vel = req._pad;
+        float dragK = req.SparkleIntensity;
+
+        for (uint i = 0; i < req.Count; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            Particle p;
+            p.Position = req.Origin;
+            p.Velocity = vel;
+            p.Age = 0.0f;
+            p.Lifetime = req.Lifetime; // fuse time
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = 1u; // Shell
+
+            p._pad.x = asuint(dragK);
+            p._pad.y = seed;
+            p._pad.z = 0u;
+
+            Particles[dst] = p;
+        }
+    }
 }
 
 float4 ColorRampSpark(float t, float4 baseColor)
@@ -355,6 +383,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     // Integrate motion.
     // Sparks & crackles: gravity + quadratic drag (like shells, but on GPU).
+    // Shells: gravity + quadratic drag using per-shell dragK.
     // Smoke / others: keep existing simple linear drag so they stay floaty.
     if (p.Kind == 2 || p.Kind == 4)
     {
@@ -370,6 +399,27 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         {
             float3 dir = v / speed;
             float3 dragAccel = -dir * (SparkDragK * speed * speed);
+            accel += dragAccel;
+        }
+
+        v += accel * dt;
+        p.Velocity = v;
+        p.Position += v * dt;
+    }
+    else if (p.Kind == 1)
+    {
+        float3 v = p.Velocity;
+        float dragK = asfloat(p._pad.x);
+
+        // Gravity
+        float3 accel = Gravity;
+
+        // Quadratic drag opposite velocity
+        float speed = length(v);
+        if (speed > 1e-4f && dragK > 0.0f)
+        {
+            float3 dir = v / speed;
+            float3 dragAccel = -dir * (dragK * speed * speed);
             accel += dragAccel;
         }
 
