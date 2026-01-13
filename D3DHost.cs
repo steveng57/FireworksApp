@@ -400,7 +400,8 @@ public sealed class D3DHost : HwndHost
 
         float timeScale = _engine?.TimeScale ?? 1.0f;
         double scaledFixedStepSeconds = fixedStepSeconds * timeScale;
-        _accumulatedSimSeconds += realDtSeconds * timeScale;
+        double scaledFrameSeconds = realDtSeconds * timeScale;
+        _accumulatedSimSeconds += scaledFrameSeconds;
 
         int steps = 0;
         const int maxStepsPerFrame = 8;
@@ -425,10 +426,10 @@ public sealed class D3DHost : HwndHost
         if (_audio is not null)
         {
             _audio.ListenerPosition = _renderer.CameraPosition;
-            _audio.Update(TimeSpan.FromSeconds(scaledFixedStepSeconds));
+            _audio.Update(TimeSpan.FromSeconds(scaledFrameSeconds));
         }
 
-        _renderer.Render((float)scaledFixedStepSeconds);
+        _renderer.Render((float)scaledFrameSeconds);
     }
 
     private void OnSoundEvent(SoundEvent ev)
