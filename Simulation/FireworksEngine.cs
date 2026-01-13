@@ -500,7 +500,7 @@ public sealed class FireworksEngine
         switch (s.Kind)
         {
             case SubShellKind.FinaleSalute when s.FinalePop is { } finale:
-                SpawnPopFlash(s.Position, finale, renderer);
+                SpawnPopFlash(s.Position, finale, s.PopColor, renderer);
                 break;
 
             case SubShellKind.SpokeWheelPop when s.SpokeWheelPop is { } wheel:
@@ -697,6 +697,14 @@ public sealed class FireworksEngine
     private void SpawnFinaleSalute(Vector3 origin, FinaleSaluteParams p)
     {
         int count = System.Math.Clamp(p.SubShellCount, 1, 5000);
+
+        ColorScheme? popScheme = null;
+        if (!string.IsNullOrWhiteSpace(p.PopFlashColorSchemeId) && _profiles.ColorSchemes.TryGetValue(p.PopFlashColorSchemeId, out var scheme))
+            popScheme = scheme;
+
+        Vector4 defaultPopColor = new(1.0f, 1.0f, 1.0f, 1.0f);
+        Vector4 popColor = popScheme is null ? defaultPopColor : ColorUtil.PickBaseColor(popScheme);
+
         for (int i = 0; i < count; i++)
         {
             Vector3 dir = RandomUnitVector();
@@ -722,8 +730,8 @@ public sealed class FireworksEngine
                 Kind = SubShellKind.FinaleSalute,
                 FinalePop = p,
                 SpokeWheelPop = null,
-                ColorScheme = null,
-                PopColor = new Vector4(1.0f, 1.0f, 1.0f, 1.0f)
+                ColorScheme = popScheme,
+                PopColor = popColor
             });
         }
     }
@@ -739,6 +747,35 @@ public sealed class FireworksEngine
         float step = arcRad / count;
         float angleJitter = p.AngleJitterDegrees * (MathF.PI / 180.0f);
 
+        Vector3 ringAxis = p.RingAxis ?? Vector3.UnitY;
+        if (ringAxis.LengthSquared() < 1e-6f)
+            ringAxis = Vector3.UnitY;
+        else
+            ringAxis = Vector3.Normalize(ringAxis);
+
+        if (p.RingAxisRandomTiltDegrees > 0.0f)
+        {
+            float maxTiltRadians = p.RingAxisRandomTiltDegrees * (MathF.PI / 180.0f);
+            float yaw = (float)(_rng.NextDouble() * MathF.Tau);
+            float u = (float)_rng.NextDouble();
+            float tilt = maxTiltRadians * MathF.Sqrt(u);
+
+            Vector3 t1 = Vector3.Cross(ringAxis, Vector3.UnitY);
+            if (t1.LengthSquared() < 1e-6f)
+                t1 = Vector3.Cross(ringAxis, Vector3.UnitX);
+            t1 = Vector3.Normalize(t1);
+            Vector3 t2 = Vector3.Normalize(Vector3.Cross(ringAxis, t1));
+
+            Vector3 offset = (t1 * MathF.Cos(yaw) + t2 * MathF.Sin(yaw)) * MathF.Sin(tilt);
+            ringAxis = Vector3.Normalize(ringAxis * MathF.Cos(tilt) + offset);
+        }
+
+        Vector3 basis1 = Vector3.Cross(ringAxis, Vector3.UnitY);
+        if (basis1.LengthSquared() < 1e-6f)
+            basis1 = Vector3.Cross(ringAxis, Vector3.UnitX);
+        basis1 = Vector3.Normalize(basis1);
+        Vector3 basis2 = Vector3.Normalize(Vector3.Cross(ringAxis, basis1));
+
         var flashScheme = ResolvePopFlashScheme(p, parentScheme);
 
         for (int i = 0; i < count; i++)
@@ -750,12 +787,13 @@ public sealed class FireworksEngine
                 angle += angleJitter * ((float)_rng.NextDouble() * 2.0f - 1.0f);
             }
 
-            Vector3 dir = new(MathF.Cos(angle), 0.0f, MathF.Sin(angle));
+            Vector3 dir = basis1 * MathF.Cos(angle) + basis2 * MathF.Sin(angle);
             if (dir.LengthSquared() < 1e-6f)
-                dir = Vector3.UnitZ;
-            dir = Vector3.Normalize(dir);
+                dir = basis1;
+            else
+                dir = Vector3.Normalize(dir);
 
-            Vector3 tangent = Vector3.Cross(Vector3.UnitY, dir);
+            Vector3 tangent = Vector3.Cross(ringAxis, dir);
             if (tangent.LengthSquared() > 1e-6f)
                 tangent = Vector3.Normalize(tangent);
 
@@ -811,9 +849,9 @@ public sealed class FireworksEngine
         return parentBaseColor;
     }
 
-    private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, D3D11Renderer renderer)
+    private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, Vector4 popColor, D3D11Renderer renderer)
     {
-        renderer.SpawnPopFlash(position, p.PopFlashLifetime, p.PopFlashSize, p.PopPeakIntensity, p.PopFadeGamma);
+        renderer.SpawnPopFlash(position, p.PopFlashLifetime, p.PopFlashSize, p.PopPeakIntensity, p.PopFadeGamma, popColor);
 
         // Dense, tight spark burst for realism (no smoke, no color variance beyond white->silver).
         // Do NOT increase radius: keep speed slightly lower so the energy reads tighter.
@@ -840,7 +878,7 @@ public sealed class FireworksEngine
         float flashLifetime = MathF.Max(0.05f, p.PopFlashLifetime);
         float flashRadius = MathF.Max(0.05f, p.PopFlashRadius);
 
-        renderer.SpawnPopFlash(s.Position, flashLifetime, flashRadius, p.PopFlashIntensity, p.PopFlashFadeGamma);
+        renderer.SpawnPopFlash(s.Position, flashLifetime, flashRadius, p.PopFlashIntensity, p.PopFlashFadeGamma, s.PopColor);
 
         int particleCount = Math.Clamp(p.PopFlashParticleCount, 0, 250_000);
         if (particleCount <= 0)
@@ -1561,7 +1599,7 @@ public sealed class FireworksEngine
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
               FireworkBurstShape.Horsetail => EmissionStyles.EmitHorsetail(explosion.ParticleCount, axis: ringAxis, settings: explosion.Emission),
             FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(explosion.ParticleCount, axis: ringAxis),
-            FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount),
+            FireworkBurstShape.Spiral => EmissionStyles.EmitSpiral(explosion.ParticleCount, axis: ringAxis),
             _ => EmissionStyles.EmitPeony(explosion.ParticleCount)
         };
 
@@ -2301,12 +2339,21 @@ internal static class EmissionStyles
 
     public static Vector3[] EmitSpiral(
     int count,
+    Vector3 axis,
     int armCount = 5,
     float twistCount = 2.5f,
     float pitch = 1.2f)
     {
         if (count <= 0)
             return Array.Empty<Vector3>();
+
+        axis = axis.LengthSquared() < 1e-6f ? Vector3.UnitY : Vector3.Normalize(axis);
+
+        Vector3 tangent1 = Vector3.Cross(axis, Vector3.UnitY);
+        if (tangent1.LengthSquared() < 1e-6f)
+            tangent1 = Vector3.Cross(axis, Vector3.UnitX);
+        tangent1 = Vector3.Normalize(tangent1);
+        Vector3 tangent2 = Vector3.Normalize(Vector3.Cross(axis, tangent1));
 
         var dirs = new Vector3[count];
         float twoPi = (float)(Math.PI * 2.0);
@@ -2337,7 +2384,8 @@ internal static class EmissionStyles
                 (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter * 0.5f,
                 (float)(s_rng.NextDouble() * 2.0 - 1.0) * jitter);
 
-            dirs[i] = Vector3.Normalize(dir);
+            Vector3 dirOriented = tangent1 * dir.X + axis * dir.Y + tangent2 * dir.Z;
+            dirs[i] = Vector3.Normalize(dirOriented);
         }
 
         return dirs;

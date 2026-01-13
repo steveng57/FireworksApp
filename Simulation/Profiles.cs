@@ -68,7 +68,9 @@ public sealed record SubShellSpokeWheelPopParams(
     float SubShellGravityScale = 1.0f,
     float SubShellDrag = 0.05f,
     float AngleJitterDegrees = 0.0f,
-    float TangentialSpeed = 0.0f)
+    float TangentialSpeed = 0.0f,
+    Vector3? RingAxis = null,
+    float RingAxisRandomTiltDegrees = 0.0f)
 {
     public static SubShellSpokeWheelPopParams Defaults { get; } = new(
         SubShellCount: 12,
@@ -88,7 +90,9 @@ public sealed record SubShellSpokeWheelPopParams(
         SubShellGravityScale: 1.0f,
         SubShellDrag: 0.08f,
         AngleJitterDegrees: 4.0f,
-        TangentialSpeed: 2.5f);
+        TangentialSpeed: 2.5f,
+        RingAxis: Vector3.UnitY,
+        RingAxisRandomTiltDegrees: 18.0f);
 }
 
 public sealed record FinaleSaluteParams(
@@ -110,7 +114,8 @@ public sealed record FinaleSaluteParams(
     int TrailParticleCount = 6,
     float TrailParticleLifetime = 0.4f,
     float TrailSpeed = 3.0f,
-    float TrailSmokeChance = 0.15f)
+    float TrailSmokeChance = 0.15f,
+    string? PopFlashColorSchemeId = null)
 {
     public static FinaleSaluteParams Defaults { get; } = new(
         SubShellCount: 50,
@@ -131,7 +136,8 @@ public sealed record FinaleSaluteParams(
         TrailParticleCount: 6,
         TrailParticleLifetime: 0.4f,
         TrailSpeed: 3.0f,
-        TrailSmokeChance: 0.15f);
+        TrailSmokeChance: 0.15f,
+        PopFlashColorSchemeId: null);
 }
 
 public enum GroundEffectType

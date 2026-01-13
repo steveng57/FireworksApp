@@ -210,13 +210,15 @@ public static class DefaultProfiles
                 ParticleCount: 5500,
                 ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 16.0f,
-                BurstSparkleIntensity: 0.55f
+                BurstSparkleIntensity: 0.55f,
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 25.0f
             ),
 
             ["spoke_wheel_pop"] = new FireworkShellProfile(
                 Id: "spoke_wheel_pop",
                 BurstShape: FireworkBurstShape.SubShellSpokeWheelPop,
-                ColorSchemeId: "neon",
+                ColorSchemeId: "warm",
                 FuseTimeSeconds: 3.6f,
                 ExplosionRadius: 0.0f,
                 ParticleCount: 0,
@@ -241,11 +243,13 @@ public static class DefaultProfiles
                     PopFlashRadius = 5.0f,
                     PopFlashIntensity = 2.2f,
                     PopFlashFadeGamma = 2.0f,
-                    PopFlashColorSchemeId = "neon",
+                    PopFlashColorSchemeId = "pastel",
                     SubShellGravityScale = 0.95f,
                     SubShellDrag = 0.07f,
                     AngleJitterDegrees = 3.5f,
-                    TangentialSpeed = 3.0f
+                    TangentialSpeed = 3.0f,
+                    RingAxis = Vector3.UnitY,
+                    RingAxisRandomTiltDegrees = 180.0f
                 }
             ),
 
@@ -660,20 +664,20 @@ public static class DefaultShow
                 string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
-                float? muzzleVelocity = null;
+                //string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
 
                 // debug variations
                 shellId = "spoke_wheel_pop";
+                // shellId = "spiral";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
                 var showEvent = new ShowEvent(
                     TimeSeconds: t,
                     CanisterId: canisterId,
-                    ShellProfileId: shellId,
-                    ColorSchemeId: colorSchemeId,
-                    MuzzleVelocity: muzzleVelocity);
+                    ShellProfileId: shellId
+                  //  ColorSchemeId: colorSchemeId,
+                    );
                 events.Add(showEvent);
 
                 t += 0.20f;

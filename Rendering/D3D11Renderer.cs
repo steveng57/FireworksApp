@@ -571,7 +571,7 @@ public sealed class D3D11Renderer : IDisposable
         }
     }
 
-    public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
+    public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma, Vector4 baseColor)
     {
         var particleBuffer = _particlesPipeline.ParticleBuffer;
         var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
@@ -587,8 +587,8 @@ public sealed class D3D11Renderer : IDisposable
             Velocity = Vector3.Zero,
             Age = 0.0f,
             Lifetime = System.Math.Max(0.01f, lifetimeSeconds),
-            BaseColor = new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
-            Color = new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
+            BaseColor = baseColor,
+            Color = baseColor,
             Kind = (uint)ParticleKind.PopFlash,
             _pad0 = PackFloat(System.Math.Max(0.0f, size)),
             _pad1 = PackFloat(System.Math.Max(0.0f, peakIntensity)),
