@@ -81,7 +81,7 @@ public sealed class FireworksEngine
     private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
     private readonly List<PendingWillowHandoff> _pendingWillow = new();
     private readonly Dictionary<uint, FireworkShell> _gpuShells = new();
-    private readonly DetonationEvent[] _detonationBuffer = new DetonationEvent[1024];
+    private readonly DetonationEvent[] _detonationBuffer = new DetonationEvent[Tunables.ParticleBudgets.Shell];
     private uint _nextShellId = 1;
     private readonly Random _rng = new();
 

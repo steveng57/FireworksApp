@@ -237,7 +237,7 @@ public static class DefaultProfiles
                     RingStartAngleDegrees = 0.0f,
                     RingEndAngleDegrees = 360.0f,
                     RingRadius = 20.0f,
-                    SubShellSpeed = 15.0f,
+                    SubShellSpeed = 10.0f,
                     SubShellFuseMinSeconds = 0.50f,
                     SubShellFuseMaxSeconds = 1.5f,
                     PopFlashParticleCount = 2400,
