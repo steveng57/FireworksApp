@@ -218,6 +218,9 @@ public sealed class FireworksEngine
             }
         }
 
+        // Mirror GPU-simulated shells for trails/visual interpolation.
+        UpdateGpuShellTrails(stepDt, renderer);
+
         UpdateSubShells(stepDt, renderer);
         UpdateComets(stepDt, renderer);
 
@@ -273,9 +276,52 @@ public sealed class FireworksEngine
             .ToArray();
         renderer.SetCanisters(canisterStates);
 
-        // Provide shell positions/velocities to renderer (always), so trails render even when GPU particle sim is enabled.
-        var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position, s.Velocity)).ToArray();
-        renderer.SetShells(shellStates);
+        // Provide shell positions/velocities to renderer (CPU + GPU mirrors) for trails/interpolation.
+        var shellStatesList = new List<D3D11Renderer.ShellRenderState>(_shells.Count + _gpuShells.Count);
+        for (int i = 0; i < _shells.Count; i++)
+        {
+            var s = _shells[i];
+            shellStatesList.Add(new D3D11Renderer.ShellRenderState(s.Position, s.Velocity));
+        }
+
+        if (renderer.ShellsGpuRendered && _gpuShells.Count > 0)
+        {
+            foreach (var shell in _gpuShells.Values)
+            {
+                shellStatesList.Add(new D3D11Renderer.ShellRenderState(shell.Position, shell.Velocity));
+            }
+        }
+
+        renderer.SetShells(shellStatesList);
+    }
+
+    private void UpdateGpuShellTrails(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0.0f || !renderer.ShellsGpuRendered || _gpuShells.Count == 0)
+            return;
+
+        List<uint>? toRemove = null;
+
+        foreach (var kvp in _gpuShells)
+        {
+            var shell = kvp.Value;
+
+            shell.Update(dt);
+            shell.EmitTrail(renderer, dt);
+
+            // If the mirror falls below ground or otherwise dies, drop it so trails stop.
+            if (!shell.Alive)
+            {
+                toRemove ??= new List<uint>();
+                toRemove.Add(kvp.Key);
+            }
+        }
+
+        if (toRemove != null)
+        {
+            for (int i = 0; i < toRemove.Count; i++)
+                _gpuShells.Remove(toRemove[i]);
+        }
     }
 
     // Attachments resolver: replace missing property access with a method.

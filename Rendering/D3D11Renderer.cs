@@ -111,8 +111,7 @@ public sealed class D3D11Renderer : IDisposable
 
     public int ShellSpawnCount { get; set; }
 
-    // Force shells to remain on CPU simulation so trails are available.
-    public bool ShellsGpuRendered => false;
+    public bool ShellsGpuRendered => _particlesPipeline.CanGpuSpawn;
 
     public int ReadDetonations(Span<DetonationEvent> destination)
     {
@@ -329,7 +328,10 @@ public sealed class D3D11Renderer : IDisposable
 
         DrawCanisters(useInterpolatedState);
 
-        DrawShells(useInterpolatedState);
+        if (!ShellsGpuRendered)
+        {
+            DrawShells(useInterpolatedState);
+        }
 
         DrawParticles(additive: true);
         DrawParticles(additive: false);
