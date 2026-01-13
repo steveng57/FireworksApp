@@ -273,12 +273,9 @@ public sealed class FireworksEngine
             .ToArray();
         renderer.SetCanisters(canisterStates);
 
-        // Provide shell positions to renderer (skip when GPU shell rendering is active).
-        var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
-        if (renderer.ShellsGpuRendered)
-            renderer.SetShells(Array.Empty<D3D11Renderer.ShellRenderState>());
-        else
-            renderer.SetShells(shellStates);
+        // Provide shell positions/velocities to renderer (always), so trails render even when GPU particle sim is enabled.
+        var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position, s.Velocity)).ToArray();
+        renderer.SetShells(shellStates);
     }
 
     // Attachments resolver: replace missing property access with a method.

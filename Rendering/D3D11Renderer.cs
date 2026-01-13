@@ -111,7 +111,8 @@ public sealed class D3D11Renderer : IDisposable
 
     public int ShellSpawnCount { get; set; }
 
-    public bool ShellsGpuRendered => _particlesPipeline.CanGpuSpawn;
+    // Force shells to remain on CPU simulation so trails are available.
+    public bool ShellsGpuRendered => false;
 
     public int ReadDetonations(Span<DetonationEvent> destination)
     {
@@ -132,7 +133,7 @@ public sealed class D3D11Renderer : IDisposable
         s_particleArrayPool.Return(buffer, clearArray: false);
     }
 
-    public readonly record struct ShellRenderState(Vector3 Position);
+    public readonly record struct ShellRenderState(Vector3 Position, Vector3 Velocity);
 
     public readonly record struct CanisterRenderState(Vector3 Position, Vector3 Direction);
 
@@ -284,6 +285,7 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
+        SpawnShellTrails(scaledDt);
         UpdateParticles(scaledDt);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
@@ -401,9 +403,13 @@ public sealed class D3D11Renderer : IDisposable
         {
             for (int i = 0; i < shellCount; i++)
             {
-                var a = _prevShells[i].Position;
-                var b = _shells[i].Position;
-                _interpShells[i] = new ShellRenderState(Vector3.Lerp(a, b, alpha));
+                var aPos = _prevShells[i].Position;
+                var bPos = _shells[i].Position;
+                var aVel = _prevShells[i].Velocity;
+                var bVel = _shells[i].Velocity;
+                _interpShells[i] = new ShellRenderState(
+                    Vector3.Lerp(aPos, bPos, alpha),
+                    Vector3.Lerp(aVel, bVel, alpha));
             }
         }
 
@@ -529,6 +535,35 @@ public sealed class D3D11Renderer : IDisposable
         }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
+    }
+
+    private void SpawnShellTrails(float dt)
+    {
+        if (_context is null)
+            return;
+
+        if (dt <= 0.0f || _shells.Count == 0)
+            return;
+
+        float expected = ShellTrailParticlesPerSecond * dt;
+        int baseCount = expected > 0 ? (int)expected : 0;
+
+        foreach (var shell in _shells)
+        {
+            var vel = shell.Velocity;
+            if (vel.LengthSquared() < 1e-8f)
+                continue;
+
+            int count = baseCount;
+            float frac = expected - baseCount;
+            if (_rng.NextDouble() < frac)
+                count++;
+
+            if (count <= 0)
+                continue;
+
+            SpawnShellTrail(shell.Position, vel, count);
+        }
     }
 
     public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
