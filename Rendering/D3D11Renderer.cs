@@ -396,15 +396,59 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
         int start = _particleWriteCursor;
+
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            var dirs = ArrayPool<Vector3>.Shared.Rent(count);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                    dirs[i] = RandomUnitVector();
+
+                int remaining = count;
+                int offset = 0;
+                int cursor = start;
+                const float crackleProbability = 0.22f;
+
+                while (remaining > 0)
+                {
+                    int chunk = System.Math.Min(remaining, _particleCapacity - cursor);
+                    _particlesPipeline.QueueSparkBurstSpawn(
+                        particleStart: cursor,
+                        directions: dirs.AsSpan(offset, chunk),
+                        origin: position,
+                        baseColor: baseColor,
+                        speed: 12.0f,
+                        lifetimeSeconds: 2.8f,
+                        sparkleRateHz: sparkleRateHz,
+                        sparkleIntensity: sparkleIntensity,
+                        crackleProbability: crackleProbability,
+                        seed: (uint)_rng.Next());
+
+                    cursor = (cursor + chunk) % _particleCapacity;
+                    offset += chunk;
+                    remaining -= chunk;
+                }
+
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+            finally
+            {
+                ArrayPool<Vector3>.Shared.Return(dirs);
+            }
+        }
+
+        // CPU fallback
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return;
 
         var staging = RentParticleArray(count);
         try
@@ -438,8 +482,6 @@ public sealed class D3D11Renderer : IDisposable
                     BaseColor = baseColor,
                     Color = baseColor,
                     Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                    // For sparks, pack sparkle params (rate/intensity) so only burst particles twinkle.
-                    // For crackle, keep pads as deterministic randomness.
                     _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
                     _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
                     _pad2 = (uint)_rng.Next()
@@ -672,20 +714,40 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnSmoke(Vector3 burstCenter)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
-            return;
-
         int count = _rng.Next(200, 601);
         count = System.Math.Clamp(count, 1, _particleCapacity);
 
         int start = _particleWriteCursor;
 
+        // Try GPU smoke spawn first.
+        if (_context is not null && _particlesPipeline.CanGpuSpawn)
+        {
+            Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+            bool queued = _particlesPipeline.QueueSmokeSpawn(
+                start,
+                count,
+                burstCenter,
+                startColor,
+                Tunables.SmokeLifetimeMinSeconds,
+                Tunables.SmokeLifetimeMaxSeconds,
+                (uint)_rng.Next());
+
+            if (queued)
+            {
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+        }
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (_context is null || particleBuffer is null || uploadBuffer is null)
+            return;
+
         var staging = RentParticleArray(count);
 
         // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
-        Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+        Vector4 cpuStartColor = new(0.35f, 0.33f, 0.30f, 1.0f);
         try
         {
             for (int i = 0; i < count; i++)
@@ -711,8 +773,8 @@ public sealed class D3D11Renderer : IDisposable
                     Velocity = vel,
                     Age = 0.0f,
                     Lifetime = lifetime,
-                    BaseColor = startColor,
-                    Color = startColor,
+                    BaseColor = cpuStartColor,
+                    Color = cpuStartColor,
                     Kind = (uint)ParticleKind.Smoke,
                     _pad0 = (uint)_rng.Next(),
                     _pad1 = (uint)_rng.Next(),
@@ -739,14 +801,68 @@ public sealed class D3D11Renderer : IDisposable
         float sparkleRateHz = 0.0f,
         float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
-
         int start = _particleWriteCursor;
+
+        // Prefer GPU spawn to reduce CPU-GPU contention; fallback to CPU path if unavailable.
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            var normalized = ArrayPool<Vector3>.Shared.Rent(count);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    Vector3 dir = directions[i];
+                    if (dir.LengthSquared() < 1e-8f)
+                        dir = Vector3.UnitY;
+                    else
+                        dir = Vector3.Normalize(dir);
+
+                    normalized[i] = dir;
+                }
+
+                int remaining = count;
+                int dirOffset = 0;
+                int cursor = start;
+                const float crackleProbability = 0.22f;
+
+                while (remaining > 0)
+                {
+                    int chunk = System.Math.Min(remaining, _particleCapacity - cursor);
+                    _particlesPipeline.QueueSparkBurstSpawn(
+                        particleStart: cursor,
+                        directions: normalized.AsSpan(dirOffset, chunk),
+                        origin: position,
+                        baseColor: baseColor,
+                        speed: speed,
+                        lifetimeSeconds: particleLifetimeSeconds,
+                        sparkleRateHz: sparkleRateHz,
+                        sparkleIntensity: sparkleIntensity,
+                        crackleProbability: crackleProbability,
+                        seed: (uint)_rng.Next());
+
+                    cursor = (cursor + chunk) % _particleCapacity;
+                    dirOffset += chunk;
+                    remaining -= chunk;
+                }
+
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+            finally
+            {
+                ArrayPool<Vector3>.Shared.Return(normalized);
+            }
+        }
+
+        // CPU fallback path
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return;
 
         var staging = RentParticleArray(count);
         try
@@ -759,7 +875,6 @@ public sealed class D3D11Renderer : IDisposable
                 else
                     dir = Vector3.Normalize(dir);
 
-                // Match the original "nice" look: varied speeds and lifetimes, plus crackle.
                 float u = (float)_rng.NextDouble();
                 float speedMul = 0.65f + (u * u) * 0.85f;
                 Vector3 vel = dir * (speed * speedMul);
@@ -773,11 +888,9 @@ public sealed class D3D11Renderer : IDisposable
                 }
                 else
                 {
-                    // Wider, more realistic distribution with a long tail so burst stars don't all die together.
-                    // Keep respecting the requested base lifetime.
                     float r = (float)_rng.NextDouble();
-                    float tail = r * r; // bias toward shorter, with a long tail
-                    float lifeMul = 0.55f + 1.60f * tail; // ~0.55x..2.15x
+                    float tail = r * r;
+                    float lifeMul = 0.55f + 1.60f * tail;
                     lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * lifeMul);
                 }
 
@@ -863,6 +976,7 @@ public sealed class D3D11Renderer : IDisposable
                     Velocity = vel,
                     Age = 0.0f,
                     Lifetime = ShellTrailLifetimeSeconds,
+                    BaseColor = color,
                     Color = color,
                     Kind = (uint)ParticleKind.Spark
                 };

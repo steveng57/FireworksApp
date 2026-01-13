@@ -56,19 +56,52 @@ AppendStructuredBuffer<uint> AliveK6 : register(u6); // FinaleSpark
 // Index 0=Dead(unused), 1=Shell, 2=Spark, 3=Smoke, 4=Crackle, 5=PopFlash, 6=FinaleSpark
 RWStructuredBuffer<uint> PerKindCounters : register(u7);
 
-// Per-kind budgets (hardcoded from C# config)
-static const uint MaxK1 = 50000u;
-static const uint MaxK2 = 400000u;
-static const uint MaxK3 = 1200000u;
-static const uint MaxK4 = 200000u;
-static const uint MaxK5 = 50000u;
-static const uint MaxK6 = 400000u;
+// Per-kind budgets (must match C# Tunables.ParticleBudgets)
+static const uint MaxK1 = 50000u;    // Shell
+static const uint MaxK2 = 2000000u;  // Spark
+static const uint MaxK3 = 100000u;   // Smoke
+static const uint MaxK4 = 500000u;   // Crackle
+static const uint MaxK5 = 50000u;    // PopFlash
+static const uint MaxK6 = 800000u;   // FinaleSpark
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
 
 // Quadratic drag strength for sparks/crackles (tune visually).
 static const float SparkDragK = 0.015f;
+
+// GPU spawn requests (read-only SRV during CSSpawn)
+struct SpawnRequest
+{
+    uint RequestKind;     // 1 = Spark/Crackle burst with provided directions
+    uint ParticleStart;   // destination start index in particle buffer
+    uint DirStart;        // offset into SpawnDirections
+    uint Count;           // particle count
+
+    float3 Origin;
+    float Speed;          // base speed scalar
+
+    float Lifetime;       // base lifetime seconds
+    float CrackleProbability;
+
+    float SparkleRateHz;
+    float SparkleIntensity;
+    uint Seed;
+    float3 _pad;
+
+    float4 BaseColor;
+};
+
+StructuredBuffer<SpawnRequest> SpawnRequests : register(t1);
+StructuredBuffer<float3> SpawnDirections : register(t2);
+
+cbuffer SpawnCB : register(b2)
+{
+    uint SpawnRequestCount;
+    uint SpawnDirectionCount;
+    uint ParticleCapacity;
+    uint _spawnPad0;
+};
 
 // Simple integer hash → [0,1)
 float Hash01(uint x)
@@ -84,12 +117,138 @@ float Hash01(uint x)
     return (x & 0x00FFFFFFu) / 16777216.0f;
 }
 
+[numthreads(64, 1, 1)]
+void CSSpawn(uint3 tid : SV_DispatchThreadID)
+{
+    uint ri = tid.x;
+    if (ri >= SpawnRequestCount)
+        return;
+
+    SpawnRequest req = SpawnRequests[ri];
+    if (req.RequestKind == 0)
+        return;
+
+    // Bounds guard to avoid overruns if CPU and GPU get out of sync.
+    // Direction bounds apply only to burst sparks that consume SpawnDirections.
+    if (req.RequestKind == 1)
+    {
+        uint dirEnd = req.DirStart + req.Count;
+        if (dirEnd > SpawnDirectionCount)
+            return;
+    }
+
+    uint dstEnd = req.ParticleStart + req.Count;
+    if (dstEnd > ParticleCapacity)
+        return;
+
+    if (req.RequestKind == 1)
+    {
+        for (uint i = 0; i < req.Count; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+            uint di = req.DirStart + i;
+
+            float3 dir = SpawnDirections[di];
+            if (dot(dir, dir) < 1e-8f)
+                dir = float3(0.0f, 1.0f, 0.0f);
+            else
+                dir = normalize(dir);
+
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            float uSpeed = Hash01(seed);
+            float speedMul = 0.65f + (uSpeed * uSpeed) * 0.85f;
+            float3 vel = dir * (req.Speed * speedMul);
+
+            float uCrackle = Hash01(seed ^ 0xBADC0DEu);
+            bool crackle = (uCrackle < req.CrackleProbability);
+
+            float lifetime;
+            if (crackle)
+            {
+                float uLife = Hash01(seed ^ 0xCAFEF00Du);
+                lifetime = 0.03f + uLife * 0.06f;
+            }
+            else
+            {
+                float r = Hash01(seed ^ 0x12345u);
+                float tail = r * r;
+                float lifeMul = 0.55f + 1.60f * tail;
+                lifetime = max(0.05f, req.Lifetime * lifeMul);
+            }
+
+            Particle p;
+            p.Position = req.Origin;
+            p.Velocity = vel;
+            p.Age = 0.0f;
+            p.Lifetime = lifetime;
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = crackle ? 4u : 2u;
+
+            if (crackle)
+            {
+                p._pad.x = seed ^ 0xDEADBEEFu;
+                p._pad.y = seed ^ 0xF00DF00Du;
+                p._pad.z = seed ^ 0x0F0F0F0Fu;
+            }
+            else
+            {
+                p._pad.x = asuint(req.SparkleRateHz);
+                p._pad.y = asuint(req.SparkleIntensity);
+                p._pad.z = seed;
+            }
+
+            Particles[dst] = p;
+        }
+    }
+    else if (req.RequestKind == 2)
+    {
+        // Smoke: random directions/lifetimes generated on GPU.
+        float lifeMin = req.Lifetime;
+        float lifeMax = max(lifeMin, req.SparkleRateHz); // SparkleRateHz reused to carry max life
+
+        for (uint i = 0; i < req.Count; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            // Random unit vector (uniform on sphere)
+            float r1 = Hash01(seed ^ 0x1111u);
+            float r2 = Hash01(seed ^ 0x2222u);
+            float phi = r1 * 6.2831853f;
+            float z = 1.0f - 2.0f * r2;
+            float xy = sqrt(max(0.0f, 1.0f - z * z));
+            float3 dir = float3(cos(phi) * xy, z, sin(phi) * xy);
+
+            float outwardSpeed = 1.5f + 1.5f * Hash01(seed ^ 0x3333u);
+            float upSpeed = 1.5f + 2.0f * Hash01(seed ^ 0x4444u);
+            float3 vel = dir * (outwardSpeed * 0.7f) + float3(0.0f, upSpeed, 0.0f);
+
+            float lifeU = Hash01(seed ^ 0x5555u);
+            float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
+
+            Particle p;
+            p.Position = req.Origin + dir * 0.5f;
+            p.Velocity = vel;
+            p.Age = 0.0f;
+            p.Lifetime = lifetime;
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = 3u;
+            p._pad = uint3(0, 0, 0);
+
+            Particles[dst] = p;
+        }
+    }
+}
+
 float4 ColorRampSpark(float t, float4 baseColor)
 {
     t = saturate(t);
 
-    // Time shaping: keep sparks visually "younger" for longer
-    float tColor = pow(t, 0.7f); // 0.7 < 1 => stretches out early/mid phases
+    // Time shaping: keep sparks visually "younger" for longer (approx pow(t,0.7))
+    float tColor = lerp(sqrt(t), t, 0.20f);
 
     // Remove global scheme tint from per-particle ramp to avoid cross-bleed.
     float3 whiteHot = baseColor.rgb * 4.0f + 1.5f;
@@ -115,25 +274,25 @@ float SparkleMul(float time, float rateHz, float intensity, uint seed)
     if (rateHz <= 0.0f || intensity <= 0.0f)
         return 1.0f;
 
-    // Per-particle phase and flavor.
-    float phase = Hash01(seed ^ 0x9e3779b9u);
-    float flavor = Hash01(seed * 1664525u + 1013904223u);
+    // Per-particle temporal offset and rate jitter
+    float timeOffset = Hash01(seed ^ 0xC1C1C1C1u) * 23.0f; // seconds
+    float rateJitter = lerp(0.82f, 1.18f, Hash01(seed ^ 0x5A5A5A5Au));
+    float tLocal = (time + timeOffset) * rateHz * rateJitter;
 
-    // Continuous flicker (sin) pushed toward "spiky" peaks.
-    float s = 0.5f + 0.5f * sin((time * rateHz) * 6.2831853f + phase * 6.2831853f);
-    s = pow(s, 3.5f);
+    // Smooth random flicker: linearly interpolate random values per cycle (no trig/pow)
+    uint tick = (uint)floor(tLocal);
+    float w = frac(tLocal);
+    float n0 = Hash01(seed ^ tick);
+    float n1 = Hash01(seed ^ (tick + 1u));
+    float baseNoise = lerp(n0, n1, w);
 
-    // Add short "flash" pulses: narrow bright windows each cycle.
-    float x = frac(time * rateHz + phase);
-    float pulse = smoothstep(0.00f, 0.06f, x) * (1.0f - smoothstep(0.14f, 0.34f, x));
+    // Occasional bright flash per particle, per tick
+    float flashChance = Hash01(seed ^ (tick * 0x9E3779B9u));
+    float flash = step(0.86f, flashChance) * (1.2f + Hash01(seed ^ (tick * 0x27d4eb2du)) * 2.3f);
 
-    // Blend between soft glitter and harder twinkle.
-    float tw = lerp(s, max(s, pulse), saturate(flavor * 1.25f));
-
-    // Map to brightness multiplier.
-    // Keep baseline closer to 1.0 but push peaks higher so sparkles read clearly.
-    // Clamp to keep HDR under control.
-    float mul = 1.0f + intensity * (0.10f + 4.90f * tw);
+    float sparkle = baseNoise + flash;
+    // Increase contrast of the sparkle multiplier to make flicker more pronounced.
+    float mul = 1.0f + intensity * saturate(0.20f + 6.00f * sparkle);
     return min(mul, 1.0f + 7.0f * intensity);
 }
 
@@ -272,15 +431,24 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         // Apply ground fade (if any). Non-spark kinds never set this.
         float groundFade = (p.Color.a > 0.0f) ? p.Color.a : 1.0f;
 
+        // Per-particle seed reused for jitter/fade.
+        uint seed = p._pad.z ^ (i * 747796405u);
+
         // Use immutable base color for the ramp to prevent per-frame feedback.
         p.Color = ColorRampSpark(t, p.BaseColor);
 
+        // Per-particle subtle color jitter to avoid uniform tinting across a burst.
+        float3 jitter = float3(
+            0.85f + 0.30f * Hash01(seed ^ 0x13579BDFu),
+            0.85f + 0.30f * Hash01(seed ^ 0x2468ACE0u),
+            0.85f + 0.30f * Hash01(seed ^ 0xFDB97531u));
+        p.Color.rgb *= jitter;
+
         // De-sync fade so sparks don't all hit the same fade band together.
         // Keep hue/brightness logic from ColorRampSpark; only override alpha.
-        uint seed = p._pad.z ^ (i * 747796405u);
         float uFade = Hash01(seed);
         float fadeStart = lerp(0.55f, 0.85f, uFade);
-        float tColor = pow(saturate(t), 0.7f);
+        float tColor = sqrt(saturate(t)); // cheaper than pow(t,0.7)
         float a = 1.0f - smoothstep(fadeStart, 1.0f, tColor);
         p.Color.a = a * groundFade;
 
@@ -288,7 +456,8 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         // Stored as float bits in pads.
         float sparkleRateHz = asfloat(p._pad.x);
         float sparkleIntensity = asfloat(p._pad.y);
-        float mul = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
+        // Use particle age with per-particle jitter to de-correlate bursts over their lifetimes.
+        float mul = SparkleMul(p.Age, sparkleRateHz, sparkleIntensity, seed);
         p.Color.rgb *= mul;
     }
     else if (p.Kind == 3)
@@ -365,7 +534,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         uint seed = p._pad.z ^ (i * 1597334677u);
 
         // Strong, fast flicker that modulates brightness only.
-        float flick = SparkleMul(Time, sparkleRateHz, sparkleIntensity, seed);
+        float flick = SparkleMul(p.Age, sparkleRateHz, sparkleIntensity, seed);
         c *= flick;
 
         // Short punchy fade-out.
