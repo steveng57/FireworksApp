@@ -101,6 +101,7 @@ public sealed class D3D11Renderer : IDisposable
     private readonly PerfTelemetry _perf = new();
 
     private static readonly ArrayPool<GpuParticle> s_particleArrayPool = ArrayPool<GpuParticle>.Shared;
+    private static readonly int GpuParticleStride = Marshal.SizeOf<GpuParticle>();
 
     private Matrix4x4 _view;
     private Matrix4x4 _proj;
@@ -493,21 +494,21 @@ public sealed class D3D11Renderer : IDisposable
             for (int i = 0; i < count; i++)
             {
                 Vector3 dir = RandomUnitVector();
-                float u = (float)_rng.NextDouble();
+                float u = _rng.NextSingle();
                 float speed = 6.0f + (u * u) * 12.0f;
                 Vector3 vel = dir * speed;
 
-                bool crackle = (_rng.NextDouble() < 0.22);
+                bool crackle = (_rng.NextSingle() < 0.22f);
 
                 float lifetime;
                 if (crackle)
                 {
                     // 30–90ms per micro-spark
-                    lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                    lifetime = 0.03f + _rng.NextSingle() * 0.06f;
                 }
                 else
                 {
-                    lifetime = 2.0f + (float)_rng.NextDouble() * 2.0f;
+                    lifetime = 2.0f + _rng.NextSingle() * 2.0f;
                 }
 
                 staging[i] = new GpuParticle
@@ -560,7 +561,7 @@ public sealed class D3D11Renderer : IDisposable
 
             int count = baseCount;
             float frac = expected - baseCount;
-            if (_rng.NextDouble() < frac)
+            if (_rng.NextSingle() < frac)
                 count++;
 
             if (count <= 0)
@@ -577,7 +578,7 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || particleBuffer is null || uploadBuffer is null)
             return;
 
-        int stride = Marshal.SizeOf<GpuParticle>();
+        int stride = GpuParticleStride;
         int start = _particleWriteCursor;
 
         var p = new GpuParticle
@@ -645,7 +646,7 @@ public sealed class D3D11Renderer : IDisposable
 
         int count = System.Math.Clamp(particleCount, 1, _particleCapacity);
 
-        int stride = Marshal.SizeOf<GpuParticle>();
+        int stride = GpuParticleStride;
         int start = _particleWriteCursor;
 
         // We may add micros; keep within particle budget.
@@ -677,19 +678,19 @@ public sealed class D3D11Renderer : IDisposable
 
                 // Jitter direction so it doesn't read as a perfect sphere.
                 // (Jitter affects direction only; flicker affects brightness only.)
-                float jx = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
-                float jy = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
-                float jz = ((float)_rng.NextDouble() * 2.0f - 1.0f) * sj;
+                float jx = (_rng.NextSingle() * 2.0f - 1.0f) * sj;
+                float jy = (_rng.NextSingle() * 2.0f - 1.0f) * sj;
+                float jz = (_rng.NextSingle() * 2.0f - 1.0f) * sj;
                 dir = Vector3.Normalize(dir + new Vector3(jx, jy, jz));
 
                 // Slightly bias inward to make it feel tighter (but do NOT increase radius).
-                float tightMul = 0.85f + 0.10f * (float)_rng.NextDouble();
+                float tightMul = 0.85f + 0.10f * _rng.NextSingle();
                 float speed = System.Math.Max(0.0f, baseSpeed) * tightMul;
 
-                float lifeU = (float)_rng.NextDouble();
+                float lifeU = _rng.NextSingle();
                 float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
 
-                float rateU = (float)_rng.NextDouble();
+                float rateU = _rng.NextSingle();
                 float rateHz = rateMin + rateU * (rateMax - rateMin);
 
                 // Encode twinkle params into pad fields used in shader.
@@ -711,26 +712,26 @@ public sealed class D3D11Renderer : IDisposable
                 }
 
                 // Optional micro-fragments: 20-30% chance, 1-3 fragments.
-                if (produced < _particleCapacity && _rng.NextDouble() < microChance)
+                if (produced < _particleCapacity && _rng.NextSingle() < microChance)
                 {
                     int fragCount = _rng.Next(1, 4);
                     for (int k = 0; k < fragCount && produced < staging.Length && produced < _particleCapacity; k++)
                     {
-                        float dev = 0.10f + 0.12f * (float)_rng.NextDouble();
+                        float dev = 0.10f + 0.12f * _rng.NextSingle();
                         Vector3 microDir = Vector3.Normalize(dir + RandomUnitVector() * dev);
 
-                        float mLifeU = (float)_rng.NextDouble();
+                        float mLifeU = _rng.NextSingle();
                         float mLifetime = microLifeMin + mLifeU * (microLifeMax - microLifeMin);
 
-                        float mSpeedMul = microSpeedMulMin + (float)_rng.NextDouble() * (microSpeedMulMax - microSpeedMulMin);
+                        float mSpeedMul = microSpeedMulMin + _rng.NextSingle() * (microSpeedMulMax - microSpeedMulMin);
                         float mSpeed = speed * System.Math.Max(0.0f, mSpeedMul);
 
                         // More aggressive flicker for micro-frags: bump rate and intensity.
-                        float microRate = rateHz * (1.4f + 0.8f * (float)_rng.NextDouble());
+                        float microRate = rateHz * (1.4f + 0.8f * _rng.NextSingle());
                         float microInt = inten * 1.35f;
 
                         // Stagger their start time so they appear mid-flight.
-                        float startDelay = 0.12f + 0.30f * (float)_rng.NextDouble();
+                        float startDelay = 0.12f + 0.30f * _rng.NextSingle();
 
                         staging[produced++] = new GpuParticle
                         {
@@ -827,17 +828,17 @@ public sealed class D3D11Renderer : IDisposable
                 Vector3 dir = RandomUnitVector();
                 Vector3 pos = burstCenter + dir * 0.5f;
 
-                float outwardSpeed = 1.5f + (float)_rng.NextDouble() * 1.5f;
+                float outwardSpeed = 1.5f + _rng.NextSingle() * 1.5f;
                 Vector3 outward = dir * outwardSpeed;
 
-                float upSpeed = 1.5f + (float)_rng.NextDouble() * 2.0f;
+                float upSpeed = 1.5f + _rng.NextSingle() * 2.0f;
                 Vector3 up = new(0.0f, upSpeed, 0.0f);
 
                 Vector3 vel = outward * 0.7f + up;
 
                 float minLife = System.Math.Max(0.0f, Tunables.SmokeLifetimeMinSeconds);
                 float maxLife = System.Math.Max(minLife, Tunables.SmokeLifetimeMaxSeconds);
-                float lifetime = minLife + (float)_rng.NextDouble() * (maxLife - minLife);
+                float lifetime = minLife + _rng.NextSingle() * (maxLife - minLife);
 
                 staging[i] = new GpuParticle
                 {
@@ -951,20 +952,20 @@ public sealed class D3D11Renderer : IDisposable
                 else
                     dir = Vector3.Normalize(dir);
 
-                float u = (float)_rng.NextDouble();
+                float u = _rng.NextSingle();
                 float speedMul = 0.65f + (u * u) * 0.85f;
                 Vector3 vel = dir * (speed * speedMul);
 
-                bool crackle = (_rng.NextDouble() < 0.22);
+                bool crackle = (_rng.NextSingle() < 0.22f);
 
                 float lifetime;
                 if (crackle)
                 {
-                    lifetime = 0.03f + (float)_rng.NextDouble() * 0.06f;
+                    lifetime = 0.03f + _rng.NextSingle() * 0.06f;
                 }
                 else
                 {
-                    float r = (float)_rng.NextDouble();
+                    float r = _rng.NextSingle();
                     float tail = r * r;
                     float lifeMul = 0.55f + 1.60f * tail;
                     lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * lifeMul);
@@ -1037,9 +1038,9 @@ public sealed class D3D11Renderer : IDisposable
         {
             for (int i = 0; i < count; i++)
             {
-                float jitterR = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
-                float jitterU = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.05f;
-                float alongBack = ((float)_rng.NextDouble()) * 0.12f;
+                float jitterR = (_rng.NextSingle() * 2.0f - 1.0f) * 0.05f;
+                float jitterU = (_rng.NextSingle() * 2.0f - 1.0f) * 0.05f;
+                float alongBack = _rng.NextSingle() * 0.12f;
 
                 Vector3 pos = position + (back * alongBack) + (right * jitterR) + (up * jitterU);
 
@@ -1074,12 +1075,16 @@ public sealed class D3D11Renderer : IDisposable
         return s_unitVectorTable[_rng.Next(UnitVectorTableSize)];
     }
 
-    private void WriteParticlesToBuffer(GpuParticle[] staging, int start, int count, ID3D11Buffer particleBuffer, ID3D11Buffer uploadBuffer)
+    private void WriteParticlesToBuffer(ReadOnlySpan<GpuParticle> staging, int start, int count, ID3D11Buffer particleBuffer, ID3D11Buffer uploadBuffer)
     {
         if (_context is null)
             return;
 
-        int stride = Marshal.SizeOf<GpuParticle>();
+        count = System.Math.Min(count, staging.Length);
+        if (count <= 0)
+            return;
+
+        int stride = GpuParticleStride;
 
         static double ToMilliseconds(long start, long end)
             => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -1090,44 +1095,33 @@ public sealed class D3D11Renderer : IDisposable
 
         int producedOffset = 0;
         int remainingToUpload = count;
+        ID3D11Buffer? nextUploadBuffer = uploadBuffer;
 
         while (remainingToUpload > 0)
         {
             int chunkCount = System.Math.Min(remainingToUpload, uploadCap);
             int chunkStart = (start + producedOffset) % _particleCapacity;
 
-            // Each chunk uses its own staging buffer from the ring.
-            var chunkUploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+            var chunkUploadBuffer = nextUploadBuffer ?? _particlesPipeline.GetNextUploadBuffer();
+            nextUploadBuffer = null;
             if (chunkUploadBuffer is null)
                 return;
 
-            // If wrapping occurs, split this chunk into two segments.
             int firstCount = System.Math.Min(chunkCount, _particleCapacity - chunkStart);
             int secondCount = chunkCount - firstCount;
 
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
+            var chunkSpan = staging.Slice(producedOffset, chunkCount);
             var mapped = _context.Map(chunkUploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
             try
             {
                 nint basePtr = mapped.DataPointer;
                 unsafe
                 {
-                    if (firstCount > 0)
+                    fixed (GpuParticle* srcPtr = chunkSpan)
                     {
-                        fixed (GpuParticle* srcPtr = &staging[producedOffset])
-                        {
-                            Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstCount * stride, firstCount * stride);
-                        }
-                    }
-
-                    if (secondCount > 0)
-                    {
-                        fixed (GpuParticle* srcPtr = &staging[producedOffset + firstCount])
-                        {
-                            nint dst = basePtr + (firstCount * stride);
-                            Buffer.MemoryCopy(srcPtr, (void*)dst, secondCount * stride, secondCount * stride);
-                        }
+                        Buffer.MemoryCopy(srcPtr, (void*)basePtr, chunkCount * stride, chunkCount * stride);
                     }
                 }
             }
@@ -1178,92 +1172,12 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null)
             return;
 
-        int stride = Marshal.SizeOf<GpuParticle>();
-
-        static double ToMilliseconds(long start, long end)
-            => (end - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-
-        int firstCount = System.Math.Min(count, _particleCapacity - start);
-        int remaining = count - firstCount;
-
-        int uploadCap = _particlesPipeline.UploadBufferElementCapacity;
-        if (uploadCap <= 0)
-            uploadCap = 1;
-
-        // If the list upload is larger than the upload buffer capacity, fall back to chunked upload.
-        if (count > uploadCap)
-        {
-            // Reuse the array chunk path to keep logic in one place.
-            WriteParticlesToBuffer(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging).ToArray(), start, count, particleBuffer, uploadBuffer);
+        var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging);
+        count = System.Math.Min(count, span.Length);
+        if (count <= 0)
             return;
-        }
 
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        var mapped = _context.Map(uploadBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-        try
-        {
-            nint basePtr = mapped.DataPointer;
-
-            var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(staging);
-            unsafe
-            {
-                if (firstCount > 0)
-                {
-                    fixed (GpuParticle* srcPtr = &span[0])
-                    {
-                        // Upload contiguously at offset 0 in the upload buffer.
-                        Buffer.MemoryCopy(srcPtr, (void*)basePtr, firstCount * stride, firstCount * stride);
-                    }
-                }
-
-                if (remaining > 0)
-                {
-                    fixed (GpuParticle* srcPtr = &span[firstCount])
-                    {
-                        // Append remaining segment after the first segment.
-                        nint dst = basePtr + (firstCount * stride);
-                        Buffer.MemoryCopy(srcPtr, (void*)dst, remaining * stride, remaining * stride);
-                    }
-                }
-            }
-        }
-        finally
-        {
-            _context.Unmap(uploadBuffer, 0);
-            int bytes = checked(count * stride);
-            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
-            _perf.RecordUpload(ToMilliseconds(t0, t1), bytes);
-        }
-
-        if (firstCount > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = 0,
-                Right = (int)(firstCount * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, (uint)(start * stride), 0, 0, uploadBuffer, 0, srcBox);
-        }
-
-        if (remaining > 0)
-        {
-            var srcBox = new Box
-            {
-                Left = (int)(firstCount * stride),
-                Right = (int)((firstCount + remaining) * stride),
-                Top = 0,
-                Bottom = 1,
-                Front = 0,
-                Back = 1
-            };
-
-            _context.CopySubresourceRegion(particleBuffer, 0, 0, 0, 0, uploadBuffer, 0, srcBox);
-        }
+        WriteParticlesToBuffer(span, start, count, particleBuffer, uploadBuffer);
     }
 
     private void CreateParticleSystem()
@@ -1272,14 +1186,6 @@ public sealed class D3D11Renderer : IDisposable
             return;
 
         _particlesPipeline.Initialize(_device, _particleCapacity);
-    }
-
-    private void UpdateParticles(float scaledDt)
-    {
-        if (_context is null)
-            return;
-
-        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt);
     }
 
     private void DrawParticles(bool additive)

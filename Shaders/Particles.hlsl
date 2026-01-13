@@ -130,6 +130,16 @@ float Hash01(uint x)
     return (x & 0x00FFFFFFu) / 16777216.0f;
 }
 
+// Normalize with a fallback to avoid NaNs and skip the expensive sqrt when possible.
+float3 SafeNormalize(float3 v, float3 fallback)
+{
+    float lenSq = dot(v, v);
+    if (lenSq < 1e-8f)
+        return fallback;
+
+    return v * rsqrt(lenSq);
+}
+
 [numthreads(64, 1, 1)]
 void CSSpawn(uint3 tid : SV_DispatchThreadID)
 {
@@ -161,11 +171,7 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
             uint dst = req.ParticleStart + i;
             uint di = req.DirStart + i;
 
-            float3 dir = SpawnDirections[di];
-            if (dot(dir, dir) < 1e-8f)
-                dir = float3(0.0f, 1.0f, 0.0f);
-            else
-                dir = normalize(dir);
+            float3 dir = SafeNormalize(SpawnDirections[di], float3(0.0f, 1.0f, 0.0f));
 
             uint seed = req.Seed ^ (dst * 747796405u);
 
@@ -232,7 +238,9 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
             float phi = r1 * 6.2831853f;
             float z = 1.0f - 2.0f * r2;
             float xy = sqrt(max(0.0f, 1.0f - z * z));
-            float3 dir = float3(cos(phi) * xy, z, sin(phi) * xy);
+            float sPhi, cPhi;
+            sincos(phi, sPhi, cPhi);
+            float3 dir = float3(cPhi * xy, z, sPhi * xy);
 
             float outwardSpeed = 1.5f + 1.5f * Hash01(seed ^ 0x3333u);
             float upSpeed = 1.5f + 2.0f * Hash01(seed ^ 0x4444u);
@@ -418,11 +426,12 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         float3 accel = Gravity;
 
         // Quadratic drag opposite velocity
-        float speed = length(v);
-        if (speed > 1e-4f)
+        float speedSq = dot(v, v);
+        if (speedSq > 1e-8f)
         {
-            float3 dir = v / speed;
-            float3 dragAccel = -dir * (SparkDragK * speed * speed);
+            float invSpeed = rsqrt(speedSq);
+            float dragScale = SparkDragK * speedSq * invSpeed; // dir * speed^2 == v * speed
+            float3 dragAccel = -v * dragScale;
             accel += dragAccel;
         }
 
@@ -439,11 +448,12 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         float3 accel = Gravity;
 
         // Quadratic drag opposite velocity
-        float speed = length(v);
-        if (speed > 1e-4f && dragK > 0.0f)
+        float speedSq = dot(v, v);
+        if (speedSq > 1e-8f && dragK > 0.0f)
         {
-            float3 dir = v / speed;
-            float3 dragAccel = -dir * (dragK * speed * speed);
+            float invSpeed = rsqrt(speedSq);
+            float dragScale = dragK * speedSq * invSpeed;
+            float3 dragAccel = -v * dragScale;
             accel += dragAccel;
         }
 
@@ -461,7 +471,7 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
             drag = 2.2f;
         }
         p.Velocity += Gravity * dt;
-        p.Velocity *= (1.0f / (1.0f + drag * dt));
+        p.Velocity *= rcp(1.0f + drag * dt);
         p.Position += p.Velocity * dt;
     }
 
