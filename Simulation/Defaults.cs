@@ -667,7 +667,7 @@ public static class DefaultShow
                 string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
 
                 // debug variations
-                // shellId = "spoke_wheel_pop";
+                //shellId = "spoke_wheel_pop";
                 // shellId = "spiral";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";

@@ -803,14 +803,24 @@ public sealed class FireworksEngine
 
             float fuse = Lerp(p.SubShellFuseMinSeconds, p.SubShellFuseMaxSeconds, (float)_rng.NextDouble());
 
-            Vector3 vel = dir * p.SubShellSpeed;
+            // Spawn at the parent burst center so trails extend from burst to subshell pop.
+            // Scale radial speed so subshells reach the configured ring radius at detonation (ignoring gravity/drag).
+            float radialSpeed = p.SubShellSpeed;
+            float travelNeeded = p.RingRadius;
+            float travelExpected = radialSpeed * MathF.Max(0.01f, fuse);
+            if (travelExpected > 1e-4f)
+                radialSpeed *= travelNeeded / travelExpected;
+            else
+                radialSpeed = travelNeeded / MathF.Max(0.01f, fuse);
+
+            Vector3 vel = dir * radialSpeed;
             if (MathF.Abs(p.TangentialSpeed) > 1e-4f && tangent.LengthSquared() > 1e-6f)
             {
                 // Tangential component adds a subtle wheel spin feel without breaking the spoke silhouette.
                 vel += tangent * p.TangentialSpeed;
             }
 
-            Vector3 spawnPos = origin + dir * p.RingRadius;
+            Vector3 spawnPos = origin;
             Vector4 popColor = PickWheelPopColor(p, flashScheme, parentBaseColor);
 
             _subShells.Add(new SubShell
