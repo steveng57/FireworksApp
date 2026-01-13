@@ -2,12 +2,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Windows.Media;
 using FireworksApp.Audio;
 using FireworksApp.Rendering;
 
 namespace FireworksApp.Simulation;
 
 using Math = System.Math;
+
+public enum SubShellKind
+{
+    FinaleSalute,
+    SpokeWheelPop
+}
 
 public sealed class SubShell
 {
@@ -19,7 +26,12 @@ public sealed class SubShell
 
     public float GravityScale;
     public float Drag;
-    public FinaleSaluteParams Pop;
+
+    public SubShellKind Kind;
+    public FinaleSaluteParams? FinalePop;
+    public SubShellSpokeWheelPopParams? SpokeWheelPop;
+    public ColorScheme? ColorScheme;
+    public Vector4 PopColor;
 }
 
     public readonly struct PendingWillowHandoff
@@ -450,9 +462,9 @@ public sealed class FireworksEngine
             s.Age += dt;
 
             // Emit trail particles for this subshell
-            if (s.Pop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
+            if (s.Kind == SubShellKind.FinaleSalute && s.FinalePop is { } finalePop && finalePop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
             {
-                EmitSubShellTrail(s, renderer);
+                EmitSubShellTrail(s, finalePop, renderer);
             }
 
             // Integrate (semi-implicit Euler)
@@ -465,7 +477,7 @@ public sealed class FireworksEngine
             {
                 s.Position = new Vector3(s.Position.X, groundY, s.Position.Z);
                 s.Detonated = true;
-                SpawnPopFlash(s.Position, s.Pop, renderer);
+                DetonateSubShell(s, renderer);
                 _subShells.RemoveAt(i);
                 continue;
             }
@@ -473,13 +485,27 @@ public sealed class FireworksEngine
             if (s.Age >= s.DetonateAt)
             {
                 s.Detonated = true;
-                SpawnPopFlash(s.Position, s.Pop, renderer);
+                DetonateSubShell(s, renderer);
                 _subShells.RemoveAt(i);
                 continue;
             }
 
             // write back struct/class state
             _subShells[i] = s;
+        }
+    }
+
+    private void DetonateSubShell(SubShell s, D3D11Renderer renderer)
+    {
+        switch (s.Kind)
+        {
+            case SubShellKind.FinaleSalute when s.FinalePop is { } finale:
+                SpawnPopFlash(s.Position, finale, renderer);
+                break;
+
+            case SubShellKind.SpokeWheelPop when s.SpokeWheelPop is { } wheel:
+                SpawnSpokeWheelPopFlash(s, wheel, renderer);
+                break;
         }
     }
 
@@ -693,9 +719,96 @@ public sealed class FireworksEngine
                 Detonated = false,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
-                Pop = p
+                Kind = SubShellKind.FinaleSalute,
+                FinalePop = p,
+                SpokeWheelPop = null,
+                ColorScheme = null,
+                PopColor = new Vector4(1.0f, 1.0f, 1.0f, 1.0f)
             });
         }
+    }
+
+    private void SpawnSpokeWheelPop(Vector3 origin, SubShellSpokeWheelPopParams p, ColorScheme parentScheme, Vector4 parentBaseColor)
+    {
+        int count = Math.Clamp(p.SubShellCount, 1, 512);
+        float startRad = p.RingStartAngleDegrees * (MathF.PI / 180.0f);
+        float arcRad = (p.RingEndAngleDegrees - p.RingStartAngleDegrees) * (MathF.PI / 180.0f);
+        if (MathF.Abs(arcRad) < 1e-4f)
+            arcRad = MathF.Tau;
+
+        float step = arcRad / count;
+        float angleJitter = p.AngleJitterDegrees * (MathF.PI / 180.0f);
+
+        var flashScheme = ResolvePopFlashScheme(p, parentScheme);
+
+        for (int i = 0; i < count; i++)
+        {
+            // Even angular spacing across the configured arc; optional jitter avoids a rigid wheel.
+            float angle = startRad + step * i;
+            if (angleJitter > 0.0f)
+            {
+                angle += angleJitter * ((float)_rng.NextDouble() * 2.0f - 1.0f);
+            }
+
+            Vector3 dir = new(MathF.Cos(angle), 0.0f, MathF.Sin(angle));
+            if (dir.LengthSquared() < 1e-6f)
+                dir = Vector3.UnitZ;
+            dir = Vector3.Normalize(dir);
+
+            Vector3 tangent = Vector3.Cross(Vector3.UnitY, dir);
+            if (tangent.LengthSquared() > 1e-6f)
+                tangent = Vector3.Normalize(tangent);
+
+            float fuse = Lerp(p.SubShellFuseMinSeconds, p.SubShellFuseMaxSeconds, (float)_rng.NextDouble());
+
+            Vector3 vel = dir * p.SubShellSpeed;
+            if (MathF.Abs(p.TangentialSpeed) > 1e-4f && tangent.LengthSquared() > 1e-6f)
+            {
+                // Tangential component adds a subtle wheel spin feel without breaking the spoke silhouette.
+                vel += tangent * p.TangentialSpeed;
+            }
+
+            Vector3 spawnPos = origin + dir * p.RingRadius;
+            Vector4 popColor = PickWheelPopColor(p, flashScheme, parentBaseColor);
+
+            _subShells.Add(new SubShell
+            {
+                Position = spawnPos,
+                Velocity = vel,
+                Age = 0.0f,
+                DetonateAt = MathF.Max(0.0f, fuse),
+                Detonated = false,
+                GravityScale = p.SubShellGravityScale,
+                Drag = p.SubShellDrag,
+                Kind = SubShellKind.SpokeWheelPop,
+                FinalePop = null,
+                SpokeWheelPop = p,
+                ColorScheme = flashScheme,
+                PopColor = popColor
+            });
+        }
+    }
+
+    private ColorScheme ResolvePopFlashScheme(SubShellSpokeWheelPopParams p, ColorScheme parentScheme)
+    {
+        if (!string.IsNullOrWhiteSpace(p.PopFlashColorSchemeId) && _profiles.ColorSchemes.TryGetValue(p.PopFlashColorSchemeId, out var scheme))
+            return scheme;
+
+        return parentScheme ?? _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default_pop", new[] { Colors.White }, 0.0f, 0.5f);
+    }
+
+    private Vector4 PickWheelPopColor(SubShellSpokeWheelPopParams p, ColorScheme scheme, Vector4 parentBaseColor)
+    {
+        if (p.PopFlashColors is { Length: > 0 })
+        {
+            var c = p.PopFlashColors[_rng.Next(p.PopFlashColors.Length)];
+            return ColorUtil.FromColor(c);
+        }
+
+        if (scheme is not null)
+            return ColorUtil.PickBaseColor(scheme);
+
+        return parentBaseColor;
     }
 
     private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, D3D11Renderer renderer)
@@ -722,9 +835,34 @@ public sealed class FireworksEngine
             microSpeedMulMax: 0.85f);
     }
 
-    private void EmitSubShellTrail(SubShell s, D3D11Renderer renderer)
+    private void SpawnSpokeWheelPopFlash(SubShell s, SubShellSpokeWheelPopParams p, D3D11Renderer renderer)
     {
-        var p = s.Pop;
+        float flashLifetime = MathF.Max(0.05f, p.PopFlashLifetime);
+        float flashRadius = MathF.Max(0.05f, p.PopFlashRadius);
+
+        renderer.SpawnPopFlash(s.Position, flashLifetime, flashRadius, p.PopFlashIntensity, p.PopFlashFadeGamma);
+
+        int particleCount = Math.Clamp(p.PopFlashParticleCount, 0, 250_000);
+        if (particleCount <= 0)
+            return;
+
+        var dirs = EmissionStyles.EmitPeony(particleCount);
+        // Speed chosen so the spark front roughly matches the configured radius over its lifetime.
+        float speed = flashRadius / flashLifetime;
+
+        // Fast, bright micro-burst to read as a sharp pop rather than a full peony.
+        renderer.SpawnBurstDirectedExplode(
+            s.Position,
+            s.PopColor.LengthSquared() > 1e-6f ? s.PopColor : new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
+            speed,
+            dirs,
+            particleLifetimeSeconds: flashLifetime * 0.9f,
+            sparkleRateHz: 18.0f,
+            sparkleIntensity: MathF.Min(1.2f, p.PopFlashIntensity * 0.35f));
+    }
+
+    private void EmitSubShellTrail(SubShell s, FinaleSaluteParams p, D3D11Renderer renderer)
+    {
         if (!p.EnableSubShellTrails || s.Velocity.LengthSquared() < 1e-4f)
             return;
 
@@ -1379,6 +1517,17 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.SubShellSpokeWheelPop)
+        {
+            SpawnSpokeWheelPop(explosion.Position, explosion.SubShellSpokeWheelPop, explosion.ColorScheme, explosion.BaseColor);
+            EmitSound(new SoundEvent(
+                SoundEventType.ShellBurst,
+                Position: explosion.Position,
+                Gain: 0.65f,
+                Loop: false));
+            return;
+        }
+
         Vector3 ringAxis = Vector3.UnitY;
         if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
             ringAxis = Vector3.Normalize(configuredRingAxis);
@@ -1537,7 +1686,9 @@ public sealed class FireworksEngine
                 FinaleSalute: shell.Profile.FinaleSaluteParams,
                 Comet: shell.Profile.CometParams,
                 BaseColor: ev.BaseColor,
-                PeonyToWillowParams: shell.Profile.PeonyToWillowParams);
+                PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
+                SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
+                ColorScheme: shell.ColorScheme);
 
             Explode(explosion, renderer);
             _gpuShells.Remove(ev.ShellId);
@@ -1815,7 +1966,9 @@ public sealed class FireworkShell
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
-            PeonyToWillowParams: Profile.PeonyToWillowParams);
+            PeonyToWillowParams: Profile.PeonyToWillowParams,
+            SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
+            ColorScheme: ColorScheme);
 
         Alive = false;
         return true;
@@ -1838,7 +1991,9 @@ public readonly record struct ShellExplosion(
     FinaleSaluteParams FinaleSalute,
     CometParams Comet,
     Vector4 BaseColor,
-    PeonyToWillowParams PeonyToWillowParams);
+    PeonyToWillowParams PeonyToWillowParams,
+    SubShellSpokeWheelPopParams SubShellSpokeWheelPop,
+    ColorScheme ColorScheme);
 
 internal static class ColorUtil
 {
@@ -1860,6 +2015,14 @@ internal static class ColorUtil
 
         // upscale a bit for additive HDR-ish look
         float boost = 2.2f;
+        return new Vector4(r * boost, g * boost, b * boost, 1.0f);
+    }
+
+    public static Vector4 FromColor(Color color, float boost = 2.2f)
+    {
+        float r = Clamp01(color.R / 255.0f);
+        float g = Clamp01(color.G / 255.0f);
+        float b = Clamp01(color.B / 255.0f);
         return new Vector4(r * boost, g * boost, b * boost, 1.0f);
     }
 

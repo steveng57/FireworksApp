@@ -17,7 +17,8 @@ public enum FireworkBurstShape
     Spiral,
     PeonyToWillow,
     FinaleSalute,
-    Comet
+    Comet,
+    SubShellSpokeWheelPop
 }
 
 public sealed record CometParams(
@@ -47,6 +48,47 @@ public sealed record CometParams(
         TrailSpeed: 4.0f,
         TrailSmokeChance: 0.20f,
         TrailColor: null); // null = use burst color
+}
+
+public sealed record SubShellSpokeWheelPopParams(
+    int SubShellCount,
+    float RingStartAngleDegrees,
+    float RingEndAngleDegrees,
+    float RingRadius,
+    float SubShellSpeed,
+    float SubShellFuseMinSeconds,
+    float SubShellFuseMaxSeconds,
+    int PopFlashParticleCount,
+    float PopFlashLifetime,
+    float PopFlashRadius,
+    float PopFlashIntensity,
+    float PopFlashFadeGamma,
+    string? PopFlashColorSchemeId = null,
+    Color[]? PopFlashColors = null,
+    float SubShellGravityScale = 1.0f,
+    float SubShellDrag = 0.05f,
+    float AngleJitterDegrees = 0.0f,
+    float TangentialSpeed = 0.0f)
+{
+    public static SubShellSpokeWheelPopParams Defaults { get; } = new(
+        SubShellCount: 12,
+        RingStartAngleDegrees: 0.0f,
+        RingEndAngleDegrees: 360.0f,
+        RingRadius: 6.0f,
+        SubShellSpeed: 16.0f,
+        SubShellFuseMinSeconds: 0.25f,
+        SubShellFuseMaxSeconds: 0.85f,
+        PopFlashParticleCount: 2200,
+        PopFlashLifetime: 0.35f,
+        PopFlashRadius: 5.5f,
+        PopFlashIntensity: 2.0f,
+        PopFlashFadeGamma: 2.1f,
+        PopFlashColorSchemeId: null,
+        PopFlashColors: null,
+        SubShellGravityScale: 1.0f,
+        SubShellDrag: 0.08f,
+        AngleJitterDegrees: 4.0f,
+        TangentialSpeed: 2.5f);
 }
 
 public sealed record FinaleSaluteParams(
@@ -154,12 +196,14 @@ public sealed record class FireworkShellProfile(
         BurstEmissionSettings? Emission = null,
         FinaleSaluteParams? FinaleSalute = null,
         CometParams? Comet = null,
-        PeonyToWillowParams? PeonyToWillow = null)
+        PeonyToWillowParams? PeonyToWillow = null,
+        SubShellSpokeWheelPopParams? SubShellSpokeWheelPop = null)
     {
         public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
         public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
         public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
         public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
+        public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
     }
 
 public sealed record BurstEmissionSettings(

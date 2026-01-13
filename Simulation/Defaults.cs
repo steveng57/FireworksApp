@@ -213,6 +213,42 @@ public static class DefaultProfiles
                 BurstSparkleIntensity: 0.55f
             ),
 
+            ["spoke_wheel_pop"] = new FireworkShellProfile(
+                Id: "spoke_wheel_pop",
+                BurstShape: FireworkBurstShape.SubShellSpokeWheelPop,
+                ColorSchemeId: "neon",
+                FuseTimeSeconds: 3.6f,
+                ExplosionRadius: 0.0f,
+                ParticleCount: 0,
+                ParticleLifetimeSeconds: 0.0f,
+                BurstSparkleRateHz: 0.0f,
+                BurstSparkleIntensity: 0.0f,
+                TrailParticleCount: 10,
+                TrailParticleLifetimeSeconds: 0.5f,
+                TrailSpeed: 4.0f,
+                TrailSmokeChance: 0.15f,
+                SubShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
+                {
+                    SubShellCount = 12,
+                    RingStartAngleDegrees = 0.0f,
+                    RingEndAngleDegrees = 360.0f,
+                    RingRadius = 15.0f,
+                    SubShellSpeed = 15.0f,
+                    SubShellFuseMinSeconds = 0.25f,
+                    SubShellFuseMaxSeconds = 0.9f,
+                    PopFlashParticleCount = 2400,
+                    PopFlashLifetime = 0.32f,
+                    PopFlashRadius = 5.0f,
+                    PopFlashIntensity = 2.2f,
+                    PopFlashFadeGamma = 2.0f,
+                    PopFlashColorSchemeId = "neon",
+                    SubShellGravityScale = 0.95f,
+                    SubShellDrag = 0.07f,
+                    AngleJitterDegrees = 3.5f,
+                    TangentialSpeed = 3.0f
+                }
+            ),
+
             ["willow_trail_only"] = new FireworkShellProfile(
                 Id: "willow_trail_only",
                 BurstShape: FireworkBurstShape.Willow,
@@ -628,7 +664,7 @@ public static class DefaultShow
                 float? muzzleVelocity = null;
 
                 // debug variations
-                //shellId = "basic";
+                shellId = "spoke_wheel_pop";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
