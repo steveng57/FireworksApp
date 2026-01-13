@@ -24,6 +24,7 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11UnorderedAccessView? _particleUAV;
 
     private ID3D11ComputeShader? _cs;
+    private ID3D11ComputeShader? _csSpawn;
     private ID3D11VertexShader? _vs;
     private ID3D11PixelShader? _ps;
 
@@ -35,6 +36,17 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _passCB;
     private ID3D11Buffer? _passCBAdditive;
     private ID3D11Buffer? _passCBAlpha;
+    private ID3D11Buffer? _spawnCB;
+
+    private ID3D11Buffer? _spawnRequestBuffer;
+    private ID3D11ShaderResourceView? _spawnRequestSRV;
+
+    private ID3D11Buffer? _spawnDirectionBuffer;
+    private ID3D11ShaderResourceView? _spawnDirectionSRV;
+    private int _spawnRequestCapacity;
+    private int _spawnDirectionCapacity;
+    private int _spawnRequestStride = Marshal.SizeOf<GpuSpawnRequest>();
+    private int _spawnDirectionStride = Marshal.SizeOf<Vector3>();
 
     private int _capacity;
 
@@ -51,19 +63,32 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _perKindCountersBuffer;
     private ID3D11UnorderedAccessView? _perKindCountersUAV;
 
+    // Detonation event buffer (append from GPU, read back on CPU)
+    private ID3D11Buffer? _detonationBuffer;
+    private ID3D11UnorderedAccessView? _detonationUAV;
+    private ID3D11Buffer? _detonationReadback;
+    private ID3D11Buffer? _detonationCountBuffer;
+    private ID3D11Buffer? _detonationCountReadback;
+    private int _detonationCapacity;
+
     private readonly Dictionary<ParticleKind, int> _totalDroppedByKind = new();
+
+    private readonly List<GpuSpawnRequest> _pendingSpawnRequests = new();
+    private readonly List<Vector3> _pendingSpawnDirections = new();
 
     // Reused per-frame state to avoid transient allocations.
     private readonly ID3D11UnorderedAccessView?[] _uavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
     private readonly uint[] _initialCounts = new uint[TotalUavSlots];
     private readonly ID3D11UnorderedAccessView?[] _nullUavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
-    private static readonly uint[] s_counterZeros = new uint[7];
+    private static readonly uint[] s_counterZeros = new uint[6];
+
+    private const string GpuSpawnEnvVar = "FIREWORKS_GPU_SPAWN";
 
     private static readonly ParticleKind[] s_allKinds =
-        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash];
 
     private static readonly ParticleKind[] s_kindsAdditive =
-        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash];
 
     private static readonly ParticleKind[] s_kindsAlpha =
         [ParticleKind.Smoke];
@@ -73,6 +98,228 @@ internal sealed class ParticlesPipeline : IDisposable
     public ID3D11Buffer? ParticleBuffer => _particleBuffer;
 
     public int UploadBufferElementCapacity => _uploadBufferElementCapacity;
+
+    private bool _gpuSpawnEnabled;
+    public bool GpuSpawnEnabled
+    {
+        get => _gpuSpawnEnabled && _csSpawn is not null && _particleUAV is not null;
+        set => _gpuSpawnEnabled = value;
+    }
+
+    public int ReadDetonations(ID3D11DeviceContext context, Span<DetonationEvent> destination)
+    {
+        if (_detonationReadback is null || _detonationBuffer is null || _detonationCountBuffer is null || _detonationCountReadback is null)
+            return 0;
+
+        context.CopyResource(_detonationCountReadback, _detonationCountBuffer);
+
+        uint count;
+        var mappedCount = context.Map(_detonationCountReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                count = *(uint*)mappedCount.DataPointer;
+            }
+        }
+        finally
+        {
+            context.Unmap(_detonationCountReadback, 0);
+        }
+
+        if (count == 0 || destination.IsEmpty)
+            return 0;
+
+        int toCopy = (int)System.Math.Min((uint)destination.Length, count);
+
+        context.CopyResource(_detonationReadback, _detonationBuffer);
+
+        var mapped = context.Map(_detonationReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                var src = (DetonationEvent*)mapped.DataPointer;
+                for (int i = 0; i < toCopy; i++)
+                {
+                    destination[i] = src[i];
+                }
+            }
+        }
+        finally
+        {
+            context.Unmap(_detonationReadback, 0);
+        }
+
+        return toCopy;
+    }
+
+    public bool CanGpuSpawn => _gpuSpawnEnabled && _csSpawn is not null && _particleUAV is not null;
+
+    private bool _enableCounterReadback = true;
+    public bool EnableCounterReadback
+    {
+        get => _enableCounterReadback;
+        set => _enableCounterReadback = value;
+    }
+
+    private ID3D11Buffer? _perKindCountersReadback;
+
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GpuSpawnRequest
+    {
+        public uint RequestKind;
+        public uint ParticleStart;
+        public uint DirStart;
+        public uint Count;
+
+        public Vector3 Origin;
+        public float Speed;
+
+        public float Lifetime;
+        public float CrackleProbability;
+
+        public float SparkleRateHz;
+        public float SparkleIntensity;
+        public uint Seed;
+        public Vector3 _pad;
+
+        public Vector4 BaseColor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SpawnCBData
+    {
+        public uint SpawnRequestCount;
+        public uint SpawnDirectionCount;
+        public uint ParticleCapacity;
+        public uint _pad;
+    }
+
+    public bool QueueSparkBurstSpawn(
+        int particleStart,
+        ReadOnlySpan<Vector3> directions,
+        Vector3 origin,
+        Vector4 baseColor,
+        float speed,
+        float lifetimeSeconds,
+        float sparkleRateHz,
+        float sparkleIntensity,
+        float crackleProbability,
+        uint seed)
+    {
+        if (!CanGpuSpawn || directions.Length == 0)
+            return false;
+
+        // Clamp params to keep parity with CPU path.
+        float crackle = System.Math.Clamp(crackleProbability, 0.0f, 1.0f);
+        float life = System.Math.Max(0.0f, lifetimeSeconds);
+        float rate = System.Math.Max(0.0f, sparkleRateHz);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+
+        uint dirStart = (uint)_pendingSpawnDirections.Count;
+        for (int i = 0; i < directions.Length; i++)
+            _pendingSpawnDirections.Add(directions[i]);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 1u,
+            ParticleStart = (uint)particleStart,
+            DirStart = dirStart,
+            Count = (uint)directions.Length,
+            Origin = origin,
+            Speed = speed,
+            Lifetime = life,
+            CrackleProbability = crackle,
+            SparkleRateHz = rate,
+            SparkleIntensity = inten,
+            Seed = seed,
+            _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueShellSpawn(
+        int particleStart,
+        Vector3 position,
+        Vector3 velocity,
+        float fuseSeconds,
+        float dragK,
+        Vector4 baseColor,
+        uint seed)
+    {
+        if (!CanGpuSpawn)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 3u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = 1,
+            Origin = position,
+            Speed = 0.0f,
+            Lifetime = System.Math.Max(0.0f, fuseSeconds),
+            CrackleProbability = 0.0f,
+            SparkleRateHz = 0.0f,
+            SparkleIntensity = dragK,
+            Seed = seed,
+            _pad = velocity,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueSmokeSpawn(
+        int particleStart,
+        int count,
+        Vector3 origin,
+        Vector4 baseColor,
+        float lifetimeMinSeconds,
+        float lifetimeMaxSeconds,
+        uint seed)
+    {
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+
+        float lifeMin = System.Math.Max(0.0f, lifetimeMinSeconds);
+        float lifeMax = System.Math.Max(lifeMin, lifetimeMaxSeconds);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 2u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = 0.0f,
+            Lifetime = lifeMin,
+            CrackleProbability = 0.0f,
+            SparkleRateHz = lifeMax,
+            SparkleIntensity = 0.0f,
+            Seed = seed,
+            _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
 
     public ID3D11Buffer? GetNextUploadBuffer()
     {
@@ -113,6 +360,140 @@ internal sealed class ParticlesPipeline : IDisposable
         }
     }
 
+    private void EnsureSpawnBuffer(ref ID3D11Buffer? buffer, ref ID3D11ShaderResourceView? srv, ref int capacity, int requiredElements, int stride, ID3D11Device device)
+    {
+        if (requiredElements <= 0)
+            return;
+
+        if (buffer is not null && requiredElements <= capacity)
+            return;
+
+        buffer?.Dispose();
+        srv?.Dispose();
+
+        capacity = System.Math.Max(requiredElements, 1);
+
+        buffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ShaderResource,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(capacity * stride),
+            StructureByteStride = (uint)stride
+        });
+
+        srv = device.CreateShaderResourceView(buffer, new ShaderResourceViewDescription
+        {
+            ViewDimension = ShaderResourceViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferShaderResourceView
+            {
+                FirstElement = 0,
+                NumElements = (uint)capacity
+            }
+        });
+    }
+
+    private void DispatchPendingSpawns(ID3D11DeviceContext context)
+    {
+        if (!CanGpuSpawn || _spawnCB is null || _particleUAV is null)
+        {
+            _pendingSpawnRequests.Clear();
+            _pendingSpawnDirections.Clear();
+            return;
+        }
+
+        int reqCount = _pendingSpawnRequests.Count;
+        if (reqCount == 0)
+            return;
+
+        int dirCount = _pendingSpawnDirections.Count;
+        var device = context.Device;
+        if (device is null)
+            return;
+
+        EnsureSpawnBuffer(ref _spawnRequestBuffer, ref _spawnRequestSRV, ref _spawnRequestCapacity, reqCount, _spawnRequestStride, device);
+        if (dirCount > 0)
+            EnsureSpawnBuffer(ref _spawnDirectionBuffer, ref _spawnDirectionSRV, ref _spawnDirectionCapacity, dirCount, _spawnDirectionStride, device);
+
+        if (_spawnRequestBuffer is null || _spawnRequestSRV is null)
+            return;
+        if (dirCount > 0 && (_spawnDirectionBuffer is null || _spawnDirectionSRV is null))
+            return;
+
+        // Write requests
+        var requestSpan = CollectionsMarshal.AsSpan(_pendingSpawnRequests);
+        var requestBytes = MemoryMarshal.AsBytes(requestSpan);
+        var mappedReq = context.Map(_spawnRequestBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                requestBytes.CopyTo(new Span<byte>((void*)mappedReq.DataPointer, requestBytes.Length));
+            }
+        }
+        finally
+        {
+            context.Unmap(_spawnRequestBuffer, 0);
+        }
+
+        // Write directions if present
+        if (dirCount > 0 && _spawnDirectionBuffer is not null)
+        {
+            var dirSpan = CollectionsMarshal.AsSpan(_pendingSpawnDirections);
+            var dirBytes = MemoryMarshal.AsBytes(dirSpan);
+            var mappedDir = context.Map(_spawnDirectionBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                unsafe
+                {
+                    dirBytes.CopyTo(new Span<byte>((void*)mappedDir.DataPointer, dirBytes.Length));
+                }
+            }
+            finally
+            {
+                context.Unmap(_spawnDirectionBuffer, 0);
+            }
+        }
+
+        var cbData = new SpawnCBData
+        {
+            SpawnRequestCount = (uint)reqCount,
+            SpawnDirectionCount = (uint)dirCount,
+            ParticleCapacity = (uint)_capacity,
+            _pad = 0
+        };
+
+        var mapped = context.Map(_spawnCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            Marshal.StructureToPtr(cbData, mapped.DataPointer, false);
+        }
+        finally
+        {
+            context.Unmap(_spawnCB, 0);
+        }
+
+        context.CSSetShader(_csSpawn);
+        context.CSSetConstantBuffer(2, _spawnCB);
+        context.CSSetShaderResource(1, _spawnRequestSRV);
+        if (_spawnDirectionSRV is not null)
+            context.CSSetShaderResource(2, _spawnDirectionSRV);
+        context.CSSetUnorderedAccessView(0, _particleUAV);
+
+        uint groups = (uint)((reqCount + 63) / 64);
+        context.Dispatch(groups, 1, 1);
+
+        context.CSSetShaderResource(1, null);
+        context.CSSetShaderResource(2, null);
+        context.CSSetUnorderedAccessView(0, null);
+        context.CSSetShader(null);
+
+        _pendingSpawnRequests.Clear();
+        _pendingSpawnDirections.Clear();
+    }
+
     public void Initialize(ID3D11Device device, int particleCapacity)
     {
         _capacity = particleCapacity;
@@ -138,8 +519,8 @@ internal sealed class ParticlesPipeline : IDisposable
 
         // Ring of small upload buffers:
         // Use Dynamic + WriteDiscard to reduce chance of CPU stalls when mapping for frequent updates.
-        const int uploadRingSize = 32;
-        const int uploadChunkElements = 32_768;
+        int uploadRingSize = Tunables.GpuUpload.UploadRingSize;
+        int uploadChunkElements = Tunables.GpuUpload.UploadChunkElements;
         _uploadBufferElementCapacity = System.Math.Min(_capacity, uploadChunkElements);
         _particleUploadBuffers = new ID3D11Buffer?[uploadRingSize];
         _uploadBufferIndex = 0;
@@ -259,6 +640,15 @@ internal sealed class ParticlesPipeline : IDisposable
             ByteWidth = (uint)Marshal.SizeOf<PassCBData>()
         });
 
+        _spawnCB?.Dispose();
+        _spawnCB = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.ConstantBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            ByteWidth = (uint)Marshal.SizeOf<SpawnCBData>()
+        });
+
         // Pre-baked pass constant buffers (avoid per-pass Map/Unmap during Draw).
         _passCBAdditive?.Dispose();
         _passCBAdditive = device.CreateBuffer(
@@ -288,18 +678,25 @@ internal sealed class ParticlesPipeline : IDisposable
         string source = File.ReadAllText(shaderPath);
 
         ReadOnlyMemory<byte> csBlob = ShaderCompilerHelper.CompileAndCatch(source, "CSUpdate", shaderPath, "cs_5_0");
+        ReadOnlyMemory<byte> csSpawnBlob = ShaderCompilerHelper.CompileAndCatch(source, "CSSpawn", shaderPath, "cs_5_0");
         var vsBlob = ShaderCompilerHelper.CompileAndCatch(source, "VSMain", shaderPath, "vs_5_0");
         var psBlob = ShaderCompilerHelper.CompileAndCatch(source, "PSParticle", shaderPath, "ps_5_0");
 
         byte[] csBytes = csBlob.ToArray();
+        byte[] csSpawnBytes = csSpawnBlob.ToArray();
         byte[] vsBytes = vsBlob.ToArray();
         byte[] psBytes = psBlob.ToArray();
 
         _cs?.Dispose();
+        _csSpawn?.Dispose();
         _vs?.Dispose();
         _ps?.Dispose();
 
         _cs = device.CreateComputeShader(csBytes);
+        _csSpawn = csSpawnBytes.Length > 0 ? device.CreateComputeShader(csSpawnBytes) : null;
+        bool enableGpuSpawn = string.Equals(Environment.GetEnvironmentVariable(GpuSpawnEnvVar), "1", StringComparison.OrdinalIgnoreCase);
+        _gpuSpawnEnabled = enableGpuSpawn && _csSpawn is not null && _particleUAV is not null;
+        GpuSpawnEnabled = true;
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
 
@@ -434,7 +831,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 Usage = ResourceUsage.Default,
                 CPUAccessFlags = CpuAccessFlags.None,
                 MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = sizeof(uint) * 7,
+                ByteWidth = sizeof(uint) * 6,
                 StructureByteStride = sizeof(uint)
             });
 
@@ -446,15 +843,86 @@ internal sealed class ParticlesPipeline : IDisposable
                 Buffer = new BufferUnorderedAccessView
                 {
                     FirstElement = 0,
-                    NumElements = 7
+                    NumElements = 6
                 }
             });
+
+            _perKindCountersReadback?.Dispose();
+            _perKindCountersReadback = device.CreateBuffer(new BufferDescription
+            {
+                BindFlags = BindFlags.None,
+                Usage = ResourceUsage.Staging,
+                CPUAccessFlags = CpuAccessFlags.Read,
+                MiscFlags = ResourceOptionFlags.None,
+                ByteWidth = sizeof(uint) * 7,
+                StructureByteStride = sizeof(uint)
+            });
+
+        // Detonation buffer: append-only from GPU, read back on CPU each frame.
+        _detonationCapacity = Tunables.ParticleBudgets.Shell;
+
+        _detonationBuffer?.Dispose();
+        _detonationBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(Marshal.SizeOf<DetonationEvent>() * _detonationCapacity),
+            StructureByteStride = (uint)Marshal.SizeOf<DetonationEvent>()
+        });
+
+        _detonationUAV?.Dispose();
+        _detonationUAV = device.CreateUnorderedAccessView(_detonationBuffer, new UnorderedAccessViewDescription
+        {
+            ViewDimension = UnorderedAccessViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferUnorderedAccessView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_detonationCapacity,
+                Flags = BufferUnorderedAccessViewFlags.Append
+            }
+        });
+
+        _detonationReadback?.Dispose();
+        _detonationReadback = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = (uint)(Marshal.SizeOf<DetonationEvent>() * _detonationCapacity),
+            StructureByteStride = (uint)Marshal.SizeOf<DetonationEvent>()
+        });
+
+        _detonationCountBuffer?.Dispose();
+        _detonationCountBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = sizeof(uint)
+        });
+
+        _detonationCountReadback?.Dispose();
+        _detonationCountReadback = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = sizeof(uint)
+        });
         }
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
     {
         if (_cs is null || _particleUAV is null || _frameCB is null || _perKindCountersUAV is null)
             return;
+
+        DispatchPendingSpawns(context);
 
         var right = new Vector3(view.M11, view.M21, view.M31);
         var up = new Vector3(view.M12, view.M22, view.M32);
@@ -506,8 +974,14 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         }
 
-        _uavs[7] = _perKindCountersUAV;
-        _initialCounts[7] = uint.MaxValue;
+        _uavs[6] = _perKindCountersUAV;
+        _initialCounts[6] = uint.MaxValue;
+
+        if (_detonationUAV is not null)
+        {
+            _uavs[7] = _detonationUAV;
+            _initialCounts[7] = 0;
+        }
 
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
@@ -519,6 +993,34 @@ internal sealed class ParticlesPipeline : IDisposable
         // Unbind all UAVs
         context.CSSetUnorderedAccessViews(0, _nullUavs, null);
         context.CSSetShader(null);
+
+        if (_enableCounterReadback && _perKindCountersReadback is not null && _perKindCountersBuffer is not null)
+        {
+            context.CopyResource(_perKindCountersReadback, _perKindCountersBuffer);
+
+            var mappedCounters = context.Map(_perKindCountersReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+            try
+            {
+                unsafe
+                {
+                    uint* src = (uint*)mappedCounters.DataPointer;
+                    _lastAliveCountByKind[ParticleKind.Shell] = (int)src[1];
+                    _lastAliveCountByKind[ParticleKind.Spark] = (int)src[2];
+                    _lastAliveCountByKind[ParticleKind.Smoke] = (int)src[3];
+                    _lastAliveCountByKind[ParticleKind.Crackle] = (int)src[4];
+                    _lastAliveCountByKind[ParticleKind.PopFlash] = (int)src[5];
+                }
+            }
+            finally
+            {
+                context.Unmap(_perKindCountersReadback, 0);
+            }
+        }
+
+        if (_detonationCountBuffer is not null && _detonationUAV is not null)
+        {
+            context.CopyStructureCount(_detonationCountBuffer, 0, _detonationUAV);
+        }
 
         // GPU-driven draw args (no CPU readback): write alive instance counts into each args buffer.
         foreach (var kind in kinds)
@@ -640,6 +1142,19 @@ internal sealed class ParticlesPipeline : IDisposable
         _frameCB?.Dispose();
         _frameCB = null;
 
+        _spawnRequestBuffer?.Dispose();
+        _spawnRequestBuffer = null;
+        _spawnRequestSRV?.Dispose();
+        _spawnRequestSRV = null;
+
+        _spawnDirectionBuffer?.Dispose();
+        _spawnDirectionBuffer = null;
+        _spawnDirectionSRV?.Dispose();
+        _spawnDirectionSRV = null;
+
+        _spawnCB?.Dispose();
+        _spawnCB = null;
+
         foreach (var kvp in _aliveIndexBufferByKind)
             kvp.Value?.Dispose();
         _aliveIndexBufferByKind.Clear();
@@ -662,6 +1177,12 @@ internal sealed class ParticlesPipeline : IDisposable
         _perKindCountersUAV?.Dispose();
         _perKindCountersUAV = null;
 
+        _perKindCountersReadback?.Dispose();
+        _perKindCountersReadback = null;
+
+        _csSpawn?.Dispose();
+        _csSpawn = null;
+
         _cs?.Dispose();
         _cs = null;
 
@@ -679,9 +1200,6 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _depthReadNoWrite?.Dispose();
         _depthReadNoWrite = null;
-
-        _frameCB?.Dispose();
-        _frameCB = null;
     }
 }
 

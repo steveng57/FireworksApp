@@ -68,6 +68,9 @@ public sealed class FireworksEngine
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
     private readonly List<PendingWillowHandoff> _pendingWillow = new();
+    private readonly Dictionary<uint, FireworkShell> _gpuShells = new();
+    private readonly DetonationEvent[] _detonationBuffer = new DetonationEvent[1024];
+    private uint _nextShellId = 1;
     private readonly Random _rng = new();
 
     private ShowScript _show = ShowScript.Empty;
@@ -133,6 +136,8 @@ public sealed class FireworksEngine
         // Update canister reload timers.
         foreach (var c in _canisters)
             c.Update(stepDt);
+
+        ProcessGpuDetonations(renderer);
 
         // Fire show events.
         var events = _show.Events;
@@ -213,6 +218,9 @@ public sealed class FireworksEngine
             }
         }
 
+        // Mirror GPU-simulated shells for trails/visual interpolation.
+        UpdateGpuShellTrails(stepDt, renderer);
+
         UpdateSubShells(stepDt, renderer);
         UpdateComets(stepDt, renderer);
 
@@ -268,9 +276,52 @@ public sealed class FireworksEngine
             .ToArray();
         renderer.SetCanisters(canisterStates);
 
-        // Provide shell positions to renderer.
-        var shellStates = _shells.Select(s => new D3D11Renderer.ShellRenderState(s.Position)).ToArray();
-        renderer.SetShells(shellStates);
+        // Provide shell positions/velocities to renderer (CPU + GPU mirrors) for trails/interpolation.
+        var shellStatesList = new List<D3D11Renderer.ShellRenderState>(_shells.Count + _gpuShells.Count);
+        for (int i = 0; i < _shells.Count; i++)
+        {
+            var s = _shells[i];
+            shellStatesList.Add(new D3D11Renderer.ShellRenderState(s.Position, s.Velocity));
+        }
+
+        if (renderer.ShellsGpuRendered && _gpuShells.Count > 0)
+        {
+            foreach (var shell in _gpuShells.Values)
+            {
+                shellStatesList.Add(new D3D11Renderer.ShellRenderState(shell.Position, shell.Velocity));
+            }
+        }
+
+        renderer.SetShells(shellStatesList);
+    }
+
+    private void UpdateGpuShellTrails(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0.0f || !renderer.ShellsGpuRendered || _gpuShells.Count == 0)
+            return;
+
+        List<uint>? toRemove = null;
+
+        foreach (var kvp in _gpuShells)
+        {
+            var shell = kvp.Value;
+
+            shell.Update(dt);
+            shell.EmitTrail(renderer, dt);
+
+            // If the mirror falls below ground or otherwise dies, drop it so trails stop.
+            if (!shell.Alive)
+            {
+                toRemove ??= new List<uint>();
+                toRemove.Add(kvp.Key);
+            }
+        }
+
+        if (toRemove != null)
+        {
+            for (int i = 0; i < toRemove.Count; i++)
+                _gpuShells.Remove(toRemove[i]);
+        }
     }
 
     // Attachments resolver: replace missing property access with a method.
@@ -338,10 +389,19 @@ public sealed class FireworksEngine
             {
                 SubshellDepth = pending.ParentDepth + 1,
                 ParentShellId = null,
-                BurstShapeOverride = pending.SubProfile.BurstShapeOverride
+                BurstShapeOverride = pending.SubProfile.BurstShapeOverride,
+                ShellId = _nextShellId++
             };
 
-            _shells.Add(child);
+            if (renderer.ShellsGpuRendered)
+            {
+                _gpuShells[child.ShellId] = child;
+                renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+            }
+            else
+            {
+                _shells.Add(child);
+            }
         }
     }
 
@@ -574,6 +634,8 @@ public sealed class FireworksEngine
         if (!_profiles.ColorSchemes.TryGetValue(colorSchemeId, out var shellScheme))
             shellScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
 
+        var shellBaseColor = ColorUtil.PickBaseColor(shellScheme);
+
         // *** CHANGED: pass drag and fuse override (burst slightly before apex)
         var shell = new FireworkShell(
             shellProfile,
@@ -581,9 +643,20 @@ public sealed class FireworksEngine
             launchPos,
             launchVel,
             dragK: ShellDragK,
-            fuseOverrideSeconds: timeToPeak * 0.95f);
+            fuseOverrideSeconds: timeToPeak * 0.95f)
+        {
+            ShellId = _nextShellId++
+        };
 
-        _shells.Add(shell);
+        if (renderer.ShellsGpuRendered)
+        {
+            _gpuShells[shell.ShellId] = shell;
+            renderer.QueueShellGpu(launchPos, launchVel, shell.FuseTimeSeconds, ShellDragK, shellBaseColor, shell.ShellId);
+        }
+        else
+        {
+            _shells.Add(shell);
+        }
         canister.OnFired();
 
         EmitSound(new SoundEvent(
@@ -1420,10 +1493,54 @@ public sealed class FireworksEngine
             {
                 SubshellDepth = 1,
                 ParentShellId = null,
-                BurstShapeOverride = FireworkBurstShape.Willow
+                BurstShapeOverride = FireworkBurstShape.Willow,
+                ShellId = _nextShellId++
             };
 
-            _shells.Add(child);
+            if (renderer.ShellsGpuRendered)
+            {
+                _gpuShells[child.ShellId] = child;
+                renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * pending.Params.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+            }
+            else
+            {
+                _shells.Add(child);
+            }
+        }
+    }
+
+    private void ProcessGpuDetonations(D3D11Renderer renderer)
+    {
+        if (!renderer.ShellsGpuRendered || _gpuShells.Count == 0)
+            return;
+
+        var span = _detonationBuffer.AsSpan();
+        int count = renderer.ReadDetonations(span);
+        for (int i = 0; i < count; i++)
+        {
+            var ev = span[i];
+            if (!_gpuShells.TryGetValue(ev.ShellId, out var shell))
+                continue;
+
+            var explosion = new ShellExplosion(
+                ev.Position,
+                BurstShape: shell.BurstShapeOverride ?? shell.Profile.BurstShape,
+                ExplosionRadius: shell.Profile.ExplosionRadius,
+                ParticleCount: shell.Profile.ParticleCount,
+                ParticleLifetimeSeconds: shell.Profile.ParticleLifetimeSeconds,
+                BurstSpeed: shell.Profile.BurstSpeed,
+                BurstSparkleRateHz: shell.Profile.BurstSparkleRateHz,
+                BurstSparkleIntensity: shell.Profile.BurstSparkleIntensity,
+                RingAxis: shell.Profile.RingAxis,
+                RingAxisRandomTiltDegrees: shell.Profile.RingAxisRandomTiltDegrees,
+                Emission: shell.Profile.EmissionSettings,
+                FinaleSalute: shell.Profile.FinaleSaluteParams,
+                Comet: shell.Profile.CometParams,
+                BaseColor: ev.BaseColor,
+                PeonyToWillowParams: shell.Profile.PeonyToWillowParams);
+
+            Explode(explosion, renderer);
+            _gpuShells.Remove(ev.ShellId);
         }
     }
 
@@ -1507,6 +1624,8 @@ public sealed class FireworkShell
 
     public FireworkShellProfile Profile { get; }
     public ColorScheme ColorScheme { get; }
+
+    public uint ShellId { get; init; }
 
     public Vector3 Position { get; private set; }
     public Vector3 Velocity { get; private set; }

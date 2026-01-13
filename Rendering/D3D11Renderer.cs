@@ -35,10 +35,6 @@ public struct PadVertex
         Position = new Vector3(x, y, z);
         Color = color;
     }
-
-// ...existing code...
-
-    public int ShellSpawnCount { get; set; }
 }
 
 public sealed class D3D11Renderer : IDisposable
@@ -111,6 +107,16 @@ public sealed class D3D11Renderer : IDisposable
 
     public int ShellSpawnCount { get; set; }
 
+    public bool ShellsGpuRendered => _particlesPipeline.CanGpuSpawn;
+
+    public int ReadDetonations(Span<DetonationEvent> destination)
+    {
+        if (_context is null)
+            return 0;
+
+        return _particlesPipeline.ReadDetonations(_context, destination);
+    }
+
     private static GpuParticle[] RentParticleArray(int count)
         => count <= 0 ? Array.Empty<GpuParticle>() : s_particleArrayPool.Rent(count);
 
@@ -122,7 +128,7 @@ public sealed class D3D11Renderer : IDisposable
         s_particleArrayPool.Return(buffer, clearArray: false);
     }
 
-    public readonly record struct ShellRenderState(Vector3 Position);
+    public readonly record struct ShellRenderState(Vector3 Position, Vector3 Velocity);
 
     public readonly record struct CanisterRenderState(Vector3 Position, Vector3 Direction);
 
@@ -274,7 +280,7 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
-        UpdateParticles(scaledDt);
+        UpdateParticles(scaledDt, useInterpolatedState);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
         UpdateSceneConstants(scaledDt);
@@ -317,7 +323,11 @@ public sealed class D3D11Renderer : IDisposable
 
         DrawCanisters(useInterpolatedState);
 
-        DrawShells(useInterpolatedState);
+        // Shell meshes are visually redundant with the trails; hide them to avoid visible head/tail mismatch.
+        //if (!ShellsGpuRendered)
+        //{
+        //    DrawShells(useInterpolatedState);
+        //}
 
         DrawParticles(additive: true);
         DrawParticles(additive: false);
@@ -338,6 +348,29 @@ public sealed class D3D11Renderer : IDisposable
         _prevShells = _shells;
         _shells = shells ?? Array.Empty<ShellRenderState>();
         _hasInterpolatedState = false;
+    }
+
+    public bool QueueShellGpu(Vector3 position, Vector3 velocity, float fuseSeconds, float dragK, Vector4 baseColor, uint shellId)
+    {
+        if (_context is null || !_particlesPipeline.CanGpuSpawn)
+            return false;
+
+        int start = _particleWriteCursor;
+
+        bool queued = _particlesPipeline.QueueShellSpawn(
+            start,
+            position,
+            velocity,
+            fuseSeconds,
+            dragK,
+            baseColor,
+            shellId);
+
+        if (!queued)
+            return false;
+
+        _particleWriteCursor = (start + 1) % _particleCapacity;
+        return true;
     }
 
     public void SetCanisters(System.Collections.Generic.IReadOnlyList<CanisterRenderState> canisters)
@@ -368,9 +401,13 @@ public sealed class D3D11Renderer : IDisposable
         {
             for (int i = 0; i < shellCount; i++)
             {
-                var a = _prevShells[i].Position;
-                var b = _shells[i].Position;
-                _interpShells[i] = new ShellRenderState(Vector3.Lerp(a, b, alpha));
+                var aPos = _prevShells[i].Position;
+                var bPos = _shells[i].Position;
+                var aVel = _prevShells[i].Velocity;
+                var bVel = _shells[i].Velocity;
+                _interpShells[i] = new ShellRenderState(
+                    Vector3.Lerp(aPos, bPos, alpha),
+                    Vector3.Lerp(aVel, bVel, alpha));
             }
         }
 
@@ -396,15 +433,59 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
         count = System.Math.Clamp(count, 1, _particleCapacity);
-
-        int stride = Marshal.SizeOf<GpuParticle>();
         int start = _particleWriteCursor;
+
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            var dirs = ArrayPool<Vector3>.Shared.Rent(count);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                    dirs[i] = RandomUnitVector();
+
+                int remaining = count;
+                int offset = 0;
+                int cursor = start;
+                const float crackleProbability = 0.22f;
+
+                while (remaining > 0)
+                {
+                    int chunk = System.Math.Min(remaining, _particleCapacity - cursor);
+                    _particlesPipeline.QueueSparkBurstSpawn(
+                        particleStart: cursor,
+                        directions: dirs.AsSpan(offset, chunk),
+                        origin: position,
+                        baseColor: baseColor,
+                        speed: 12.0f,
+                        lifetimeSeconds: 2.8f,
+                        sparkleRateHz: sparkleRateHz,
+                        sparkleIntensity: sparkleIntensity,
+                        crackleProbability: crackleProbability,
+                        seed: (uint)_rng.Next());
+
+                    cursor = (cursor + chunk) % _particleCapacity;
+                    offset += chunk;
+                    remaining -= chunk;
+                }
+
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+            finally
+            {
+                ArrayPool<Vector3>.Shared.Return(dirs);
+            }
+        }
+
+        // CPU fallback
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return;
 
         var staging = RentParticleArray(count);
         try
@@ -438,8 +519,6 @@ public sealed class D3D11Renderer : IDisposable
                     BaseColor = baseColor,
                     Color = baseColor,
                     Kind = crackle ? (uint)ParticleKind.Crackle : (uint)ParticleKind.Spark,
-                    // For sparks, pack sparkle params (rate/intensity) so only burst particles twinkle.
-                    // For crackle, keep pads as deterministic randomness.
                     _pad0 = crackle ? (uint)_rng.Next() : PackFloat(sparkleRateHz),
                     _pad1 = crackle ? (uint)_rng.Next() : PackFloat(sparkleIntensity),
                     _pad2 = (uint)_rng.Next()
@@ -454,6 +533,41 @@ public sealed class D3D11Renderer : IDisposable
         }
 
         _particleWriteCursor = (start + count) % _particleCapacity;
+    }
+    private void UpdateParticles(float scaledDt, bool useInterpolatedState)
+    {
+        if (_context is null)
+            return;
+
+        _particlesPipeline.Update(_context, _view, _proj, _schemeTint, scaledDt);
+    }
+    private void SpawnShellTrails(float dt, System.Collections.Generic.IReadOnlyList<ShellRenderState> shells)
+    {
+        if (_context is null)
+            return;
+
+        if (dt <= 0.0f || shells.Count == 0)
+            return;
+
+        float expected = ShellTrailParticlesPerSecond * dt;
+        int baseCount = expected > 0 ? (int)expected : 0;
+
+        foreach (var shell in shells)
+        {
+            var vel = shell.Velocity;
+            if (vel.LengthSquared() < 1e-8f)
+                continue;
+
+            int count = baseCount;
+            float frac = expected - baseCount;
+            if (_rng.NextDouble() < frac)
+                count++;
+
+            if (count <= 0)
+                continue;
+
+            SpawnShellTrail(shell.Position, vel, count);
+        }
     }
 
     public void SpawnPopFlash(Vector3 position, float lifetimeSeconds, float size, float peakIntensity, float fadeGamma)
@@ -672,20 +786,40 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SpawnSmoke(Vector3 burstCenter)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
-            return;
-
         int count = _rng.Next(200, 601);
         count = System.Math.Clamp(count, 1, _particleCapacity);
 
         int start = _particleWriteCursor;
 
+        // Try GPU smoke spawn first.
+        if (_context is not null && _particlesPipeline.CanGpuSpawn)
+        {
+            Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+            bool queued = _particlesPipeline.QueueSmokeSpawn(
+                start,
+                count,
+                burstCenter,
+                startColor,
+                Tunables.SmokeLifetimeMinSeconds,
+                Tunables.SmokeLifetimeMaxSeconds,
+                (uint)_rng.Next());
+
+            if (queued)
+            {
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+        }
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (_context is null || particleBuffer is null || uploadBuffer is null)
+            return;
+
         var staging = RentParticleArray(count);
 
         // Start color is overwritten in the compute shader per life; keep alpha at 1 here.
-        Vector4 startColor = new(0.35f, 0.33f, 0.30f, 1.0f);
+        Vector4 cpuStartColor = new(0.35f, 0.33f, 0.30f, 1.0f);
         try
         {
             for (int i = 0; i < count; i++)
@@ -711,8 +845,8 @@ public sealed class D3D11Renderer : IDisposable
                     Velocity = vel,
                     Age = 0.0f,
                     Lifetime = lifetime,
-                    BaseColor = startColor,
-                    Color = startColor,
+                    BaseColor = cpuStartColor,
+                    Color = cpuStartColor,
                     Kind = (uint)ParticleKind.Smoke,
                     _pad0 = (uint)_rng.Next(),
                     _pad1 = (uint)_rng.Next(),
@@ -739,14 +873,72 @@ public sealed class D3D11Renderer : IDisposable
         float sparkleRateHz = 0.0f,
         float sparkleIntensity = 0.0f)
     {
-        var particleBuffer = _particlesPipeline.ParticleBuffer;
-        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
-        if (_context is null || particleBuffer is null || uploadBuffer is null)
+        if (_context is null)
             return;
 
-        int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
+        int dirCount = directions.Length;
+        if (dirCount <= 0)
+            return;
 
+        int count = System.Math.Min(dirCount, _particleCapacity);
         int start = _particleWriteCursor;
+
+        // Prefer GPU spawn to reduce CPU-GPU contention; fallback to CPU path if unavailable.
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            var normalized = ArrayPool<Vector3>.Shared.Rent(count);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    Vector3 dir = directions[i];
+                    if (dir.LengthSquared() < 1e-8f)
+                        dir = Vector3.UnitY;
+                    else
+                        dir = Vector3.Normalize(dir);
+
+                    normalized[i] = dir;
+                }
+
+                int remaining = count;
+                int dirOffset = 0;
+                int cursor = start;
+                const float crackleProbability = 0.22f;
+
+                while (remaining > 0)
+                {
+                    int chunk = System.Math.Min(remaining, _particleCapacity - cursor);
+                    _particlesPipeline.QueueSparkBurstSpawn(
+                        particleStart: cursor,
+                        directions: normalized.AsSpan(dirOffset, chunk),
+                        origin: position,
+                        baseColor: baseColor,
+                        speed: speed,
+                        lifetimeSeconds: particleLifetimeSeconds,
+                        sparkleRateHz: sparkleRateHz,
+                        sparkleIntensity: sparkleIntensity,
+                        crackleProbability: crackleProbability,
+                        seed: (uint)_rng.Next());
+
+                    cursor = (cursor + chunk) % _particleCapacity;
+                    dirOffset += chunk;
+                    remaining -= chunk;
+                }
+
+                _particleWriteCursor = (start + count) % _particleCapacity;
+                return;
+            }
+            finally
+            {
+                ArrayPool<Vector3>.Shared.Return(normalized);
+            }
+        }
+
+        // CPU fallback path
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return;
 
         var staging = RentParticleArray(count);
         try
@@ -759,7 +951,6 @@ public sealed class D3D11Renderer : IDisposable
                 else
                     dir = Vector3.Normalize(dir);
 
-                // Match the original "nice" look: varied speeds and lifetimes, plus crackle.
                 float u = (float)_rng.NextDouble();
                 float speedMul = 0.65f + (u * u) * 0.85f;
                 Vector3 vel = dir * (speed * speedMul);
@@ -773,11 +964,9 @@ public sealed class D3D11Renderer : IDisposable
                 }
                 else
                 {
-                    // Wider, more realistic distribution with a long tail so burst stars don't all die together.
-                    // Keep respecting the requested base lifetime.
                     float r = (float)_rng.NextDouble();
-                    float tail = r * r; // bias toward shorter, with a long tail
-                    float lifeMul = 0.55f + 1.60f * tail; // ~0.55x..2.15x
+                    float tail = r * r;
+                    float lifeMul = 0.55f + 1.60f * tail;
                     lifetime = System.Math.Max(0.05f, particleLifetimeSeconds * lifeMul);
                 }
 
@@ -863,6 +1052,7 @@ public sealed class D3D11Renderer : IDisposable
                     Velocity = vel,
                     Age = 0.0f,
                     Lifetime = ShellTrailLifetimeSeconds,
+                    BaseColor = color,
                     Color = color,
                     Kind = (uint)ParticleKind.Spark
                 };

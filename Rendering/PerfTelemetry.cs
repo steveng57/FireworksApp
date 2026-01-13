@@ -18,6 +18,11 @@ internal sealed class PerfTelemetry
     private long _uploadBytesAccum;
     private long _uploadCalls;
 
+    // Frame time tracking for hitch detection
+    private long _lastFrameTimestamp;
+    private double _frameTimeAccum;
+    private double _frameTimeMax;
+
     public bool Enabled { get; set; } = true;
 
     public void RecordUpload(TimeSpan elapsed, int bytes)
@@ -51,6 +56,16 @@ internal sealed class PerfTelemetry
         _frameCount++;
 
         long now = Stopwatch.GetTimestamp();
+
+        // Track frame time
+        if (_lastFrameTimestamp != 0)
+        {
+            double frameMs = (now - _lastFrameTimestamp) * 1000.0 / Stopwatch.Frequency;
+            _frameTimeAccum += frameMs;
+            _frameTimeMax = System.Math.Max(_frameTimeMax, frameMs);
+        }
+        _lastFrameTimestamp = now;
+
         if (_lastReportTimestamp == 0)
         {
             _lastReportTimestamp = now;
@@ -80,6 +95,12 @@ internal sealed class PerfTelemetry
         _lastGen2 = gen2;
 
         double fps = _frameCount / seconds;
+
+        double frameAvgMs = _frameTimeAccum / System.Math.Max(1, _frameCount);
+        double frameMaxMs = _frameTimeMax;
+        _frameTimeAccum = 0.0;
+        _frameTimeMax = 0.0;
+
         _frameCount = 0;
 
         double uploadAvgMs = _uploadCalls > 0 ? (_uploadMsAccum / _uploadCalls) : 0.0;
@@ -93,7 +114,7 @@ internal sealed class PerfTelemetry
 
         _lastReportTimestamp = now;
 
-        Debug.Write($"[Perf] {source} fps={fps:F1} alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
+        Debug.Write($"[Perf] {source} fps={fps:F1} frame(avg/max)={frameAvgMs:F2}/{frameMaxMs:F2}ms alloc={allocDelta / (1024.0 * 1024.0):F2}MB/s GC(0/1/2)+={gen0Delta}/{gen1Delta}/{gen2Delta} upload(avg/max)={uploadAvgMs:F3}/{uploadMaxMs:F3}ms upload={uploadMbPerSec:F2}MB/s");
         appendDetails?.Invoke();
         Debug.WriteLine(string.Empty);
     }
