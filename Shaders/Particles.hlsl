@@ -638,10 +638,9 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     if (kind == 1u)
     {
-        maxCount = MaxK1;
-        InterlockedAdd(PerKindCounters[1], 1u, slot);
-        if (slot < maxCount)
-            AliveK1.Append(i);
+        // Shell heads: keep simulated for fuse/detonation but do not render quads.
+        // (Skip alive append so they are invisible while trails remain.)
+        return;
     }
     else if (kind == 2u)
     {

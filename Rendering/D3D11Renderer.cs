@@ -323,10 +323,11 @@ public sealed class D3D11Renderer : IDisposable
 
         DrawCanisters(useInterpolatedState);
 
-        if (!ShellsGpuRendered)
-        {
-            DrawShells(useInterpolatedState);
-        }
+        // Shell meshes are visually redundant with the trails; hide them to avoid visible head/tail mismatch.
+        //if (!ShellsGpuRendered)
+        //{
+        //    DrawShells(useInterpolatedState);
+        //}
 
         DrawParticles(additive: true);
         DrawParticles(additive: false);
