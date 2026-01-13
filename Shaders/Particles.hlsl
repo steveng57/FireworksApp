@@ -1,4 +1,5 @@
 // Shaders/Particles.hlsl
+// GPU particle system: shells + sparks (burst) in a single structured buffer. (FinaleSpark shares Spark budget)
 // GPU particle system: shells + sparks (burst) in a single structured buffer.
 
 cbuffer FrameCB : register(b0)
@@ -44,25 +45,37 @@ struct Particle
 
 RWStructuredBuffer<Particle> Particles : register(u0);
 
-// Per-kind alive index append buffers (u1..u6)
+// Per-kind alive index append buffers (u1..u5)
+// FinaleSpark shares the Spark alive list (AliveK2) to reduce UAV count.
 AppendStructuredBuffer<uint> AliveK1 : register(u1); // Shell
-AppendStructuredBuffer<uint> AliveK2 : register(u2); // Spark
+AppendStructuredBuffer<uint> AliveK2 : register(u2); // Spark + FinaleSpark
 AppendStructuredBuffer<uint> AliveK3 : register(u3); // Smoke
 AppendStructuredBuffer<uint> AliveK4 : register(u4); // Crackle
 AppendStructuredBuffer<uint> AliveK5 : register(u5); // PopFlash
-AppendStructuredBuffer<uint> AliveK6 : register(u6); // FinaleSpark
 
-// Per-kind atomic counters for budget enforcement (u7)
-// Index 0=Dead(unused), 1=Shell, 2=Spark, 3=Smoke, 4=Crackle, 5=PopFlash, 6=FinaleSpark
-RWStructuredBuffer<uint> PerKindCounters : register(u7);
+struct DetonationEvent
+{
+    float3 Position;
+    float Fuse;      // fuse time used when spawned
+    float4 BaseColor;
+    uint ShellId;    // CPU-provided shell id to resolve burst params
+    uint3 _pad;
+};
+
+// Append buffer for detonation notifications (u7)
+AppendStructuredBuffer<DetonationEvent> Detonations : register(u7);
+
+// Per-kind atomic counters for budget enforcement (u6)
+// Index 0=Dead(unused), 1=Shell, 2=Spark(+Finale), 3=Smoke, 4=Crackle, 5=PopFlash
+RWStructuredBuffer<uint> PerKindCounters : register(u6);
 
 // Per-kind budgets (must match C# Tunables.ParticleBudgets)
 static const uint MaxK1 = 50000u;    // Shell
 static const uint MaxK2 = 2000000u;  // Spark
 static const uint MaxK3 = 100000u;   // Smoke
 static const uint MaxK4 = 500000u;   // Crackle
-static const uint MaxK5 = 50000u;    // PopFlash
-static const uint MaxK6 = 800000u;   // FinaleSpark
+static const uint MaxK5 = 50000u;    // PopFlash (FinaleSpark shares Spark budget)
+// FinaleSpark reuses Spark budget (MaxK2)
 
 static const float3 Gravity = float3(0.0f, -9.81f, 0.0f);
 static const float SmokeIntensity = 0.28f;
@@ -251,7 +264,7 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
         {
             uint dst = req.ParticleStart + i;
 
-            uint seed = req.Seed ^ (dst * 747796405u);
+            uint shellId = req.Seed;
 
             Particle p;
             p.Position = req.Origin;
@@ -263,7 +276,7 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
             p.Kind = 1u; // Shell
 
             p._pad.x = asuint(dragK);
-            p._pad.y = seed;
+            p._pad.y = shellId;
             p._pad.z = 0u;
 
             Particles[dst] = p;
@@ -375,6 +388,17 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
 
     if (p.Age >= p.Lifetime)
     {
+        if (p.Kind == 1u)
+        {
+            DetonationEvent ev;
+            ev.Position = p.Position;
+            ev.Fuse = p.Lifetime;
+            ev.BaseColor = p.BaseColor;
+            ev.ShellId = p._pad.y;
+            ev._pad = uint3(0, 0, 0);
+            Detonations.Append(ev);
+        }
+
         p.Kind = 0;
         p.Color = float4(0, 0, 0, 0);
         Particles[i] = p;
@@ -469,6 +493,16 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
         // Prevents smoke/crackle/etc rendering through the ground plane.
         if (p.Position.y < 0.0f)
         {
+            if (p.Kind == 1u)
+            {
+                DetonationEvent ev;
+                ev.Position = p.Position;
+                ev.Fuse = p.Lifetime;
+                ev.BaseColor = p.BaseColor;
+                ev.ShellId = p._pad.y;
+                ev._pad = uint3(0, 0, 0);
+                Detonations.Append(ev);
+            }
             p.Kind = 0;
             p.Color = float4(0, 0, 0, 0);
             Particles[i] = p;
@@ -639,10 +673,11 @@ void CSUpdate(uint3 tid : SV_DispatchThreadID)
     }
     else if (kind == 6u)
     {
-        maxCount = MaxK6;
-        InterlockedAdd(PerKindCounters[6], 1u, slot);
+        // FinaleSpark shares Spark budget and alive list.
+        maxCount = MaxK2;
+        InterlockedAdd(PerKindCounters[2], 1u, slot);
         if (slot < maxCount)
-            AliveK6.Append(i);
+            AliveK2.Append(i);
     }
 }
 

@@ -60,6 +60,18 @@ internal struct GpuParticle
 }
 
 [StructLayout(LayoutKind.Sequential)]
+public struct DetonationEvent
+{
+    public Vector3 Position;
+    public float Fuse;
+    public Vector4 BaseColor;
+    public uint ShellId;
+    public uint Pad0;
+    public uint Pad1;
+    public uint Pad2;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct FrameCBData
 {
     public Matrix4x4 ViewProjection;

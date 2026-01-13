@@ -63,6 +63,14 @@ internal sealed class ParticlesPipeline : IDisposable
     private ID3D11Buffer? _perKindCountersBuffer;
     private ID3D11UnorderedAccessView? _perKindCountersUAV;
 
+    // Detonation event buffer (append from GPU, read back on CPU)
+    private ID3D11Buffer? _detonationBuffer;
+    private ID3D11UnorderedAccessView? _detonationUAV;
+    private ID3D11Buffer? _detonationReadback;
+    private ID3D11Buffer? _detonationCountBuffer;
+    private ID3D11Buffer? _detonationCountReadback;
+    private int _detonationCapacity;
+
     private readonly Dictionary<ParticleKind, int> _totalDroppedByKind = new();
 
     private readonly List<GpuSpawnRequest> _pendingSpawnRequests = new();
@@ -72,15 +80,15 @@ internal sealed class ParticlesPipeline : IDisposable
     private readonly ID3D11UnorderedAccessView?[] _uavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
     private readonly uint[] _initialCounts = new uint[TotalUavSlots];
     private readonly ID3D11UnorderedAccessView?[] _nullUavs = new ID3D11UnorderedAccessView?[TotalUavSlots];
-    private static readonly uint[] s_counterZeros = new uint[7];
+    private static readonly uint[] s_counterZeros = new uint[6];
 
     private const string GpuSpawnEnvVar = "FIREWORKS_GPU_SPAWN";
 
     private static readonly ParticleKind[] s_allKinds =
-        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Smoke, ParticleKind.Crackle, ParticleKind.PopFlash];
 
     private static readonly ParticleKind[] s_kindsAdditive =
-        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash, ParticleKind.FinaleSpark];
+        [ParticleKind.Shell, ParticleKind.Spark, ParticleKind.Crackle, ParticleKind.PopFlash];
 
     private static readonly ParticleKind[] s_kindsAlpha =
         [ParticleKind.Smoke];
@@ -98,6 +106,54 @@ internal sealed class ParticlesPipeline : IDisposable
         set => _gpuSpawnEnabled = value;
     }
 
+    public int ReadDetonations(ID3D11DeviceContext context, Span<DetonationEvent> destination)
+    {
+        if (_detonationReadback is null || _detonationBuffer is null || _detonationCountBuffer is null || _detonationCountReadback is null)
+            return 0;
+
+        context.CopyResource(_detonationCountReadback, _detonationCountBuffer);
+
+        uint count;
+        var mappedCount = context.Map(_detonationCountReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                count = *(uint*)mappedCount.DataPointer;
+            }
+        }
+        finally
+        {
+            context.Unmap(_detonationCountReadback, 0);
+        }
+
+        if (count == 0 || destination.IsEmpty)
+            return 0;
+
+        int toCopy = (int)System.Math.Min((uint)destination.Length, count);
+
+        context.CopyResource(_detonationReadback, _detonationBuffer);
+
+        var mapped = context.Map(_detonationReadback, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                var src = (DetonationEvent*)mapped.DataPointer;
+                for (int i = 0; i < toCopy; i++)
+                {
+                    destination[i] = src[i];
+                }
+            }
+        }
+        finally
+        {
+            context.Unmap(_detonationReadback, 0);
+        }
+
+        return toCopy;
+    }
+
     public bool CanGpuSpawn => _gpuSpawnEnabled && _csSpawn is not null && _particleUAV is not null;
 
     private bool _enableCounterReadback = true;
@@ -108,6 +164,7 @@ internal sealed class ParticlesPipeline : IDisposable
     }
 
     private ID3D11Buffer? _perKindCountersReadback;
+
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GpuSpawnRequest
@@ -774,7 +831,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 Usage = ResourceUsage.Default,
                 CPUAccessFlags = CpuAccessFlags.None,
                 MiscFlags = ResourceOptionFlags.BufferStructured,
-                ByteWidth = sizeof(uint) * 7,
+                ByteWidth = sizeof(uint) * 6,
                 StructureByteStride = sizeof(uint)
             });
 
@@ -786,7 +843,7 @@ internal sealed class ParticlesPipeline : IDisposable
                 Buffer = new BufferUnorderedAccessView
                 {
                     FirstElement = 0,
-                    NumElements = 7
+                    NumElements = 6
                 }
             });
 
@@ -800,6 +857,64 @@ internal sealed class ParticlesPipeline : IDisposable
                 ByteWidth = sizeof(uint) * 7,
                 StructureByteStride = sizeof(uint)
             });
+
+        // Detonation buffer: append-only from GPU, read back on CPU each frame.
+        _detonationCapacity = Tunables.ParticleBudgets.Shell;
+
+        _detonationBuffer?.Dispose();
+        _detonationBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.UnorderedAccess,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.BufferStructured,
+            ByteWidth = (uint)(Marshal.SizeOf<DetonationEvent>() * _detonationCapacity),
+            StructureByteStride = (uint)Marshal.SizeOf<DetonationEvent>()
+        });
+
+        _detonationUAV?.Dispose();
+        _detonationUAV = device.CreateUnorderedAccessView(_detonationBuffer, new UnorderedAccessViewDescription
+        {
+            ViewDimension = UnorderedAccessViewDimension.Buffer,
+            Format = Format.Unknown,
+            Buffer = new BufferUnorderedAccessView
+            {
+                FirstElement = 0,
+                NumElements = (uint)_detonationCapacity,
+                Flags = BufferUnorderedAccessViewFlags.Append
+            }
+        });
+
+        _detonationReadback?.Dispose();
+        _detonationReadback = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = (uint)(Marshal.SizeOf<DetonationEvent>() * _detonationCapacity),
+            StructureByteStride = (uint)Marshal.SizeOf<DetonationEvent>()
+        });
+
+        _detonationCountBuffer?.Dispose();
+        _detonationCountBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Default,
+            CPUAccessFlags = CpuAccessFlags.None,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = sizeof(uint)
+        });
+
+        _detonationCountReadback?.Dispose();
+        _detonationCountReadback = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.None,
+            Usage = ResourceUsage.Staging,
+            CPUAccessFlags = CpuAccessFlags.Read,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = sizeof(uint)
+        });
         }
 
     public void Update(ID3D11DeviceContext context, Matrix4x4 view, Matrix4x4 proj, Vector3 schemeTint, float scaledDt)
@@ -859,8 +974,14 @@ internal sealed class ParticlesPipeline : IDisposable
             }
         }
 
-        _uavs[7] = _perKindCountersUAV;
-        _initialCounts[7] = uint.MaxValue;
+        _uavs[6] = _perKindCountersUAV;
+        _initialCounts[6] = uint.MaxValue;
+
+        if (_detonationUAV is not null)
+        {
+            _uavs[7] = _detonationUAV;
+            _initialCounts[7] = 0;
+        }
 
         context.CSSetShader(_cs);
         context.CSSetConstantBuffer(0, _frameCB);
@@ -888,13 +1009,17 @@ internal sealed class ParticlesPipeline : IDisposable
                     _lastAliveCountByKind[ParticleKind.Smoke] = (int)src[3];
                     _lastAliveCountByKind[ParticleKind.Crackle] = (int)src[4];
                     _lastAliveCountByKind[ParticleKind.PopFlash] = (int)src[5];
-                    _lastAliveCountByKind[ParticleKind.FinaleSpark] = (int)src[6];
                 }
             }
             finally
             {
                 context.Unmap(_perKindCountersReadback, 0);
             }
+        }
+
+        if (_detonationCountBuffer is not null && _detonationUAV is not null)
+        {
+            context.CopyStructureCount(_detonationCountBuffer, 0, _detonationUAV);
         }
 
         // GPU-driven draw args (no CPU readback): write alive instance counts into each args buffer.

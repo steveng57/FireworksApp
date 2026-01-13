@@ -113,6 +113,14 @@ public sealed class D3D11Renderer : IDisposable
 
     public bool ShellsGpuRendered => _particlesPipeline.CanGpuSpawn;
 
+    public int ReadDetonations(Span<DetonationEvent> destination)
+    {
+        if (_context is null)
+            return 0;
+
+        return _particlesPipeline.ReadDetonations(_context, destination);
+    }
+
     private static GpuParticle[] RentParticleArray(int count)
         => count <= 0 ? Array.Empty<GpuParticle>() : s_particleArrayPool.Rent(count);
 
@@ -342,7 +350,7 @@ public sealed class D3D11Renderer : IDisposable
         _hasInterpolatedState = false;
     }
 
-    public bool QueueShellGpu(Vector3 position, Vector3 velocity, float fuseSeconds, float dragK, Vector4 baseColor)
+    public bool QueueShellGpu(Vector3 position, Vector3 velocity, float fuseSeconds, float dragK, Vector4 baseColor, uint shellId)
     {
         if (_context is null || !_particlesPipeline.CanGpuSpawn)
             return false;
@@ -356,7 +364,7 @@ public sealed class D3D11Renderer : IDisposable
             fuseSeconds,
             dragK,
             baseColor,
-            (uint)_rng.Next());
+            shellId);
 
         if (!queued)
             return false;
@@ -829,7 +837,11 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null)
             return;
 
-        int count = System.Math.Clamp(directions.Length, 1, _particleCapacity);
+        int dirCount = directions.Length;
+        if (dirCount <= 0)
+            return;
+
+        int count = System.Math.Min(dirCount, _particleCapacity);
         int start = _particleWriteCursor;
 
         // Prefer GPU spawn to reduce CPU-GPU contention; fallback to CPU path if unavailable.
