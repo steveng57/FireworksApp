@@ -284,10 +284,6 @@ public sealed class D3D11Renderer : IDisposable
         if (scaledDt > 0.05f)
             scaledDt = 0.05f;
 
-        if (!ShellsGpuRendered)
-        {
-            SpawnShellTrails(scaledDt);
-        }
         UpdateParticles(scaledDt);
 
         // Always update camera + scene constants; smoothing uses scaledDt.
