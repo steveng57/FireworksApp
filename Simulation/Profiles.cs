@@ -717,6 +717,7 @@ public static class ProfileValidator
         DetectShellSubshellCycles(shells, subshells);
 
         LogSummary(profileSet);
+        LogDetails(profileSet);
     }
 
     private static void DetectShellSubshellCycles(
@@ -810,6 +811,41 @@ public static class ProfileValidator
     {
         ArgumentNullException.ThrowIfNull(profileSet);
         Debug.WriteLine($"[Profiles] Canisters={profileSet.Canisters.Count}, Shells={profileSet.Shells.Count}, SubShells={profileSet.SubShells.Count}, GroundEffects={profileSet.GroundEffects.Count}, ColorSchemes={profileSet.ColorSchemes.Count}");
+    }
+
+    [Conditional("DEBUG")]
+    public static void LogDetails(FireworksProfileSet profileSet)
+    {
+        ArgumentNullException.ThrowIfNull(profileSet);
+
+        var shapeCounts = new Dictionary<FireworkBurstShape, int>();
+        foreach (var shell in profileSet.Shells.Values)
+        {
+            var shape = shell.BurstShape;
+            shapeCounts[shape] = shapeCounts.TryGetValue(shape, out var n) ? n + 1 : 1;
+        }
+
+        var groundTypeCounts = new Dictionary<GroundEffectType, int>();
+        foreach (var ge in profileSet.GroundEffects.Values)
+        {
+            var type = ge.Type;
+            groundTypeCounts[type] = groundTypeCounts.TryGetValue(type, out var n) ? n + 1 : 1;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("[Profiles] Shapes:");
+        foreach (var kvp in shapeCounts)
+        {
+            sb.Append(' ').Append(kvp.Key).Append('=').Append(kvp.Value).Append(';');
+        }
+
+        sb.Append(" GroundTypes:");
+        foreach (var kvp in groundTypeCounts)
+        {
+            sb.Append(' ').Append(kvp.Key).Append('=').Append(kvp.Value).Append(';');
+        }
+
+        Debug.WriteLine(sb.ToString());
     }
 }
 
