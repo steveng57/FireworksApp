@@ -137,34 +137,15 @@ public sealed class D3D11Renderer : IDisposable
 
     private Vector3 _schemeTint = Vector3.One;
 
-    // Simple orbit camera (around origin)
-    private CameraProfile _cameraProfile = CameraProfiles.Standard;
-    private float _cameraYaw;
-    private float _cameraPitch;
-    private float _cameraDistance;
-    private bool _cameraDirty = true;
-
-    private float _cameraYawTarget;
-    private float _cameraPitchTarget;
-    private float _cameraDistanceTarget;
-
-    private Vector3 _cameraTarget;
-    
-    // Smoothed camera state for nicer motion
-    private Vector3 _cameraTargetSmoothed;
-    private float _cameraDistanceSmoothed;
-    private float _orbitAngle;
-    private float _orbitUserOffset;
-    private float _orbitUserOffsetTarget;
-
+    private readonly CameraController _camera = new();
     public Vector3 CameraPosition { get; private set; }
-    
+
 
     public D3D11Renderer(nint hwnd)
     {
         _hwnd = hwnd;
         _deviceResources = new DeviceResources(hwnd);
-        SetCameraProfile(CameraProfiles.AerialOrbit);
+        _camera.SetProfile(CameraProfiles.AerialOrbit);
     }
 
     private static Vector3[] CreateUnitVectorTable()
@@ -243,46 +224,17 @@ public sealed class D3D11Renderer : IDisposable
 
     public void OnMouseDrag(float deltaX, float deltaY)
     {
-        // radians per pixel (tune later)
-        const float sensitivity = 0.01f;
-        if (_cameraProfile.Kind == CameraProfileKind.AerialOrbit)
-        {
-            _orbitUserOffsetTarget += deltaX * sensitivity;
-        }
-        else
-        {
-            _cameraYawTarget += deltaX * sensitivity;
-        }
-        _cameraPitchTarget += deltaY * sensitivity;
-
-        // clamp pitch to avoid flipping
-        _cameraPitchTarget = System.Math.Clamp(_cameraPitchTarget, -1.2f, 1.2f);
-        _cameraDirty = true;
+        _camera.OnMouseDrag(deltaX, deltaY);
     }
 
     public void OnMouseWheel(float delta)
     {
-        // WPF delta is typically 120 per notch
-        _cameraDistanceTarget *= (float)System.Math.Pow(0.9, delta / 120.0);
-        _cameraDistanceTarget = System.Math.Clamp(_cameraDistanceTarget, 5.0f, 450.0f);
-        _cameraDirty = true;
+        _camera.OnMouseWheel(delta);
     }
 
     public void PanCamera(float deltaX, float deltaY)
     {
-        if (!_cameraProfile.AllowPan)
-            return;
-
-        // World-units per pixel (tune later). Scale by distance so panning feels consistent.
-        float k = 0.0025f * _cameraDistance;
-
-        // Right and up vectors from current view matrix (world-space).
-        // view is orthonormal: right = (M11,M21,M31), up=(M12,M22,M32)
-        var right = new Vector3(_view.M11, _view.M21, _view.M31);
-        var up = new Vector3(_view.M12, _view.M22, _view.M32);
-
-        _cameraTarget += (-right * deltaX + up * deltaY) * k;
-        _cameraDirty = true;
+        _camera.Pan(deltaX, deltaY);
     }
 
     public void Render(float scaledDt)
@@ -308,12 +260,6 @@ public sealed class D3D11Renderer : IDisposable
         // Explicit per-frame state (avoid state leakage as the frame grows)
         _context.RSSetViewport(new Viewport(0, 0, _width, _height, 0.0f, 1.0f));
 
-
-        if (_cameraDirty)
-        {
-            UpdateSceneConstants(0.0f);
-            _cameraDirty = false;
-        }
 
         // Explicit per-frame state (avoid state leakage as the frame grows)
         _context.RSSetViewport(new Viewport(0, 0, _width, _height, 0.0f, 1.0f));
@@ -450,33 +396,12 @@ public sealed class D3D11Renderer : IDisposable
 
     public void SetCameraProfile(string profileId)
     {
-        if (string.IsNullOrWhiteSpace(profileId))
-            throw new ArgumentException("profileId is required", nameof(profileId));
-
-        if (!CameraProfiles.All.TryGetValue(profileId, out var profile))
-            throw new ArgumentException($"Unknown camera profile '{profileId}'", nameof(profileId));
-
-        SetCameraProfile(profile);
+        _camera.SetProfile(profileId);
     }
 
     public void SetCameraProfile(CameraProfile profile)
     {
-        ArgumentNullException.ThrowIfNull(profile);
-
-        _cameraProfile = profile;
-        _cameraTarget = new Vector3(0.0f, profile.TargetHeightMeters, 0.0f);
-        _cameraTargetSmoothed = _cameraTarget;
-        _cameraDistance = profile.DefaultDistanceMeters;
-        _cameraDistanceTarget = profile.DefaultDistanceMeters;
-        _cameraDistanceSmoothed = profile.DefaultDistanceMeters;
-        _cameraPitch = profile.DefaultPitchRadians;
-        _cameraPitchTarget = profile.DefaultPitchRadians;
-        _cameraYaw = 0.0f;
-        _cameraYawTarget = 0.0f;
-        _orbitAngle = 0.0f;
-        _orbitUserOffset = 0.0f;
-        _orbitUserOffsetTarget = 0.0f;
-        _cameraDirty = true;
+        _camera.SetProfile(profile);
     }
 
     private static uint PackFloat(float value)
@@ -1339,99 +1264,13 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || _sceneCB is null)
             return;
 
-        float aspect = _height > 0 ? (float)_width / _height : 1.0f;
+        _camera.Update(dt, _width, _height);
 
-        var up = Vector3.UnitY;
+        _view = _camera.View;
+        _proj = _camera.Projection;
+        CameraPosition = _camera.Position;
 
-        if (!_cameraProfile.AllowPan)
-        {
-            _cameraTarget = new Vector3(0.0f, _cameraProfile.TargetHeightMeters, 0.0f);
-        }
-
-        // Smooth input-driven camera controls (yaw/pitch/distance/orbit offset).
-        if (dt <= 0.0f)
-        {
-            _cameraYaw = _cameraYawTarget;
-            _cameraPitch = _cameraPitchTarget;
-            _cameraDistance = _cameraDistanceTarget;
-            _orbitUserOffset = _orbitUserOffsetTarget;
-        }
-        else
-        {
-            const float angleSmoothSpeed = 7.5f;
-            const float distanceSmoothSpeed = 6.0f;
-            float angleT = 1.0f - (float)System.Math.Exp(-angleSmoothSpeed * dt);
-            float distT = 1.0f - (float)System.Math.Exp(-distanceSmoothSpeed * dt);
-
-            _cameraYaw += (_cameraYawTarget - _cameraYaw) * angleT;
-            _cameraPitch += (_cameraPitchTarget - _cameraPitch) * angleT;
-            _cameraDistance += (_cameraDistanceTarget - _cameraDistance) * distT;
-            _orbitUserOffset += (_orbitUserOffsetTarget - _orbitUserOffset) * angleT;
-        }
-
-        // Smooth follow of target and distance so camera motion is less jerky.
-        // When dt <= 0 (e.g., during initialization / resize) snap directly.
-        if (dt <= 0.0f)
-        {
-            _cameraTargetSmoothed = _cameraTarget;
-            _cameraDistanceSmoothed = _cameraDistance;
-        }
-        else
-        {
-            const float followSpeed = 5.0f;
-            const float zoomSpeed = 5.0f;
-
-            float followT = 1.0f - (float)System.Math.Exp(-followSpeed * dt);
-            float zoomT = 1.0f - (float)System.Math.Exp(-zoomSpeed * dt);
-
-            // Clamp interpolation factors into [0,1] in case of extreme dt values.
-            if (followT < 0.0f) followT = 0.0f;
-            if (followT > 1.0f) followT = 1.0f;
-            if (zoomT < 0.0f) zoomT = 0.0f;
-            if (zoomT > 1.0f) zoomT = 1.0f;
-
-            _cameraTargetSmoothed = Vector3.Lerp(_cameraTargetSmoothed, _cameraTarget, followT);
-            _cameraDistanceSmoothed = _cameraDistanceSmoothed + (_cameraDistance - _cameraDistanceSmoothed) * zoomT;
-        }
-
-        float yaw;
-        if (_cameraProfile.Kind == CameraProfileKind.AerialOrbit)
-        {
-            if (dt > 0.0f)
-            {
-                _orbitAngle += _cameraProfile.OrbitSpeedRadiansPerSecond * dt; // Align with new smoothing values
-                const float twoPi = (float)(System.Math.PI * 2.0);
-                if (_orbitAngle > twoPi || _orbitAngle < -twoPi)
-                    _orbitAngle = System.MathF.IEEERemainder(_orbitAngle, twoPi);
-            }
-
-            yaw = _orbitAngle + _orbitUserOffset; // Align with new smoothing values
-        }
-        else
-        {
-            yaw = _cameraYaw;
-        }
-
-        float cy = (float)System.Math.Cos(yaw);
-        float sy = (float)System.Math.Sin(yaw);
-        float cp = (float)System.Math.Cos(_cameraPitch);
-        float sp = (float)System.Math.Sin(_cameraPitch);
-
-        // Spherical coordinates: forward is +Z
-        var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistanceSmoothed;
-
-        var target = _cameraTargetSmoothed;
-        var eye = target + eyeOffset;
-
-        CameraPosition = eye;
-
-        _view = Matrix4x4.CreateLookAt(eye, target, up);
-        // Use clip planes suitable for ~500m fireworks scenes.
-        _proj = Matrix4x4.CreatePerspectiveFieldOfView((float)(System.Math.PI / 4.0), aspect, 1.0f, 2000.0f);
         var world = Matrix4x4.Identity;
-
-        // HLSL expects column-major by default; System.Numerics uses row-major.
-        // Transpose so mul(position, WorldViewProjection) matches.
         var wvp = Matrix4x4.Transpose(world * _view * _proj);
 
         var scene = new SceneCBData
@@ -1477,7 +1316,7 @@ public sealed class D3D11Renderer : IDisposable
         _context.RSSetViewport(new Viewport(0, 0, width, height, 0.0f, 1.0f));
 
         // aspect changed
-        _cameraDirty = true;
+        _camera.MarkDirty();
     }
 
     private void LoadPadShadersAndGeometry()

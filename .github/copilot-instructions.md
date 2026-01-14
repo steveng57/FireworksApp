@@ -1,7 +1,7 @@
 # Copilot Instructions — FireworksApp
 
 ## General Guidelines
-- Avoid using terminal/PowerShell for edits; always use Visual Studio tooling instead.
+- Never use terminal/PowerShell for edits; always use Visual Studio tooling instead.  If Visual Studio tooling does not work, wait a bit and try again.  If that still does not work, ask for humand assistance.
 
 - You are working in an existing C#/.NET desktop app that renders a real-time fireworks 
 simulation using:
