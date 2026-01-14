@@ -178,7 +178,7 @@ public static class DefaultProfiles
             ["horsetail_gold"] = ShellPresets.Create(
                 id: "horsetail_gold",
                 burstShape: FireworkBurstShape.Horsetail,
-                colorSchemeId: "Gold",
+                colorSchemeId: "gold",
                 fuseTimeSeconds: 3.2f,             // whatever works with your canister
                 explosionRadius: 45.0f,
                 particleCount: 4000,
@@ -586,7 +586,9 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        return new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        ProfileValidator.Validate(profileSet);
+        return profileSet;
     }
 }
 
