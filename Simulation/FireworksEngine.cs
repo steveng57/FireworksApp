@@ -85,6 +85,7 @@ public sealed class FireworksEngine
     private readonly DetonationEvent[] _detonationBuffer = new DetonationEvent[Tunables.ParticleBudgets.Shell];
     private uint _nextShellId = 1;
     private readonly Random _rng = new();
+    private readonly ColorScheme? _defaultColorScheme;
 
     private ShowScript _show = ShowScript.Empty;
     private int _nextEventIndex;
@@ -99,8 +100,10 @@ public sealed class FireworksEngine
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
+        ArgumentNullException.ThrowIfNull(profiles);
         Tunables.Validate();
         _profiles = profiles;
+        _defaultColorScheme = ResolveDefaultColorScheme(_profiles.ColorSchemes);
         _canisters = profiles.Canisters.Values.Select(cp => new Canister(cp)).ToList();
     }
 
@@ -628,7 +631,7 @@ public sealed class FireworksEngine
 
         var schemeId = subProfile.ColorSchemeId ?? shellProfile.ColorSchemeId;
         if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var scheme))
-            scheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+            scheme = _defaultColorScheme;
 
         if (scheme is null)
             return false;
@@ -657,6 +660,20 @@ public sealed class FireworksEngine
         }
 
         return true;
+    }
+
+    private static ColorScheme? ResolveDefaultColorScheme(IReadOnlyDictionary<string, ColorScheme> colorSchemes)
+    {
+        if (colorSchemes.TryGetValue("white", out var white))
+            return white;
+
+        if (colorSchemes.TryGetValue("warm", out var warm))
+            return warm;
+
+        foreach (var kvp in colorSchemes)
+            return kvp.Value;
+
+        return null;
     }
 
     private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)
