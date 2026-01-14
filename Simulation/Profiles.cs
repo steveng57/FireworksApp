@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Windows.Media;
 
@@ -21,6 +22,110 @@ public enum FireworkBurstShape
     SubShellSpokeWheelPop
 }
 
+public static class GroundEffectPresets
+{
+    public static GroundEffectProfile Spinner(
+        string id,
+        ColorSchemeId colorSchemeId,
+        float durationSeconds,
+        float emissionRate,
+        Vector2 particleVelocityRange,
+        float particleLifetimeSeconds,
+        float gravityFactor,
+        float brightnessScalar,
+        float heightOffsetMeters,
+        float angularVelocityRadiansPerSec,
+        float emissionRadius,
+        Vector3 spinnerAxis,
+        float smokeAmount) => new(
+            Id: id,
+            Type: GroundEffectType.Spinner,
+            ColorSchemeId: colorSchemeId,
+            DurationSeconds: durationSeconds,
+            EmissionRate: emissionRate,
+            ParticleVelocityRange: particleVelocityRange,
+            ParticleLifetimeSeconds: particleLifetimeSeconds,
+            GravityFactor: gravityFactor,
+            BrightnessScalar: brightnessScalar,
+            HeightOffsetMeters: heightOffsetMeters,
+            ConeAngleDegrees: 35.0f,
+            FlickerIntensity: 0.08f,
+            AngularVelocityRadiansPerSec: angularVelocityRadiansPerSec,
+            EmissionRadius: emissionRadius,
+            SpinnerAxis: spinnerAxis,
+            SmokeAmount: smokeAmount);
+
+    public static GroundEffectProfile Fountain(
+        string id,
+        ColorSchemeId colorSchemeId,
+        float durationSeconds,
+        float emissionRate,
+        Vector2 particleVelocityRange,
+        float particleLifetimeSeconds,
+        float gravityFactor,
+        float brightnessScalar,
+        float coneAngleDegrees,
+        float flickerIntensity,
+        float smokeAmount) => new(
+            Id: id,
+            Type: GroundEffectType.Fountain,
+            ColorSchemeId: colorSchemeId,
+            DurationSeconds: durationSeconds,
+            EmissionRate: emissionRate,
+            ParticleVelocityRange: particleVelocityRange,
+            ParticleLifetimeSeconds: particleLifetimeSeconds,
+            GravityFactor: gravityFactor,
+            BrightnessScalar: brightnessScalar,
+            ConeAngleDegrees: coneAngleDegrees,
+            FlickerIntensity: flickerIntensity,
+            SmokeAmount: smokeAmount);
+}
+
+public readonly record struct ShellId
+{
+    public string Value { get; }
+
+    public ShellId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(ShellId id) => id.Value;
+    public static implicit operator ShellId(string value) => new(value);
+}
+
+public readonly record struct SubShellId
+{
+    public string Value { get; }
+
+    public SubShellId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(SubShellId id) => id.Value;
+    public static implicit operator SubShellId(string value) => new(value);
+}
+
+public readonly record struct ColorSchemeId
+{
+    public string Value { get; }
+
+    public ColorSchemeId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(ColorSchemeId id) => id.Value;
+    public static implicit operator ColorSchemeId(string value) => new(value);
+}
+
 public sealed record CometParams(
     int CometCount,
     float CometSpeedMin,
@@ -34,7 +139,7 @@ public sealed record CometParams(
     float TrailSpeed,
     float TrailSmokeChance,
     Vector4? TrailColor,
-    string? SubShellProfileId = null,
+    SubShellId? SubShellProfileId = null,
     float? SubShellDelaySeconds = null)
 {
     public static CometParams Defaults { get; } = new(
@@ -186,12 +291,12 @@ public sealed record class CanisterProfile(
     string CanisterTypeId,
     Vector2 Position,
     Vector3 LaunchDirection,
-    string DefaultShellProfileId);
+    ShellId DefaultShellProfileId);
 
 public sealed record class FireworkShellProfile(
     string Id,
     FireworkBurstShape BurstShape,
-    string ColorSchemeId,
+    ColorSchemeId ColorSchemeId,
     float FuseTimeSeconds,
     float ExplosionRadius,
     int ParticleCount,
@@ -257,7 +362,7 @@ public sealed record PeonyToWillowParams(
     float HandoffDelaySeconds,
     float HandoffFraction,
     float HandoffRandomness,
-    string WillowSubshellProfileId,
+    SubShellId WillowSubshellProfileId,
     float WillowVelocityScale,
     float WillowGravityMultiplier,
     float WillowDragMultiplier,
@@ -274,7 +379,7 @@ public sealed record PeonyToWillowParams(
         HandoffDelaySeconds: 0.45f,
         HandoffFraction: 0.55f,
         HandoffRandomness: 0.15f,
-        WillowSubshellProfileId: "subshell_basic_pop",
+        WillowSubshellProfileId: new SubShellId("subshell_basic_pop"),
         WillowVelocityScale: 0.45f,
         WillowGravityMultiplier: 2.2f,
         WillowDragMultiplier: 2.4f,
@@ -287,7 +392,7 @@ public sealed record PeonyToWillowParams(
 public sealed record class GroundEffectProfile(
     string Id,
     GroundEffectType Type,
-    string ColorSchemeId,
+    ColorSchemeId ColorSchemeId,
     float DurationSeconds,
     float EmissionRate,
     Vector2 ParticleVelocityRange,
@@ -410,6 +515,340 @@ public sealed record class ColorScheme(
     }
 }
 
+public static class SubShellPresets
+{
+    public static SubShellProfile Sphere(
+        string id,
+        ShellId shellProfileId,
+        int count,
+        float minAltitudeToSpawn,
+        float delaySeconds = 0.15f,
+        float inheritParentVelocity = 0.2f,
+        float addedSpeed = 18.0f,
+        float directionJitter = 0.08f,
+        float speedJitter = 0.25f,
+        float positionJitter = 0.6f,
+        float childTimeScale = 1.0f,
+        ColorSchemeId? colorSchemeId = null,
+        FireworkBurstShape? burstShapeOverride = null,
+        int maxSubshellDepth = 1) => new(
+            Id: id,
+            ShellProfileId: shellProfileId,
+            Count: count,
+            SpawnMode: SubShellSpawnMode.Sphere,
+            DelaySeconds: delaySeconds,
+            InheritParentVelocity: inheritParentVelocity,
+            AddedSpeed: addedSpeed,
+            DirectionJitter: directionJitter,
+            SpeedJitter: speedJitter,
+            PositionJitter: positionJitter,
+            ChildTimeScale: childTimeScale,
+            ColorSchemeId: colorSchemeId,
+            BurstShapeOverride: burstShapeOverride,
+            MinAltitudeToSpawn: minAltitudeToSpawn,
+            MaxSubshellDepth: maxSubshellDepth);
+
+    public static SubShellProfile Ring(
+        string id,
+        ShellId shellProfileId,
+        int count,
+        float minAltitudeToSpawn,
+        float delaySeconds = 0.10f,
+        float inheritParentVelocity = 0.1f,
+        float addedSpeed = 12.0f,
+        float directionJitter = 0.05f,
+        float speedJitter = 0.20f,
+        float positionJitter = 0.4f,
+        float childTimeScale = 1.0f,
+        ColorSchemeId? colorSchemeId = null,
+        FireworkBurstShape? burstShapeOverride = null,
+        int maxSubshellDepth = 1) => new(
+            Id: id,
+            ShellProfileId: shellProfileId,
+            Count: count,
+            SpawnMode: SubShellSpawnMode.Ring,
+            DelaySeconds: delaySeconds,
+            InheritParentVelocity: inheritParentVelocity,
+            AddedSpeed: addedSpeed,
+            DirectionJitter: directionJitter,
+            SpeedJitter: speedJitter,
+            PositionJitter: positionJitter,
+            ChildTimeScale: childTimeScale,
+            ColorSchemeId: colorSchemeId,
+            BurstShapeOverride: burstShapeOverride,
+            MinAltitudeToSpawn: minAltitudeToSpawn,
+            MaxSubshellDepth: maxSubshellDepth);
+}
+
+public static class FireworkShellDefaults
+{
+    public const int TrailParticleCount = 12;
+    public const float TrailParticleLifetimeSeconds = 0.6f;
+    public const float TrailSpeed = 5.0f;
+    public const float TrailSmokeChance = 0.2f;
+    public const float BurstSparkleRateHz = 0.0f;
+    public const float BurstSparkleIntensity = 0.0f;
+}
+
+public readonly record struct ShellTrailParams(int Count, float LifetimeSeconds, float Speed, float SmokeChance);
+
+public static class ShellTrailPresets
+{
+    public static ShellTrailParams Default => new(
+        Count: FireworkShellDefaults.TrailParticleCount,
+        LifetimeSeconds: FireworkShellDefaults.TrailParticleLifetimeSeconds,
+        Speed: FireworkShellDefaults.TrailSpeed,
+        SmokeChance: FireworkShellDefaults.TrailSmokeChance);
+
+    public static ShellTrailParams ShortBright => new(
+        Count: 10,
+        LifetimeSeconds: 0.5f,
+        Speed: 4.0f,
+        SmokeChance: 0.15f);
+
+    public static ShellTrailParams WillowLingering => new(
+        Count: 12,
+        LifetimeSeconds: 0.8f,
+        Speed: 5.0f,
+        SmokeChance: 0.2f);
+}
+
+public static class ShellPresets
+{
+    public static FireworkShellProfile Create(
+        string id,
+        FireworkBurstShape burstShape,
+        ColorSchemeId colorSchemeId,
+        float fuseTimeSeconds,
+        float explosionRadius,
+        int particleCount,
+        float particleLifetimeSeconds,
+        float? burstSpeed = null,
+        float? burstSparkleRateHz = null,
+        float? burstSparkleIntensity = null,
+        bool suppressBurst = false,
+        float terminalFadeOutSeconds = 0.0f,
+        int? trailParticleCount = null,
+        float? trailParticleLifetimeSeconds = null,
+        float? trailSpeed = null,
+        float? trailSmokeChance = null,
+        Vector3? ringAxis = null,
+        float ringAxisRandomTiltDegrees = 0.0f,
+        BurstEmissionSettings? emission = null,
+        FinaleSaluteParams? finaleSalute = null,
+        CometParams? comet = null,
+        PeonyToWillowParams? peonyToWillow = null,
+        SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null) => new(
+            Id: id,
+            BurstShape: burstShape,
+            ColorSchemeId: colorSchemeId,
+            FuseTimeSeconds: fuseTimeSeconds,
+            ExplosionRadius: explosionRadius,
+            ParticleCount: particleCount,
+            ParticleLifetimeSeconds: particleLifetimeSeconds,
+            BurstSpeed: burstSpeed,
+            BurstSparkleRateHz: burstSparkleRateHz ?? FireworkShellDefaults.BurstSparkleRateHz,
+            BurstSparkleIntensity: burstSparkleIntensity ?? FireworkShellDefaults.BurstSparkleIntensity,
+            SuppressBurst: suppressBurst,
+            TerminalFadeOutSeconds: terminalFadeOutSeconds,
+            TrailParticleCount: trailParticleCount ?? FireworkShellDefaults.TrailParticleCount,
+            TrailParticleLifetimeSeconds: trailParticleLifetimeSeconds ?? FireworkShellDefaults.TrailParticleLifetimeSeconds,
+            TrailSpeed: trailSpeed ?? FireworkShellDefaults.TrailSpeed,
+            TrailSmokeChance: trailSmokeChance ?? FireworkShellDefaults.TrailSmokeChance,
+            RingAxis: ringAxis,
+            RingAxisRandomTiltDegrees: ringAxisRandomTiltDegrees,
+            Emission: emission,
+            FinaleSalute: finaleSalute,
+            Comet: comet,
+            PeonyToWillow: peonyToWillow,
+            SubShellSpokeWheelPop: subShellSpokeWheelPop);
+}
+
+public static class ProfileValidator
+{
+    public static void Validate(FireworksProfileSet profileSet)
+    {
+        ArgumentNullException.ThrowIfNull(profileSet);
+
+        var shells = profileSet.Shells;
+        var subshells = profileSet.SubShells;
+        var colorSchemes = profileSet.ColorSchemes;
+
+        foreach (var canister in profileSet.Canisters.Values)
+        {
+            EnsureExists(shells, canister.DefaultShellProfileId, $"Canister {canister.Id} references missing shell profile");
+        }
+
+        foreach (var shell in shells.Values)
+        {
+            EnsureExists(colorSchemes, shell.ColorSchemeId, $"Shell {shell.Id} references missing color scheme");
+
+            if (shell.PeonyToWillow is { } peonyToWillow)
+            {
+                EnsureExists(subshells, peonyToWillow.WillowSubshellProfileId, $"Shell {shell.Id} references missing subshell profile {peonyToWillow.WillowSubshellProfileId}");
+            }
+
+            if (shell.Comet is { SubShellProfileId: { } cometSubshell })
+            {
+                EnsureExists(subshells, cometSubshell, $"Shell {shell.Id} comet references missing subshell profile {cometSubshell}");
+            }
+
+            if (shell.SubShellSpokeWheelPop is { PopFlashColorSchemeId: { } popFlashScheme })
+            {
+                EnsureExists(colorSchemes, popFlashScheme, $"Shell {shell.Id} spoke pop references missing color scheme {popFlashScheme}");
+            }
+        }
+
+        foreach (var subshell in subshells.Values)
+        {
+            EnsureExists(shells, subshell.ShellProfileId, $"Subshell {subshell.Id} references missing shell profile {subshell.ShellProfileId}");
+
+            if (subshell.ColorSchemeId is { } subshellScheme)
+            {
+                EnsureExists(colorSchemes, subshellScheme, $"Subshell {subshell.Id} references missing color scheme {subshellScheme}");
+            }
+        }
+
+        foreach (var groundEffect in profileSet.GroundEffects.Values)
+        {
+            EnsureExists(colorSchemes, groundEffect.ColorSchemeId, $"Ground effect {groundEffect.Id} references missing color scheme");
+        }
+
+        DetectShellSubshellCycles(shells, subshells);
+
+        LogSummary(profileSet);
+        LogDetails(profileSet);
+    }
+
+    private static void DetectShellSubshellCycles(
+        IReadOnlyDictionary<string, FireworkShellProfile> shells,
+        IReadOnlyDictionary<string, SubShellProfile> subshells)
+    {
+        var adjacency = new Dictionary<string, List<string>>();
+
+        static string ShellNode(string id) => $"shell:{id}";
+        static string SubshellNode(string id) => $"subshell:{id}";
+
+        void AddEdge(string from, string to)
+        {
+            if (!adjacency.TryGetValue(from, out var list))
+            {
+                list = new List<string>();
+                adjacency[from] = list;
+            }
+            list.Add(to);
+        }
+
+        foreach (var shell in shells.Values)
+        {
+            var shellNode = ShellNode(shell.Id);
+
+            if (shell.PeonyToWillow is { } peonyToWillow)
+            {
+                AddEdge(shellNode, SubshellNode(peonyToWillow.WillowSubshellProfileId));
+            }
+
+            if (shell.Comet is { SubShellProfileId: { } cometSubshell })
+            {
+                AddEdge(shellNode, SubshellNode(cometSubshell));
+            }
+        }
+
+        foreach (var subshell in subshells.Values)
+        {
+            AddEdge(SubshellNode(subshell.Id), ShellNode(subshell.ShellProfileId));
+        }
+
+        var visited = new HashSet<string>();
+        var stack = new Stack<string>();
+        var inPath = new HashSet<string>();
+
+        void Dfs(string node)
+        {
+            if (!inPath.Add(node))
+            {
+                throw new InvalidOperationException($"Cycle detected in shell/subshell references: {string.Join(" -> ", stack.Reverse().Append(node))}");
+            }
+
+            visited.Add(node);
+            stack.Push(node);
+
+            if (adjacency.TryGetValue(node, out var next))
+            {
+                foreach (var neighbor in next)
+                {
+                    if (!visited.Contains(neighbor))
+                        Dfs(neighbor);
+                    else if (inPath.Contains(neighbor))
+                        throw new InvalidOperationException($"Cycle detected in shell/subshell references: {string.Join(" -> ", stack.Reverse().Append(neighbor))}");
+                }
+            }
+
+            stack.Pop();
+            inPath.Remove(node);
+        }
+
+        foreach (var node in adjacency.Keys)
+        {
+            if (!visited.Contains(node))
+            {
+                Dfs(node);
+            }
+        }
+    }
+
+    private static void EnsureExists<T>(
+        IReadOnlyDictionary<string, T> dictionary,
+        string id,
+        string message)
+    {
+        if (!dictionary.ContainsKey(id))
+            throw new InvalidOperationException(message);
+    }
+
+    [Conditional("DEBUG")]
+    public static void LogSummary(FireworksProfileSet profileSet)
+    {
+        ArgumentNullException.ThrowIfNull(profileSet);
+        Debug.WriteLine($"[Profiles] Canisters={profileSet.Canisters.Count}, Shells={profileSet.Shells.Count}, SubShells={profileSet.SubShells.Count}, GroundEffects={profileSet.GroundEffects.Count}, ColorSchemes={profileSet.ColorSchemes.Count}");
+    }
+
+    [Conditional("DEBUG")]
+    public static void LogDetails(FireworksProfileSet profileSet)
+    {
+        ArgumentNullException.ThrowIfNull(profileSet);
+
+        var shapeCounts = new Dictionary<FireworkBurstShape, int>();
+        foreach (var shell in profileSet.Shells.Values)
+        {
+            var shape = shell.BurstShape;
+            shapeCounts[shape] = shapeCounts.TryGetValue(shape, out var n) ? n + 1 : 1;
+        }
+
+        var groundTypeCounts = new Dictionary<GroundEffectType, int>();
+        foreach (var ge in profileSet.GroundEffects.Values)
+        {
+            var type = ge.Type;
+            groundTypeCounts[type] = groundTypeCounts.TryGetValue(type, out var n) ? n + 1 : 1;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("[Profiles] Shapes:");
+        foreach (var kvp in shapeCounts)
+        {
+            sb.Append(' ').Append(kvp.Key).Append('=').Append(kvp.Value).Append(';');
+        }
+
+        sb.Append(" GroundTypes:");
+        foreach (var kvp in groundTypeCounts)
+        {
+            sb.Append(' ').Append(kvp.Key).Append('=').Append(kvp.Value).Append(';');
+        }
+
+        Debug.WriteLine(sb.ToString());
+    }
+}
+
 public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
@@ -426,7 +865,7 @@ public enum SubShellSpawnMode
 
 public sealed record class SubShellProfile(
     string Id,
-    string ShellProfileId,
+    ShellId ShellProfileId,
     int Count,
     SubShellSpawnMode SpawnMode,
     float DelaySeconds,
@@ -436,13 +875,13 @@ public sealed record class SubShellProfile(
     float SpeedJitter,
     float PositionJitter,
     float ChildTimeScale,
-    string? ColorSchemeId,
+    ColorSchemeId? ColorSchemeId,
     FireworkBurstShape? BurstShapeOverride,
     float MinAltitudeToSpawn,
     int MaxSubshellDepth);
 
 public sealed record class SubShellAttachment(
-    string SubShellProfileId,
+    SubShellId SubShellProfileId,
     float Probability = 1.0f,
     float Scale = 1.0f,
     int DepthBudget = 1);

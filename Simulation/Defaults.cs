@@ -10,39 +10,121 @@ public static class DefaultProfiles
     public static FireworksProfileSet Create()
     {
         const float canisterSpacingScale = 1.5f;
+        // IDs consolidated to avoid typos.
+        const string canTypeM2 = "M2";
+        const string canTypeM3 = "M3";
+        const string canTypeM4 = "M4";
+        const string canTypeM5 = "M5";
+        const string canTypeM6 = "M6";
+        const string canTypeM8 = "M8";
+        const string canTypeM10 = "M10";
+
+        const string canC01 = "c01";
+        const string canC02 = "c02";
+        const string canC03 = "c03";
+        const string canC04 = "c04";
+        const string canC05 = "c05";
+        const string canC06 = "c06";
+        const string canC07 = "c07";
+        const string canC08 = "c08";
+        const string canC09 = "c09";
+        const string canC10 = "c10";
+        const string canC11 = "c11";
+        const string canC12 = "c12";
+        const string canC13 = "c13";
+        const string canC14 = "c14";
+        const string canC15 = "c15";
+        const string canC16 = "c16";
+        const string canC17 = "c17";
+        const string canC18 = "c18";
+        const string canC19 = "c19";
+        const string canC20 = "c20";
+        const string canC21 = "c21";
+        const string canC22 = "c22";
+        const string canC23 = "c23";
+        const string canC24 = "c24";
+        const string canC25 = "c25";
+
+        const string canG01 = "g01";
+        const string canG02 = "g02";
+        const string canG03 = "g03";
+        const string canG04 = "g04";
+        const string canG05 = "g05";
+        const string canG06 = "g06";
+        const string canG07 = "g07";
+        const string canG08 = "g08";
+
+        const string schemeWarm = "warm";
+        const string schemeCool = "cool";
+        const string schemeMixed = "mixed";
+        const string schemeNeon = "neon";
+        const string schemePastel = "pastel";
+        const string schemeWhite = "white";
+        const string schemeDebug = "debug";
+        const string schemeGold = "gold";
+        const string schemeBrocadeGold = "brocadegold";
+
+        const string shellBasicId = "basic";
+        const string shellChrysId = "chrys";
+        const string shellWillowId = "willow";
+        const string shellPalmId = "palm";
+        const string shellDonutId = "donut";
+        const string shellHorsetailGoldId = "horsetail_gold";
+        const string shellDoubleRingId = "double_ring";
+        const string shellSpiralId = "spiral";
+        const string shellSpokeWheelPopId = "spoke_wheel_pop";
+        const string shellWillowTrailOnlyId = "willow_trail_only";
+        const string shellPeonyToWillowId = "peony_to_willow";
+        const string shellFinaleSaluteId = "finale_salute";
+        const string shellCometNeonId = "comet_neon";
+
+        const string subshellBasicPopId = "subshell_basic_pop";
+        const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
+        const string subshellRingSparkleId = "subshell_ring_sparkle";
+
+        const string groundFountainWarmId = "fountain_warm";
+        const string groundSpinnerNeonId = "spinner_neon";
+        const string groundSpinnerNeonVId = "spinner_neon_v";
+        const string groundMineMixedId = "mine_mixed";
+        const string groundBengalWarmId = "bengal_warm";
+        const string groundLanceHeartId = "lance_heart";
+        const string groundWaterfallGoldId = "waterfall_gold";
+        const string groundChaserZipperId = "chaser_zipper";
+        const string groundBloomBrocadeId = "bloom_brocade";
+        const string groundGlitterPulseId = "glitter_pulse";
 
         // Shell-launch canisters (keep as-is, centered around the pad).
         var canisters = new Dictionary<string, CanisterProfile>
         {
-            ["c01"] = new CanisterProfile("c01", "M2", new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), "basic"),
-            ["c02"] = new CanisterProfile("c02", "M3", new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), "basic"),
-            ["c03"] = new CanisterProfile("c03", "M4", new Vector2(0.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, -0.25881904f)), "basic"),
-            ["c04"] = new CanisterProfile("c04", "M5", new Vector2(2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, -0.26790532f)), "basic"),
-            ["c05"] = new CanisterProfile("c05", "M6", new Vector2(4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, -0.29883623f)), "basic"),
+            [canC01] = new CanisterProfile(canC01, canTypeM2, new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
+            [canC02] = new CanisterProfile(canC02, canTypeM3, new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
+            [canC03] = new CanisterProfile(canC03, canTypeM4, new Vector2(0.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, -0.25881904f)), shellBasicId),
+            [canC04] = new CanisterProfile(canC04, canTypeM5, new Vector2(2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
+            [canC05] = new CanisterProfile(canC05, canTypeM6, new Vector2(4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
 
-            ["c06"] = new CanisterProfile("c06", "M8", new Vector2(-4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, -0.13395266f)), "basic"),
-            ["c07"] = new CanisterProfile("c07", "M10", new Vector2(-2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, -0.1648116f)), "basic"),
-            ["c08"] = new CanisterProfile("c08", "M2", new Vector2(0.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, -0.13052619f)), "donut"),
-            ["c09"] = new CanisterProfile("c09", "M3", new Vector2(2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, -0.1648116f)), "donut"),
-            ["c10"] = new CanisterProfile("c10", "M4", new Vector2(4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, -0.13395266f)), "donut"),
+            [canC06] = new CanisterProfile(canC06, canTypeM8, new Vector2(-4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, -0.13395266f)), shellBasicId),
+            [canC07] = new CanisterProfile(canC07, canTypeM10, new Vector2(-2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, -0.1648116f)), shellBasicId),
+            [canC08] = new CanisterProfile(canC08, canTypeM2, new Vector2(0.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, -0.13052619f)), shellDonutId),
+            [canC09] = new CanisterProfile(canC09, canTypeM3, new Vector2(2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, -0.1648116f)), shellDonutId),
+            [canC10] = new CanisterProfile(canC10, canTypeM4, new Vector2(4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, -0.13395266f)), shellDonutId),
 
-            ["c11"] = new CanisterProfile("c11", "M5", new Vector2(-4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.25881904f, 0.9659258f, 0.0f)), "donut"),
-            ["c12"] = new CanisterProfile("c12", "M6", new Vector2(-2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13052619f, 0.9914449f, 0.0f)), "donut"),
-            ["c13"] = new CanisterProfile("c13", "M8", new Vector2(0.0f, 0.0f) * canisterSpacingScale, Vector3.UnitY, "donut"),
-            ["c14"] = new CanisterProfile("c14", "M10", new Vector2(2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13052619f, 0.9914449f, 0.0f)), "donut"),
-            ["c15"] = new CanisterProfile("c15", "M2", new Vector2(4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.25881904f, 0.9659258f, 0.0f)), "chrys"),
+            [canC11] = new CanisterProfile(canC11, canTypeM5, new Vector2(-4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.25881904f, 0.9659258f, 0.0f)), shellDonutId),
+            [canC12] = new CanisterProfile(canC12, canTypeM6, new Vector2(-2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
+            [canC13] = new CanisterProfile(canC13, canTypeM8, new Vector2(0.0f, 0.0f) * canisterSpacingScale, Vector3.UnitY, shellDonutId),
+            [canC14] = new CanisterProfile(canC14, canTypeM10, new Vector2(2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
+            [canC15] = new CanisterProfile(canC15, canTypeM2, new Vector2(4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.25881904f, 0.9659258f, 0.0f)), shellChrysId),
 
-            ["c16"] = new CanisterProfile("c16", "M3", new Vector2(-4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, 0.13395266f)), "chrys"),
-            ["c17"] = new CanisterProfile("c17", "M4", new Vector2(-2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, 0.1648116f)), "chrys"),
-            ["c18"] = new CanisterProfile("c18", "M5", new Vector2(0.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, 0.13052619f)), "chrys"),
-            ["c19"] = new CanisterProfile("c19", "M6", new Vector2(2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, 0.1648116f)), "chrys"),
-            ["c20"] = new CanisterProfile("c20", "M8", new Vector2(4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, 0.13395266f)), "chrys"),
+            [canC16] = new CanisterProfile(canC16, canTypeM3, new Vector2(-4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
+            [canC17] = new CanisterProfile(canC17, canTypeM4, new Vector2(-2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
+            [canC18] = new CanisterProfile(canC18, canTypeM5, new Vector2(0.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, 0.13052619f)), shellChrysId),
+            [canC19] = new CanisterProfile(canC19, canTypeM6, new Vector2(2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
+            [canC20] = new CanisterProfile(canC20, canTypeM8, new Vector2(4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
 
-            ["c21"] = new CanisterProfile("c21", "M10", new Vector2(-4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, 0.29883623f)), "chrys"),
-            ["c22"] = new CanisterProfile("c22", "M4", new Vector2(-2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, 0.26790532f)), "willow"),
-            ["c23"] = new CanisterProfile("c23", "M5", new Vector2(0.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, 0.25881904f)), "willow"),
-            ["c24"] = new CanisterProfile("c24", "M6", new Vector2(2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), "willow"),
-            ["c25"] = new CanisterProfile("c25", "M8", new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), "willow")
+            [canC21] = new CanisterProfile(canC21, canTypeM10, new Vector2(-4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, 0.29883623f)), shellChrysId),
+            [canC22] = new CanisterProfile(canC22, canTypeM4, new Vector2(-2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
+            [canC23] = new CanisterProfile(canC23, canTypeM5, new Vector2(0.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, 0.25881904f)), shellWillowId),
+            [canC24] = new CanisterProfile(canC24, canTypeM6, new Vector2(2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
+            [canC25] = new CanisterProfile(canC25, canTypeM8, new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), shellWillowId)
         };
 
         // Ground-effect canisters: separate set, placed around the pad border.
@@ -50,14 +132,14 @@ public static class DefaultProfiles
         const float groundHalf = 9.0f;
         var groundCanisters = new Dictionary<string, CanisterProfile>
         {
-            ["g01"] = new CanisterProfile("g01", "M2", new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, "basic"),
-            ["g02"] = new CanisterProfile("g02", "M3", new Vector2(0.0f, -groundHalf), Vector3.UnitY, "basic"),
-            ["g03"] = new CanisterProfile("g03", "M4", new Vector2(groundHalf, -groundHalf), Vector3.UnitY, "basic"),
-            ["g04"] = new CanisterProfile("g04", "M5", new Vector2(groundHalf, 0.0f), Vector3.UnitY, "basic"),
-            ["g05"] = new CanisterProfile("g05", "M6", new Vector2(groundHalf, groundHalf), Vector3.UnitY, "basic"),
-            ["g06"] = new CanisterProfile("g06", "M8", new Vector2(0.0f, groundHalf), Vector3.UnitY, "basic"),
-            ["g07"] = new CanisterProfile("g07", "M10", new Vector2(-groundHalf, groundHalf), Vector3.UnitY, "basic"),
-            ["g08"] = new CanisterProfile("g08", "M6", new Vector2(-groundHalf, 0.0f), Vector3.UnitY, "basic"),
+            [canG01] = new CanisterProfile(canG01, canTypeM2, new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG02] = new CanisterProfile(canG02, canTypeM3, new Vector2(0.0f, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG03] = new CanisterProfile(canG03, canTypeM4, new Vector2(groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG04] = new CanisterProfile(canG04, canTypeM5, new Vector2(groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
+            [canG05] = new CanisterProfile(canG05, canTypeM6, new Vector2(groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG06] = new CanisterProfile(canG06, canTypeM8, new Vector2(0.0f, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG07] = new CanisterProfile(canG07, canTypeM10, new Vector2(-groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG08] = new CanisterProfile(canG08, canTypeM6, new Vector2(-groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
         };
 
         foreach (var kvp in groundCanisters)
@@ -65,16 +147,16 @@ public static class DefaultProfiles
 
         var schemes = new Dictionary<string, ColorScheme>
         {
-            ["warm"] = new ColorScheme("warm", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
-            ["cool"] = new ColorScheme("cool", new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
-            ["mixed"] = new ColorScheme("mixed", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
-            ["neon"] = new ColorScheme("neon", new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
-            ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f),
-            ["white"] = new ColorScheme("white", new[] { Colors.White }, 0.02f, 3.0f),
-            ["debug"] = new ColorScheme("debug", new[] { Colors.White, Colors.Red, Colors.Lime, Colors.Blue, Colors.Yellow, Colors.Cyan, Colors.Magenta }, 0.2f, 0.5f),
+            [schemeWarm] = new ColorScheme(schemeWarm, new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
+            [schemeCool] = new ColorScheme(schemeCool, new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
+            [schemeMixed] = new ColorScheme(schemeMixed, new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
+            [schemeNeon] = new ColorScheme(schemeNeon, new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
+            [schemePastel] = new ColorScheme(schemePastel, new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f),
+            [schemeWhite] = new ColorScheme(schemeWhite, new[] { Colors.White }, 0.02f, 3.0f),
+            [schemeDebug] = new ColorScheme(schemeDebug, new[] { Colors.White, Colors.Red, Colors.Lime, Colors.Blue, Colors.Yellow, Colors.Cyan, Colors.Magenta }, 0.2f, 0.5f),
             // id, base colors[], variation, boost
-            ["gold"] = new ColorScheme(
-                "gold",
+            [schemeGold] = new ColorScheme(
+                schemeGold,
                 new[]
                 {
                     Color.FromArgb(255, 255, 220, 120),
@@ -86,8 +168,8 @@ public static class DefaultProfiles
                 2.2f
             ),
 
-            ["brocadegold"] = new ColorScheme(
-                "brocadegold",
+            [schemeBrocadeGold] = new ColorScheme(
+                schemeBrocadeGold,
                 new[]
                 {
                     Color.FromArgb(255, 235, 180,  80),
@@ -100,138 +182,139 @@ public static class DefaultProfiles
 
         };
 
+        const string spokeWheelPopId = "spoke_wheel_pop";
+
         var shells = new Dictionary<string, FireworkShellProfile>
         {
-            ["basic"] = new FireworkShellProfile(
-                Id: "basic",
-                BurstShape: FireworkBurstShape.Peony,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 3.8f,
-                ExplosionRadius: 12.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 2.5f,
-                BurstSparkleRateHz: 12.0f,
-                BurstSparkleIntensity: 0.35f, 
-                BurstSpeed: 9.0f),
+            [shellBasicId] = ShellPresets.Create(
+                id: shellBasicId,
+                burstShape: FireworkBurstShape.Peony,
+                colorSchemeId: schemeWarm,
+                fuseTimeSeconds: 3.8f,
+                explosionRadius: 12.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 2.5f,
+                burstSparkleRateHz: 12.0f,
+                burstSparkleIntensity: 0.35f,
+                burstSpeed: 9.0f),
 
-            ["chrys"] = new FireworkShellProfile(
-                Id: "chrys",
-                BurstShape: FireworkBurstShape.Chrysanthemum,
-                ColorSchemeId: "mixed",
-                FuseTimeSeconds: 3.9f,
-                ExplosionRadius: 13.0f,
-                ParticleCount: 5500,
-                ParticleLifetimeSeconds: 5.0f,
-                BurstSparkleRateHz: 14.0f,
-                BurstSparkleIntensity: 0.45f,
-                Emission: BurstEmissionSettings.Defaults with
+            [shellChrysId] = ShellPresets.Create(
+                id: shellChrysId,
+                burstShape: FireworkBurstShape.Chrysanthemum,
+                colorSchemeId: schemeMixed,
+                fuseTimeSeconds: 3.9f,
+                explosionRadius: 13.0f,
+                particleCount: 5500,
+                particleLifetimeSeconds: 5.0f,
+                burstSparkleRateHz: 14.0f,
+                burstSparkleIntensity: 0.45f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     ChrysanthemumSpokeCount = 24,
                     ChrysanthemumSpokeJitter = 0.12f,
                 }),
 
-            ["willow"] = new FireworkShellProfile(
-                Id: "willow",
-                BurstShape: FireworkBurstShape.Willow,
-                ColorSchemeId: "pastel",
-                FuseTimeSeconds: 4.2f,
-                ExplosionRadius: 15.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 6.0f,
-                BurstSparkleRateHz: 8.0f,
-                BurstSparkleIntensity: 0.25f,
-                Emission: BurstEmissionSettings.Defaults with
+            [shellWillowId] = ShellPresets.Create(
+                id: shellWillowId,
+                burstShape: FireworkBurstShape.Willow,
+                colorSchemeId: schemePastel,
+                fuseTimeSeconds: 4.2f,
+                explosionRadius: 15.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 6.0f,
+                burstSparkleRateHz: 8.0f,
+                burstSparkleIntensity: 0.25f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     WillowDownwardBlend = 0.35f,
                 }),
 
-            ["palm"] = new FireworkShellProfile(
-                Id: "palm",
-                BurstShape: FireworkBurstShape.Palm,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 16.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 18.0f,
-                BurstSparkleIntensity: 0.65f,
-                Emission: BurstEmissionSettings.Defaults with
+            [shellPalmId] = ShellPresets.Create(
+                id: shellPalmId,
+                burstShape: FireworkBurstShape.Palm,
+                colorSchemeId: schemeWarm,
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 16.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 18.0f,
+                burstSparkleIntensity: 0.65f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     PalmFrondCount = 7,
                     PalmFrondConeAngleRadians = 0.65f,
                     PalmFrondJitterAngleRadians = 0.08f,
                 }),
 
-            ["donut"] = new FireworkShellProfile(
-                Id: "donut",
-                BurstShape: FireworkBurstShape.Ring,
-                ColorSchemeId: "cool",
-                FuseTimeSeconds: 4.1f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 3.2f,
-                BurstSparkleRateHz: 5.0f,
-                BurstSparkleIntensity: 0.65f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 90.0f),
-            ["horsetail_gold"] = new FireworkShellProfile(
-                Id: "horsetail_gold",
-                BurstShape: FireworkBurstShape.Horsetail,
-                ColorSchemeId: "Gold",
-                FuseTimeSeconds: 3.2f,             // whatever works with your canister
-                ExplosionRadius: 45.0f,
-                ParticleCount: 4000,
-                ParticleLifetimeSeconds: 1.5f,
-                BurstSparkleRateHz: 6.0f,
-                BurstSparkleIntensity: 0.20f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f
-            ),
-            ["double_ring"] = new FireworkShellProfile(
-                Id: "double_ring",
-                BurstShape: FireworkBurstShape.DoubleRing,
-                ColorSchemeId: "gold",   // nice classy gold rings
-                FuseTimeSeconds: 4.1f,
-                ExplosionRadius: 16.0f,
-                ParticleCount: 4500,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 2.0f,
-                BurstSparkleIntensity: 0.65f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 18.0f
-            ),
+            [shellDonutId] = ShellPresets.Create(
+                id: shellDonutId,
+                burstShape: FireworkBurstShape.Ring,
+                colorSchemeId: schemeCool,
+                fuseTimeSeconds: 4.1f,
+                explosionRadius: 14.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 3.2f,
+                burstSparkleRateHz: 5.0f,
+                burstSparkleIntensity: 0.65f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 90.0f),
 
-            ["spiral"] = new FireworkShellProfile(
-                Id: "spiral",
-                BurstShape: FireworkBurstShape.Spiral,
-                ColorSchemeId: "neon",   // loud & colorful
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 5500,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 16.0f,
-                BurstSparkleIntensity: 0.55f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f
-            ),
+            [shellHorsetailGoldId] = ShellPresets.Create(
+                id: shellHorsetailGoldId,
+                burstShape: FireworkBurstShape.Horsetail,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 3.2f,             // whatever works with your canister
+                explosionRadius: 45.0f,
+                particleCount: 4000,
+                particleLifetimeSeconds: 1.5f,
+                burstSparkleRateHz: 6.0f,
+                burstSparkleIntensity: 0.20f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 25.0f),
 
-            ["spoke_wheel_pop"] = new FireworkShellProfile(
-                Id: "spoke_wheel_pop",
-                BurstShape: FireworkBurstShape.SubShellSpokeWheelPop,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 3.6f,
-                ExplosionRadius: 0.0f,
-                ParticleCount: 0,
-                ParticleLifetimeSeconds: 0.0f,
-                BurstSparkleRateHz: 0.0f,
-                BurstSparkleIntensity: 0.0f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 180.0f,
-                TrailParticleCount: 10,
-                TrailParticleLifetimeSeconds: 0.5f,
-                TrailSpeed: 4.0f,
-                TrailSmokeChance: 0.15f,
-                SubShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
+            [shellDoubleRingId] = ShellPresets.Create(
+                id: shellDoubleRingId,
+                burstShape: FireworkBurstShape.DoubleRing,
+                colorSchemeId: schemeGold,   // nice classy gold rings
+                fuseTimeSeconds: 4.1f,
+                explosionRadius: 16.0f,
+                particleCount: 4500,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 2.0f,
+                burstSparkleIntensity: 0.65f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 18.0f),
+
+            [shellSpiralId] = ShellPresets.Create(
+                id: shellSpiralId,
+                burstShape: FireworkBurstShape.Spiral,
+                colorSchemeId: schemeNeon,   // loud & colorful
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 5500,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 16.0f,
+                burstSparkleIntensity: 0.55f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 25.0f),
+
+            [shellSpokeWheelPopId] = ShellPresets.Create(
+                id: shellSpokeWheelPopId,
+                burstShape: FireworkBurstShape.SubShellSpokeWheelPop,
+                colorSchemeId: schemeWarm,
+                fuseTimeSeconds: 3.6f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 180.0f,
+                trailParticleCount: ShellTrailPresets.ShortBright.Count,
+                trailParticleLifetimeSeconds: ShellTrailPresets.ShortBright.LifetimeSeconds,
+                trailSpeed: ShellTrailPresets.ShortBright.Speed,
+                trailSmokeChance: ShellTrailPresets.ShortBright.SmokeChance,
+                subShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
                 {
                     SubShellCount = 12,
                     RingStartAngleDegrees = 0.0f,
@@ -245,45 +328,43 @@ public static class DefaultProfiles
                     PopFlashRadius = 1.2f,
                     PopFlashIntensity = 8.0f,
                     PopFlashFadeGamma = 2.2f,
-                    PopFlashColorSchemeId = "white",
+                    PopFlashColorSchemeId = schemeWhite,
                     SubShellGravityScale = 0.95f,
                     SubShellDrag = 0.07f,
                     AngleJitterDegrees = 3.5f,
                     TangentialSpeed = 3.0f,
                     RingAxis = Vector3.UnitY,
                     RingAxisRandomTiltDegrees = 180.0f
-                }
-            ),
+                }),
 
-            ["willow_trail_only"] = new FireworkShellProfile(
-                Id: "willow_trail_only",
-                BurstShape: FireworkBurstShape.Willow,
-                ColorSchemeId: "pastel",
-                FuseTimeSeconds: 2.0f,
-                ExplosionRadius: 0.0f,
-                ParticleCount: 0,
-                ParticleLifetimeSeconds: 0.0f,
-                SuppressBurst: true,
-                TerminalFadeOutSeconds: 1.5f,
-                TrailParticleCount: 12,
-                TrailParticleLifetimeSeconds: 0.8f,
-                TrailSpeed: 5.0f,
-                TrailSmokeChance: 0.2f
-            ),
+            [shellWillowTrailOnlyId] = ShellPresets.Create(
+                id: shellWillowTrailOnlyId,
+                burstShape: FireworkBurstShape.Willow,
+                colorSchemeId: schemePastel,
+                fuseTimeSeconds: 2.0f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                suppressBurst: true,
+                terminalFadeOutSeconds: 1.5f,
+                trailParticleCount: ShellTrailPresets.WillowLingering.Count,
+                trailParticleLifetimeSeconds: ShellTrailPresets.WillowLingering.LifetimeSeconds,
+                trailSpeed: ShellTrailPresets.WillowLingering.Speed,
+                trailSmokeChance: ShellTrailPresets.WillowLingering.SmokeChance),
 
-            ["peony_to_willow"] = new FireworkShellProfile(
-                Id: "peony_to_willow",
-                BurstShape: FireworkBurstShape.PeonyToWillow,
-                ColorSchemeId: "gold",
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 100,
-                ParticleLifetimeSeconds: 3.0f,
-                BurstSparkleRateHz: 10.0f,
-                BurstSparkleIntensity: 0.40f,
-                PeonyToWillow: PeonyToWillowParams.Defaults with
+            [shellPeonyToWillowId] = ShellPresets.Create(
+                id: shellPeonyToWillowId,
+                burstShape: FireworkBurstShape.PeonyToWillow,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 100,
+                particleLifetimeSeconds: 3.0f,
+                burstSparkleRateHz: 10.0f,
+                burstSparkleIntensity: 0.40f,
+                peonyToWillow: PeonyToWillowParams.Defaults with
                 {
-                    WillowSubshellProfileId = "subshell_willow_trail_only",
+                    WillowSubshellProfileId = subshellWillowTrailOnlyId,
                     //WillowSubshellProfileId = "subshell_ring_sparkle",
                     //WillowSubshellProfileId = "subshell_basic_pop",
                     WillowVelocityScale = 0.50f,
@@ -292,22 +373,21 @@ public static class DefaultProfiles
                     WillowLifetimeMultiplier = 2.2f,
                     WillowTrailSpawnRate = 8f,
                     WillowTrailSpeed = 2.2f
-                }
-            ),
+                }),
 
             // Finale: scatter mini report shells that pop as a single bright white flash.
             // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
-            ["finale_salute"] = new FireworkShellProfile(
-                    Id: "finale_salute",
-                    BurstShape: FireworkBurstShape.FinaleSalute,
-                    ColorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
-                    FuseTimeSeconds: 3.8f,
-                    ExplosionRadius: 0.0f,
-                    ParticleCount: 0,
-                    ParticleLifetimeSeconds: 0.10f,
-                    BurstSparkleRateHz: 0.0f,
-                    BurstSparkleIntensity: 0.0f,
-                    FinaleSalute: FinaleSaluteParams.Defaults with 
+            [shellFinaleSaluteId] = ShellPresets.Create(
+                    id: shellFinaleSaluteId,
+                    burstShape: FireworkBurstShape.FinaleSalute,
+                    colorSchemeId: schemeDebug, // ignored by PopFlash, but useful for debugging
+                    fuseTimeSeconds: 3.8f,
+                    explosionRadius: 0.0f,
+                    particleCount: 0,
+                    particleLifetimeSeconds: 0.10f,
+                    burstSparkleRateHz: 0.0f,
+                    burstSparkleIntensity: 0.0f,
+                    finaleSalute: FinaleSaluteParams.Defaults with 
                     { 
                         SubShellCount = 75,
                         // Trail tuning: reduce counts if performance is an issue
@@ -349,17 +429,17 @@ public static class DefaultProfiles
                 //    }
                 //),
 
-                ["comet_neon"] = new FireworkShellProfile(
-                    Id: "comet_neon",
-                    BurstShape: FireworkBurstShape.Comet,
-                    ColorSchemeId: "neon",
-                    FuseTimeSeconds: 3.9f,
-                    ExplosionRadius: 0.0f,
-                    ParticleCount: 0,
-                    ParticleLifetimeSeconds: 0.0f,
-                    BurstSparkleRateHz: 0.0f,
-                    BurstSparkleIntensity: 0.0f,
-                            Comet: CometParams.Defaults with
+                [shellCometNeonId] = ShellPresets.Create(
+                    id: shellCometNeonId,
+                    burstShape: FireworkBurstShape.Comet,
+                    colorSchemeId: schemeNeon,
+                    fuseTimeSeconds: 3.9f,
+                    explosionRadius: 0.0f,
+                    particleCount: 0,
+                    particleLifetimeSeconds: 0.0f,
+                    burstSparkleRateHz: 0.0f,
+                    burstSparkleIntensity: 0.0f,
+                            comet: CometParams.Defaults with
                             {
                                 CometCount = 50,
                                 CometSpeedMin = 15f,
@@ -383,89 +463,55 @@ public static class DefaultProfiles
         // SubShell profiles: reusable child shell behaviors
         var subshellProfiles = new Dictionary<string, SubShellProfile>
         {
-            ["subshell_basic_pop"] = new SubShellProfile(
-                Id: "subshell_basic_pop",
-                ShellProfileId: "basic",
-                Count: 12,
-                SpawnMode: SubShellSpawnMode.Sphere,
-                DelaySeconds: 0.15f,
-                InheritParentVelocity: 0.2f,
-                AddedSpeed: 18.0f,
-                DirectionJitter: 0.08f,
-                SpeedJitter: 0.25f,
-                PositionJitter: 0.6f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: null,
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 5.0f,
-                MaxSubshellDepth: 1),
+            [subshellBasicPopId] = SubShellPresets.Sphere(
+                id: subshellBasicPopId,
+                shellProfileId: shellBasicId,
+                count: 12,
+                minAltitudeToSpawn: 5.0f),
 
-            ["subshell_willow_trail_only"] = new SubShellProfile(
-                Id: "subshell_willow_trail_only",
-                ShellProfileId: "willow_trail_only",
-                Count: 12,
-                SpawnMode: SubShellSpawnMode.Sphere,
-                DelaySeconds: 0.15f,
-                InheritParentVelocity: 0.2f,
-                AddedSpeed: 18.0f,
-                DirectionJitter: 0.08f,
-                SpeedJitter: 0.25f,
-                PositionJitter: 0.6f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: null,
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 5.0f,
-                MaxSubshellDepth: 1),
+            [subshellWillowTrailOnlyId] = SubShellPresets.Sphere(
+                id: subshellWillowTrailOnlyId,
+                shellProfileId: shellWillowTrailOnlyId,
+                count: 12,
+                minAltitudeToSpawn: 5.0f),
 
-            ["subshell_ring_sparkle"] = new SubShellProfile(
-                Id: "subshell_ring_sparkle",
-                ShellProfileId: "donut",
-                Count: 24,
-                SpawnMode: SubShellSpawnMode.Ring,
-                DelaySeconds: 0.10f,
-                InheritParentVelocity: 0.1f,
-                AddedSpeed: 12.0f,
-                DirectionJitter: 0.05f,
-                SpeedJitter: 0.20f,
-                PositionJitter: 0.4f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: "neon",
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 8.0f,
-                MaxSubshellDepth: 1)
+            [subshellRingSparkleId] = SubShellPresets.Ring(
+                id: subshellRingSparkleId,
+                shellProfileId: shellDonutId,
+                count: 24,
+                minAltitudeToSpawn: 8.0f,
+                colorSchemeId: schemeNeon)
         };
 
         var groundEffects = new Dictionary<string, GroundEffectProfile>
         {
-            ["fountain_warm"] = new GroundEffectProfile(
-                Id: "fountain_warm",
-                Type: GroundEffectType.Fountain,
-                ColorSchemeId: "warm",
-                DurationSeconds: 5.0f,
-                EmissionRate: 1800.0f,
-                ParticleVelocityRange: new Vector2(6.0f, 12.0f),
-                ParticleLifetimeSeconds: 1.6f,
-                GravityFactor: 0.55f,
-                BrightnessScalar: 1.2f,
-                ConeAngleDegrees: 40.0f,
-                FlickerIntensity: 0.10f,
-                SmokeAmount: 0.2f),
+            [groundFountainWarmId] = GroundEffectPresets.Fountain(
+                id: groundFountainWarmId,
+                colorSchemeId: schemeWarm,
+                durationSeconds: 5.0f,
+                emissionRate: 1800.0f,
+                particleVelocityRange: new Vector2(6.0f, 12.0f),
+                particleLifetimeSeconds: 1.6f,
+                gravityFactor: 0.55f,
+                brightnessScalar: 1.2f,
+                coneAngleDegrees: 40.0f,
+                flickerIntensity: 0.10f,
+                smokeAmount: 0.2f),
 
-            ["spinner_neon"] = new GroundEffectProfile(
-                Id: "spinner_neon",
-                Type: GroundEffectType.Spinner,
-                ColorSchemeId: "neon",
-                DurationSeconds: 6.5f,
-                EmissionRate: 1400.0f,
-                ParticleVelocityRange: new Vector2(5.0f, 9.0f),
-                ParticleLifetimeSeconds: 1.4f,
-                GravityFactor: 0.35f,
-                BrightnessScalar: 1.1f,
-                HeightOffsetMeters: 2.0f,
-                AngularVelocityRadiansPerSec: 9.0f,
-                EmissionRadius: 0.22f,
-                SpinnerAxis: Vector3.UnitY,
-                SmokeAmount: 0.1f),
+            [groundSpinnerNeonId] = GroundEffectPresets.Spinner(
+                id: groundSpinnerNeonId,
+                colorSchemeId: schemeNeon,
+                durationSeconds: 6.5f,
+                emissionRate: 1400.0f,
+                particleVelocityRange: new Vector2(5.0f, 9.0f),
+                particleLifetimeSeconds: 1.4f,
+                gravityFactor: 0.35f,
+                brightnessScalar: 1.1f,
+                heightOffsetMeters: 2.0f,
+                angularVelocityRadiansPerSec: 9.0f,
+                emissionRadius: 0.22f,
+                spinnerAxis: Vector3.UnitY,
+                smokeAmount: 0.1f),
 
             //["strobe_cool"] = new GroundEffectProfile(
             //    Id: "strobe_cool",
@@ -483,26 +529,25 @@ public static class DefaultProfiles
             //    ResidualSparkDensity: 0.14f),
 
 
-            ["spinner_neon_v"] = new GroundEffectProfile(
-                Id: "spinner_neon_v",
-                Type: GroundEffectType.Spinner,
-                ColorSchemeId: "neon",
-                DurationSeconds: 6.5f,
-                EmissionRate: 1400.0f,
-                ParticleVelocityRange: new Vector2(5.0f, 9.0f),
-                ParticleLifetimeSeconds: 1.4f,
-                GravityFactor: 0.35f,
-                BrightnessScalar: 1.1f,
-                HeightOffsetMeters: 3.0f,
-                AngularVelocityRadiansPerSec: 9.0f,
-                EmissionRadius: 0.22f,
-                SpinnerAxis: Vector3.UnitX,
-                SmokeAmount: 0.1f),
+            [groundSpinnerNeonVId] = GroundEffectPresets.Spinner(
+                id: groundSpinnerNeonVId,
+                colorSchemeId: schemeNeon,
+                durationSeconds: 6.5f,
+                emissionRate: 1400.0f,
+                particleVelocityRange: new Vector2(5.0f, 9.0f),
+                particleLifetimeSeconds: 1.4f,
+                gravityFactor: 0.35f,
+                brightnessScalar: 1.1f,
+                heightOffsetMeters: 3.0f,
+                angularVelocityRadiansPerSec: 9.0f,
+                emissionRadius: 0.22f,
+                spinnerAxis: Vector3.UnitX,
+                smokeAmount: 0.1f),
 
-            ["mine_mixed"] = new GroundEffectProfile(
-                Id: "mine_mixed",
+            [groundMineMixedId] = new GroundEffectProfile(
+                Id: groundMineMixedId,
                 Type: GroundEffectType.Mine,
-                ColorSchemeId: "mixed",
+                ColorSchemeId: schemeMixed,
                 DurationSeconds: 3.0f,
                 EmissionRate: 0.0f,
                 ParticleVelocityRange: new Vector2(10.0f, 18.0f),
@@ -514,10 +559,10 @@ public static class DefaultProfiles
                 ParticlesPerBurst: 5200,
                 SmokeAmount: 0.55f),
 
-            ["bengal_warm"] = new GroundEffectProfile(
-                Id: "bengal_warm",
+            [groundBengalWarmId] = new GroundEffectProfile(
+                Id: groundBengalWarmId,
                 Type: GroundEffectType.BengalFlare,
-                ColorSchemeId: "warm",
+                ColorSchemeId: schemeWarm,
                 DurationSeconds: 8.0f,
                 EmissionRate: 900.0f,
                 ParticleVelocityRange: new Vector2(1.2f, 2.6f),
@@ -531,10 +576,10 @@ public static class DefaultProfiles
                 OccasionalSparkRate: 60.0f,
                 SmokeAmount: 0.15f),
 
-            ["lance_heart"] = new GroundEffectProfile(
-                Id: "lance_heart",
+            [groundLanceHeartId] = new GroundEffectProfile(
+                Id: groundLanceHeartId,
                 Type: GroundEffectType.LanceworkPanel,
-                ColorSchemeId: "neon",
+                ColorSchemeId: schemeNeon,
                 DurationSeconds: 7.0f,
                 EmissionRate: 0.0f,
                 ParticleVelocityRange: new Vector2(0.5f, 1.2f),
@@ -554,10 +599,10 @@ public static class DefaultProfiles
                 },
                 SmokeAmount: 0.05f),
 
-            ["waterfall_gold"] = new GroundEffectProfile(
-                Id: "waterfall_gold",
+            [groundWaterfallGoldId] = new GroundEffectProfile(
+                Id: groundWaterfallGoldId,
                 Type: GroundEffectType.WaterfallCurtain,
-                ColorSchemeId: "gold",
+                ColorSchemeId: schemeGold,
                 DurationSeconds: 10.0f,
                 EmissionRate: 420.0f,
                 ParticleVelocityRange: new Vector2(2.5f, 4.0f),
@@ -571,10 +616,10 @@ public static class DefaultProfiles
                 DensityOverTime: 1.0f,
                 SmokeAmount: 0.20f),
 
-            ["chaser_zipper"] = new GroundEffectProfile(
-                Id: "chaser_zipper",
+            [groundChaserZipperId] = new GroundEffectProfile(
+                Id: groundChaserZipperId,
                 Type: GroundEffectType.ChaserLine,
-                ColorSchemeId: "neon",
+                ColorSchemeId: schemeNeon,
                 DurationSeconds: 6.0f,
                 EmissionRate: 0.0f,
                 ParticleVelocityRange: new Vector2(6.0f, 10.0f),
@@ -589,10 +634,10 @@ public static class DefaultProfiles
                 ReverseOrBounce: true,
                 SmokeAmount: 0.12f),
 
-            ["bloom_brocade"] = new GroundEffectProfile(
-                Id: "bloom_brocade",
+            [groundBloomBrocadeId] = new GroundEffectProfile(
+                Id: groundBloomBrocadeId,
                 Type: GroundEffectType.GroundBloom,
-                ColorSchemeId: "brocadegold",
+                ColorSchemeId: schemeBrocadeGold,
                 DurationSeconds: 7.0f,
                 EmissionRate: 1600.0f,
                 ParticleVelocityRange: new Vector2(5.0f, 9.0f),
@@ -604,10 +649,10 @@ public static class DefaultProfiles
                 GroundDriftVelocity: new Vector3(0.15f, 0.0f, -0.10f),
                 SmokeAmount: 0.10f),
 
-            ["glitter_pulse"] = new GroundEffectProfile(
-                Id: "glitter_pulse",
+            [groundGlitterPulseId] = new GroundEffectProfile(
+                Id: groundGlitterPulseId,
                 Type: GroundEffectType.PulsingGlitterFountain,
-                ColorSchemeId: "cool",
+                ColorSchemeId: schemeCool,
                 DurationSeconds: 7.5f,
                 EmissionRate: 1600.0f,
                 ParticleVelocityRange: new Vector2(5.5f, 10.5f),
@@ -623,7 +668,9 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        return new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        ProfileValidator.Validate(profileSet);
+        return profileSet;
     }
 }
 
