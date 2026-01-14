@@ -11,6 +11,49 @@ public static class DefaultProfiles
     {
         const float canisterSpacingScale = 1.5f;
         // IDs consolidated to avoid typos.
+        const string canTypeM2 = "M2";
+        const string canTypeM3 = "M3";
+        const string canTypeM4 = "M4";
+        const string canTypeM5 = "M5";
+        const string canTypeM6 = "M6";
+        const string canTypeM8 = "M8";
+        const string canTypeM10 = "M10";
+
+        const string canC01 = "c01";
+        const string canC02 = "c02";
+        const string canC03 = "c03";
+        const string canC04 = "c04";
+        const string canC05 = "c05";
+        const string canC06 = "c06";
+        const string canC07 = "c07";
+        const string canC08 = "c08";
+        const string canC09 = "c09";
+        const string canC10 = "c10";
+        const string canC11 = "c11";
+        const string canC12 = "c12";
+        const string canC13 = "c13";
+        const string canC14 = "c14";
+        const string canC15 = "c15";
+        const string canC16 = "c16";
+        const string canC17 = "c17";
+        const string canC18 = "c18";
+        const string canC19 = "c19";
+        const string canC20 = "c20";
+        const string canC21 = "c21";
+        const string canC22 = "c22";
+        const string canC23 = "c23";
+        const string canC24 = "c24";
+        const string canC25 = "c25";
+
+        const string canG01 = "g01";
+        const string canG02 = "g02";
+        const string canG03 = "g03";
+        const string canG04 = "g04";
+        const string canG05 = "g05";
+        const string canG06 = "g06";
+        const string canG07 = "g07";
+        const string canG08 = "g08";
+
         const string schemeWarm = "warm";
         const string schemeCool = "cool";
         const string schemeMixed = "mixed";
@@ -53,35 +96,35 @@ public static class DefaultProfiles
         // Shell-launch canisters (keep as-is, centered around the pad).
         var canisters = new Dictionary<string, CanisterProfile>
         {
-            ["c01"] = new CanisterProfile("c01", "M2", new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
-            ["c02"] = new CanisterProfile("c02", "M3", new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
-            ["c03"] = new CanisterProfile("c03", "M4", new Vector2(0.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, -0.25881904f)), shellBasicId),
-            ["c04"] = new CanisterProfile("c04", "M5", new Vector2(2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
-            ["c05"] = new CanisterProfile("c05", "M6", new Vector2(4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
+            [canC01] = new CanisterProfile(canC01, canTypeM2, new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
+            [canC02] = new CanisterProfile(canC02, canTypeM3, new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
+            [canC03] = new CanisterProfile(canC03, canTypeM4, new Vector2(0.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, -0.25881904f)), shellBasicId),
+            [canC04] = new CanisterProfile(canC04, canTypeM5, new Vector2(2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
+            [canC05] = new CanisterProfile(canC05, canTypeM6, new Vector2(4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
 
-            ["c06"] = new CanisterProfile("c06", "M8", new Vector2(-4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, -0.13395266f)), shellBasicId),
-            ["c07"] = new CanisterProfile("c07", "M10", new Vector2(-2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, -0.1648116f)), shellBasicId),
-            ["c08"] = new CanisterProfile("c08", "M2", new Vector2(0.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, -0.13052619f)), shellDonutId),
-            ["c09"] = new CanisterProfile("c09", "M3", new Vector2(2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, -0.1648116f)), shellDonutId),
-            ["c10"] = new CanisterProfile("c10", "M4", new Vector2(4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, -0.13395266f)), shellDonutId),
+            [canC06] = new CanisterProfile(canC06, canTypeM8, new Vector2(-4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, -0.13395266f)), shellBasicId),
+            [canC07] = new CanisterProfile(canC07, canTypeM10, new Vector2(-2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, -0.1648116f)), shellBasicId),
+            [canC08] = new CanisterProfile(canC08, canTypeM2, new Vector2(0.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, -0.13052619f)), shellDonutId),
+            [canC09] = new CanisterProfile(canC09, canTypeM3, new Vector2(2.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, -0.1648116f)), shellDonutId),
+            [canC10] = new CanisterProfile(canC10, canTypeM4, new Vector2(4.0f, -2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, -0.13395266f)), shellDonutId),
 
-            ["c11"] = new CanisterProfile("c11", "M5", new Vector2(-4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.25881904f, 0.9659258f, 0.0f)), shellDonutId),
-            ["c12"] = new CanisterProfile("c12", "M6", new Vector2(-2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
-            ["c13"] = new CanisterProfile("c13", "M8", new Vector2(0.0f, 0.0f) * canisterSpacingScale, Vector3.UnitY, shellDonutId),
-            ["c14"] = new CanisterProfile("c14", "M10", new Vector2(2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
-            ["c15"] = new CanisterProfile("c15", "M2", new Vector2(4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.25881904f, 0.9659258f, 0.0f)), shellChrysId),
+            [canC11] = new CanisterProfile(canC11, canTypeM5, new Vector2(-4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.25881904f, 0.9659258f, 0.0f)), shellDonutId),
+            [canC12] = new CanisterProfile(canC12, canTypeM6, new Vector2(-2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
+            [canC13] = new CanisterProfile(canC13, canTypeM8, new Vector2(0.0f, 0.0f) * canisterSpacingScale, Vector3.UnitY, shellDonutId),
+            [canC14] = new CanisterProfile(canC14, canTypeM10, new Vector2(2.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13052619f, 0.9914449f, 0.0f)), shellDonutId),
+            [canC15] = new CanisterProfile(canC15, canTypeM2, new Vector2(4.0f, 0.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.25881904f, 0.9659258f, 0.0f)), shellChrysId),
 
-            ["c16"] = new CanisterProfile("c16", "M3", new Vector2(-4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
-            ["c17"] = new CanisterProfile("c17", "M4", new Vector2(-2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
-            ["c18"] = new CanisterProfile("c18", "M5", new Vector2(0.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, 0.13052619f)), shellChrysId),
-            ["c19"] = new CanisterProfile("c19", "M6", new Vector2(2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
-            ["c20"] = new CanisterProfile("c20", "M8", new Vector2(4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
+            [canC16] = new CanisterProfile(canC16, canTypeM3, new Vector2(-4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
+            [canC17] = new CanisterProfile(canC17, canTypeM4, new Vector2(-2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
+            [canC18] = new CanisterProfile(canC18, canTypeM5, new Vector2(0.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9914449f, 0.13052619f)), shellChrysId),
+            [canC19] = new CanisterProfile(canC19, canTypeM6, new Vector2(2.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.1648116f, 0.9698463f, 0.1648116f)), shellChrysId),
+            [canC20] = new CanisterProfile(canC20, canTypeM8, new Vector2(4.0f, 2.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.26790532f, 0.9238795f, 0.13395266f)), shellChrysId),
 
-            ["c21"] = new CanisterProfile("c21", "M10", new Vector2(-4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, 0.29883623f)), shellChrysId),
-            ["c22"] = new CanisterProfile("c22", "M4", new Vector2(-2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
-            ["c23"] = new CanisterProfile("c23", "M5", new Vector2(0.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, 0.25881904f)), shellWillowId),
-            ["c24"] = new CanisterProfile("c24", "M6", new Vector2(2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
-            ["c25"] = new CanisterProfile("c25", "M8", new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), shellWillowId)
+            [canC21] = new CanisterProfile(canC21, canTypeM10, new Vector2(-4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, 0.29883623f)), shellChrysId),
+            [canC22] = new CanisterProfile(canC22, canTypeM4, new Vector2(-2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
+            [canC23] = new CanisterProfile(canC23, canTypeM5, new Vector2(0.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.0f, 0.9659258f, 0.25881904f)), shellWillowId),
+            [canC24] = new CanisterProfile(canC24, canTypeM6, new Vector2(2.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.13395266f, 0.9238795f, 0.26790532f)), shellWillowId),
+            [canC25] = new CanisterProfile(canC25, canTypeM8, new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), shellWillowId)
         };
 
         // Ground-effect canisters: separate set, placed around the pad border.
@@ -89,14 +132,14 @@ public static class DefaultProfiles
         const float groundHalf = 9.0f;
         var groundCanisters = new Dictionary<string, CanisterProfile>
         {
-            ["g01"] = new CanisterProfile("g01", "M2", new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
-            ["g02"] = new CanisterProfile("g02", "M3", new Vector2(0.0f, -groundHalf), Vector3.UnitY, shellBasicId),
-            ["g03"] = new CanisterProfile("g03", "M4", new Vector2(groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
-            ["g04"] = new CanisterProfile("g04", "M5", new Vector2(groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
-            ["g05"] = new CanisterProfile("g05", "M6", new Vector2(groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
-            ["g06"] = new CanisterProfile("g06", "M8", new Vector2(0.0f, groundHalf), Vector3.UnitY, shellBasicId),
-            ["g07"] = new CanisterProfile("g07", "M10", new Vector2(-groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
-            ["g08"] = new CanisterProfile("g08", "M6", new Vector2(-groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
+            [canG01] = new CanisterProfile(canG01, canTypeM2, new Vector2(-groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG02] = new CanisterProfile(canG02, canTypeM3, new Vector2(0.0f, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG03] = new CanisterProfile(canG03, canTypeM4, new Vector2(groundHalf, -groundHalf), Vector3.UnitY, shellBasicId),
+            [canG04] = new CanisterProfile(canG04, canTypeM5, new Vector2(groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
+            [canG05] = new CanisterProfile(canG05, canTypeM6, new Vector2(groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG06] = new CanisterProfile(canG06, canTypeM8, new Vector2(0.0f, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG07] = new CanisterProfile(canG07, canTypeM10, new Vector2(-groundHalf, groundHalf), Vector3.UnitY, shellBasicId),
+            [canG08] = new CanisterProfile(canG08, canTypeM6, new Vector2(-groundHalf, 0.0f), Vector3.UnitY, shellBasicId),
         };
 
         foreach (var kvp in groundCanisters)
