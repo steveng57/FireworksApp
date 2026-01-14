@@ -22,6 +22,51 @@ public enum FireworkBurstShape
     SubShellSpokeWheelPop
 }
 
+public readonly record struct ShellId
+{
+    public string Value { get; }
+
+    public ShellId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(ShellId id) => id.Value;
+    public static implicit operator ShellId(string value) => new(value);
+}
+
+public readonly record struct SubShellId
+{
+    public string Value { get; }
+
+    public SubShellId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(SubShellId id) => id.Value;
+    public static implicit operator SubShellId(string value) => new(value);
+}
+
+public readonly record struct ColorSchemeId
+{
+    public string Value { get; }
+
+    public ColorSchemeId(string value)
+    {
+        Value = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public override string ToString() => Value;
+
+    public static implicit operator string(ColorSchemeId id) => id.Value;
+    public static implicit operator ColorSchemeId(string value) => new(value);
+}
+
 public sealed record CometParams(
     int CometCount,
     float CometSpeedMin,
@@ -35,7 +80,7 @@ public sealed record CometParams(
     float TrailSpeed,
     float TrailSmokeChance,
     Vector4? TrailColor,
-    string? SubShellProfileId = null,
+    SubShellId? SubShellProfileId = null,
     float? SubShellDelaySeconds = null)
 {
     public static CometParams Defaults { get; } = new(
@@ -187,12 +232,12 @@ public sealed record class CanisterProfile(
     string CanisterTypeId,
     Vector2 Position,
     Vector3 LaunchDirection,
-    string DefaultShellProfileId);
+    ShellId DefaultShellProfileId);
 
 public sealed record class FireworkShellProfile(
     string Id,
     FireworkBurstShape BurstShape,
-    string ColorSchemeId,
+    ColorSchemeId ColorSchemeId,
     float FuseTimeSeconds,
     float ExplosionRadius,
     int ParticleCount,
@@ -258,7 +303,7 @@ public sealed record PeonyToWillowParams(
     float HandoffDelaySeconds,
     float HandoffFraction,
     float HandoffRandomness,
-    string WillowSubshellProfileId,
+    SubShellId WillowSubshellProfileId,
     float WillowVelocityScale,
     float WillowGravityMultiplier,
     float WillowDragMultiplier,
@@ -275,7 +320,7 @@ public sealed record PeonyToWillowParams(
         HandoffDelaySeconds: 0.45f,
         HandoffFraction: 0.55f,
         HandoffRandomness: 0.15f,
-        WillowSubshellProfileId: "subshell_basic_pop",
+        WillowSubshellProfileId: new SubShellId("subshell_basic_pop"),
         WillowVelocityScale: 0.45f,
         WillowGravityMultiplier: 2.2f,
         WillowDragMultiplier: 2.4f,
@@ -288,7 +333,7 @@ public sealed record PeonyToWillowParams(
 public sealed record class GroundEffectProfile(
     string Id,
     GroundEffectType Type,
-    string ColorSchemeId,
+    ColorSchemeId ColorSchemeId,
     float DurationSeconds,
     float EmissionRate,
     Vector2 ParticleVelocityRange,
@@ -415,7 +460,7 @@ public static class SubShellPresets
 {
     public static SubShellProfile Sphere(
         string id,
-        string shellProfileId,
+        ShellId shellProfileId,
         int count,
         float minAltitudeToSpawn,
         float delaySeconds = 0.15f,
@@ -425,7 +470,7 @@ public static class SubShellPresets
         float speedJitter = 0.25f,
         float positionJitter = 0.6f,
         float childTimeScale = 1.0f,
-        string? colorSchemeId = null,
+        ColorSchemeId? colorSchemeId = null,
         FireworkBurstShape? burstShapeOverride = null,
         int maxSubshellDepth = 1) => new(
             Id: id,
@@ -446,7 +491,7 @@ public static class SubShellPresets
 
     public static SubShellProfile Ring(
         string id,
-        string shellProfileId,
+        ShellId shellProfileId,
         int count,
         float minAltitudeToSpawn,
         float delaySeconds = 0.10f,
@@ -456,7 +501,7 @@ public static class SubShellPresets
         float speedJitter = 0.20f,
         float positionJitter = 0.4f,
         float childTimeScale = 1.0f,
-        string? colorSchemeId = null,
+        ColorSchemeId? colorSchemeId = null,
         FireworkBurstShape? burstShapeOverride = null,
         int maxSubshellDepth = 1) => new(
             Id: id,
@@ -491,7 +536,7 @@ public static class ShellPresets
     public static FireworkShellProfile Create(
         string id,
         FireworkBurstShape burstShape,
-        string colorSchemeId,
+        ColorSchemeId colorSchemeId,
         float fuseTimeSeconds,
         float explosionRadius,
         int particleCount,
@@ -702,7 +747,7 @@ public enum SubShellSpawnMode
 
 public sealed record class SubShellProfile(
     string Id,
-    string ShellProfileId,
+    ShellId ShellProfileId,
     int Count,
     SubShellSpawnMode SpawnMode,
     float DelaySeconds,
@@ -712,13 +757,13 @@ public sealed record class SubShellProfile(
     float SpeedJitter,
     float PositionJitter,
     float ChildTimeScale,
-    string? ColorSchemeId,
+    ColorSchemeId? ColorSchemeId,
     FireworkBurstShape? BurstShapeOverride,
     float MinAltitudeToSpawn,
     int MaxSubshellDepth);
 
 public sealed record class SubShellAttachment(
-    string SubShellProfileId,
+    SubShellId SubShellProfileId,
     float Probability = 1.0f,
     float Scale = 1.0f,
     int DepthBudget = 1);
