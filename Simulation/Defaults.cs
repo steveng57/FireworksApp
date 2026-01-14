@@ -285,6 +285,7 @@ public static class DefaultProfiles
                 {
                     WillowSubshellProfileId = "subshell_willow_trail_only",
                     //WillowSubshellProfileId = "subshell_ring_sparkle",
+                    //WillowSubshellProfileId = "subshell_basic_pop",
                     WillowVelocityScale = 0.50f,
                     WillowGravityMultiplier = 2.2f,
                     WillowDragMultiplier = 2.4f,
@@ -371,9 +372,11 @@ public static class DefaultProfiles
                                 TrailParticleLifetime = 0.5f,
                                 TrailSpeed = 5.0f,
                                 TrailSmokeChance = 0.18f,
-                                // Custom vivid cyan trail color
-                                TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f)
-                    }
+                    // Custom vivid cyan trail color
+                    TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f),
+                    SubShellProfileId = null,
+                    SubShellDelaySeconds = 2.0f,
+                            }
                 ),
         };
 
@@ -671,6 +674,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = "spoke_wheel_pop";
+                // shellId = "peony_to_willow";
                 // shellId = "spiral";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";

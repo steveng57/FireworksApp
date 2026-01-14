@@ -59,6 +59,7 @@ public sealed class Comet
     public float Age;
     public float LifetimeSeconds;
     public bool Alive;
+    public bool SubShellSpawned;
 
     public float GravityScale;
     public float Drag;
@@ -84,6 +85,7 @@ public sealed class FireworksEngine
     private readonly DetonationEvent[] _detonationBuffer = new DetonationEvent[Tunables.ParticleBudgets.Shell];
     private uint _nextShellId = 1;
     private readonly Random _rng = new();
+    private readonly ColorScheme? _defaultColorScheme;
 
     private ShowScript _show = ShowScript.Empty;
     private int _nextEventIndex;
@@ -98,8 +100,10 @@ public sealed class FireworksEngine
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
+        ArgumentNullException.ThrowIfNull(profiles);
         Tunables.Validate();
         _profiles = profiles;
+        _defaultColorScheme = ResolveDefaultColorScheme(_profiles.ColorSchemes);
         _canisters = profiles.Canisters.Values.Select(cp => new Canister(cp)).ToList();
     }
 
@@ -580,6 +584,14 @@ public sealed class FireworksEngine
                 EmitCometTrail(c, renderer);
             }
 
+            // Optional head subshell: detonate after configured delay
+            if (!c.SubShellSpawned && TrySpawnCometSubShell(ref c, renderer))
+            {
+                c.Alive = false;
+                _comets.RemoveAt(i);
+                continue;
+            }
+
             // Integrate (semi-implicit Euler)
             c.Velocity += gravity * c.GravityScale * dt;
             c.Velocity = c.Velocity * MathF.Exp(-c.Drag * dt);
@@ -599,6 +611,69 @@ public sealed class FireworksEngine
             // write back struct/class state
             _comets[i] = c;
         }
+    }
+
+    private bool TrySpawnCometSubShell(ref Comet comet, D3D11Renderer renderer)
+    {
+        var subShellId = comet.Params.SubShellProfileId;
+        if (string.IsNullOrWhiteSpace(subShellId))
+            return false;
+
+        float triggerTime = comet.Params.SubShellDelaySeconds ?? comet.LifetimeSeconds;
+        if (comet.Age < triggerTime)
+            return false;
+
+        if (!_profiles.SubShells.TryGetValue(subShellId, out var subProfile))
+            return false;
+
+        if (!_profiles.Shells.TryGetValue(subProfile.ShellProfileId, out var shellProfile))
+            return false;
+
+        var schemeId = subProfile.ColorSchemeId ?? shellProfile.ColorSchemeId;
+        if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var scheme))
+            scheme = _defaultColorScheme;
+
+        if (scheme is null)
+            return false;
+
+        var shell = new FireworkShell(
+            shellProfile,
+            scheme,
+            comet.Position,
+            Vector3.Zero,
+            dragK: ShellDragK,
+            fuseOverrideSeconds: 0.05f)
+        {
+            ShellId = _nextShellId++
+        };
+
+        comet.SubShellSpawned = true;
+
+        if (renderer.ShellsGpuRendered)
+        {
+            _gpuShells[shell.ShellId] = shell;
+            renderer.QueueShellGpu(comet.Position, Vector3.Zero, shell.FuseTimeSeconds, ShellDragK, ColorUtil.PickBaseColor(scheme), shell.ShellId);
+        }
+        else
+        {
+            _shells.Add(shell);
+        }
+
+        return true;
+    }
+
+    private static ColorScheme? ResolveDefaultColorScheme(IReadOnlyDictionary<string, ColorScheme> colorSchemes)
+    {
+        if (colorSchemes.TryGetValue("white", out var white))
+            return white;
+
+        if (colorSchemes.TryGetValue("warm", out var warm))
+            return warm;
+
+        foreach (var kvp in colorSchemes)
+            return kvp.Value;
+
+        return null;
     }
 
     private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)

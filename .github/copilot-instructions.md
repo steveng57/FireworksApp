@@ -15,6 +15,7 @@ simulation using:
 3. **No silent behavior changes.** If you change timing, units, randomization, or lifetimes, call it out in comments.
 4. **Performance is a feature.** Avoid per-frame allocations, LINQ, boxing, unnecessary copies.
 5. **Never swallow exceptions.** If you touch try/catch, preserve stack traces and log with context.
+6. **Always test your changes.** Ensure the app builds.
 
 ## 1) Change strategy
 - Make changes in small steps; each step should compile.
