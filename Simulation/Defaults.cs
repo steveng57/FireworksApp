@@ -226,10 +226,10 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.0f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 180.0f,
-                trailParticleCount: 10,
-                trailParticleLifetimeSeconds: 0.5f,
-                trailSpeed: 4.0f,
-                trailSmokeChance: 0.15f,
+                trailParticleCount: ShellTrailPresets.ShortBright.Count,
+                trailParticleLifetimeSeconds: ShellTrailPresets.ShortBright.LifetimeSeconds,
+                trailSpeed: ShellTrailPresets.ShortBright.Speed,
+                trailSmokeChance: ShellTrailPresets.ShortBright.SmokeChance,
                 subShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
                 {
                     SubShellCount = 12,
@@ -263,9 +263,10 @@ public static class DefaultProfiles
                 particleLifetimeSeconds: 0.0f,
                 suppressBurst: true,
                 terminalFadeOutSeconds: 1.5f,
-                trailParticleLifetimeSeconds: 0.8f,
-                trailSpeed: 5.0f,
-                trailSmokeChance: 0.2f),
+                trailParticleCount: ShellTrailPresets.WillowLingering.Count,
+                trailParticleLifetimeSeconds: ShellTrailPresets.WillowLingering.LifetimeSeconds,
+                trailSpeed: ShellTrailPresets.WillowLingering.Speed,
+                trailSmokeChance: ShellTrailPresets.WillowLingering.SmokeChance),
 
             ["peony_to_willow"] = ShellPresets.Create(
                 id: "peony_to_willow",

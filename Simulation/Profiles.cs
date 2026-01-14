@@ -590,6 +590,29 @@ public static class FireworkShellDefaults
     public const float BurstSparkleIntensity = 0.0f;
 }
 
+public readonly record struct ShellTrailParams(int Count, float LifetimeSeconds, float Speed, float SmokeChance);
+
+public static class ShellTrailPresets
+{
+    public static ShellTrailParams Default => new(
+        Count: FireworkShellDefaults.TrailParticleCount,
+        LifetimeSeconds: FireworkShellDefaults.TrailParticleLifetimeSeconds,
+        Speed: FireworkShellDefaults.TrailSpeed,
+        SmokeChance: FireworkShellDefaults.TrailSmokeChance);
+
+    public static ShellTrailParams ShortBright => new(
+        Count: 10,
+        LifetimeSeconds: 0.5f,
+        Speed: 4.0f,
+        SmokeChance: 0.15f);
+
+    public static ShellTrailParams WillowLingering => new(
+        Count: 12,
+        LifetimeSeconds: 0.8f,
+        Speed: 5.0f,
+        SmokeChance: 0.2f);
+}
+
 public static class ShellPresets
 {
     public static FireworkShellProfile Create(
