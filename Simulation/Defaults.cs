@@ -240,11 +240,11 @@ public static class DefaultProfiles
                     SubShellSpeed = 10.0f,
                     SubShellFuseMinSeconds = 0.50f,
                     SubShellFuseMaxSeconds = 1.5f,
-                    PopFlashParticleCount = 2400,
-                    PopFlashLifetime = 0.32f,
-                    PopFlashRadius = 5.0f,
-                    PopFlashIntensity = 2.2f,
-                    PopFlashFadeGamma = 2.0f,
+                    PopFlashParticleCount = 2000,
+                    PopFlashLifetime = 0.12f,
+                    PopFlashRadius = 1.2f,
+                    PopFlashIntensity = 8.0f,
+                    PopFlashFadeGamma = 2.2f,
                     PopFlashColorSchemeId = "white",
                     SubShellGravityScale = 0.95f,
                     SubShellDrag = 0.07f,
@@ -314,7 +314,8 @@ public static class DefaultProfiles
                         TrailParticleCount = 6,
                         TrailParticleLifetime = 0.4f,
                         TrailSpeed = 3.0f,
-                        TrailSmokeChance = 0.15f
+                        TrailSmokeChance = 0.15f,
+                        SparkParticleCount = 3000,
                     }
                 ),
 

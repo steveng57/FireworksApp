@@ -913,14 +913,59 @@ public sealed class FireworksEngine
 
     private void SpawnPopFlash(Vector3 position, FinaleSaluteParams p, Vector4 popColor, D3D11Renderer renderer)
     {
-        renderer.SpawnPopFlash(position, p.PopFlashLifetime, p.PopFlashSize, p.PopPeakIntensity, p.PopFadeGamma, popColor);
+        SpawnPopFlashWithFinaleSparks(
+            position,
+            flashLifetime: p.PopFlashLifetime,
+            flashSize: p.PopFlashSize,
+            peakIntensity: p.PopPeakIntensity,
+            fadeGamma: p.PopFadeGamma,
+            popColor: popColor,
+            sparkParticleCount: p.SparkParticleCount,
+            allowZeroSparkCount: false,
+            renderer);
+    }
+
+    private void SpawnSpokeWheelPopFlash(SubShell s, SubShellSpokeWheelPopParams p, D3D11Renderer renderer)
+    {
+        SpawnPopFlashWithFinaleSparks(
+            s.Position,
+            flashLifetime: p.PopFlashLifetime,
+            flashSize: p.PopFlashRadius,
+            peakIntensity: p.PopFlashIntensity,
+            fadeGamma: p.PopFlashFadeGamma,
+            popColor: s.PopColor,
+            sparkParticleCount: p.PopFlashParticleCount,
+            allowZeroSparkCount: true,
+            renderer);
+    }
+
+    private void SpawnPopFlashWithFinaleSparks(
+        Vector3 position,
+        float flashLifetime,
+        float flashSize,
+        float peakIntensity,
+        float fadeGamma,
+        Vector4 popColor,
+        int sparkParticleCount,
+        bool allowZeroSparkCount,
+        D3D11Renderer renderer)
+    {
+        float lifetime = MathF.Max(0.05f, flashLifetime);
+        float size = MathF.Max(0.05f, flashSize);
+        float intensity = MathF.Max(0.0f, peakIntensity);
+
+        renderer.SpawnPopFlash(position, lifetime, size, intensity, fadeGamma, popColor);
+
+        int count = Math.Clamp(sparkParticleCount, 0, 250_000);
+        if (allowZeroSparkCount && count <= 0)
+            return;
 
         // Dense, tight spark burst for realism (no smoke, no color variance beyond white->silver).
         // Do NOT increase radius: keep speed slightly lower so the energy reads tighter.
         // Particle count goal: 3-6x the *shell* burst count. We approximate with a fixed high count per pop.
         renderer.SpawnFinaleSaluteSparks(
             position: position,
-            particleCount: System.Math.Clamp(p.SparkParticleCount, 0, 250000),
+            particleCount: Math.Max(1, count),
             baseSpeed: 9.0f,
             speedJitterFrac: 0.20f,
             particleLifetimeMinSeconds: 0.40f,
@@ -933,32 +978,6 @@ public sealed class FireworksEngine
             microLifetimeMaxSeconds: 0.40f,
             microSpeedMulMin: 0.55f,
             microSpeedMulMax: 0.85f);
-    }
-
-    private void SpawnSpokeWheelPopFlash(SubShell s, SubShellSpokeWheelPopParams p, D3D11Renderer renderer)
-    {
-        float flashLifetime = MathF.Max(0.05f, p.PopFlashLifetime);
-        float flashRadius = MathF.Max(0.05f, p.PopFlashRadius);
-
-        renderer.SpawnPopFlash(s.Position, flashLifetime, flashRadius, p.PopFlashIntensity, p.PopFlashFadeGamma, s.PopColor);
-
-        int particleCount = Math.Clamp(p.PopFlashParticleCount, 0, 250_000);
-        if (particleCount <= 0)
-            return;
-
-        var dirs = EmissionStyles.EmitPeony(particleCount);
-        // Speed chosen so the spark front roughly matches the configured radius over its lifetime.
-        float speed = flashRadius / flashLifetime;
-
-        // Fast, bright micro-burst to read as a sharp pop rather than a full peony.
-        renderer.SpawnBurstDirectedExplode(
-            s.Position,
-            s.PopColor.LengthSquared() > 1e-6f ? s.PopColor : new Vector4(1.0f, 1.0f, 1.0f, 1.0f),
-            speed,
-            dirs,
-            particleLifetimeSeconds: flashLifetime * 0.9f,
-            sparkleRateHz: 18.0f,
-            sparkleIntensity: MathF.Min(1.2f, p.PopFlashIntensity * 0.35f));
     }
 
     private void EmitSubShellTrail(SubShell s, FinaleSaluteParams p, D3D11Renderer renderer)
