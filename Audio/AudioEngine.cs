@@ -182,6 +182,7 @@ public sealed class AudioEngine : IDisposable
             SoundEventType.ShellBurst => "burst.wav",
             SoundEventType.Crackle => "crackle.wav",
             SoundEventType.FinaleCluster => "finale_cluster.wav",
+            SoundEventType.SpokeWheelPop => "spoke_wheel_pop.wav",
             _ => ""
         };
 

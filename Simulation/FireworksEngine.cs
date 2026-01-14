@@ -757,6 +757,12 @@ public sealed class FireworksEngine
         Vector4 defaultPopColor = new(1.0f, 1.0f, 1.0f, 1.0f);
         Vector4 popColor = popScheme is null ? defaultPopColor : ColorUtil.PickBaseColor(popScheme);
 
+        EmitSound(new SoundEvent(
+            SoundEventType.FinaleCluster,
+            Position: origin,
+            Gain: 1.0f,
+            Loop: false));
+
         for (int i = 0; i < count; i++)
         {
             Vector3 dir = RandomUnitVector();
@@ -829,6 +835,12 @@ public sealed class FireworksEngine
         Vector3 basis2 = Vector3.Normalize(Vector3.Cross(ringAxis, basis1));
 
         var flashScheme = ResolvePopFlashScheme(p, parentScheme);
+
+        EmitSound(new SoundEvent(
+            SoundEventType.SpokeWheelPop,
+            Position: origin,
+            Gain: 1.0f,
+            Loop: false));
 
         for (int i = 0; i < count; i++)
         {
