@@ -33,7 +33,9 @@ public sealed record CometParams(
     float TrailParticleLifetime,
     float TrailSpeed,
     float TrailSmokeChance,
-    Vector4? TrailColor)
+    Vector4? TrailColor,
+    string? SubShellProfileId = null,
+    float? SubShellDelaySeconds = null)
 {
     public static CometParams Defaults { get; } = new(
         CometCount: 30,
@@ -47,7 +49,9 @@ public sealed record CometParams(
         TrailParticleLifetime: 0.5f,
         TrailSpeed: 4.0f,
         TrailSmokeChance: 0.20f,
-        TrailColor: null); // null = use burst color
+        TrailColor: null,
+        SubShellProfileId: null,
+        SubShellDelaySeconds: null); // null = use burst color
 }
 
 public sealed record SubShellSpokeWheelPopParams(

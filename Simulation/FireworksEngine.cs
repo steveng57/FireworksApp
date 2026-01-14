@@ -59,6 +59,7 @@ public sealed class Comet
     public float Age;
     public float LifetimeSeconds;
     public bool Alive;
+    public bool SubShellSpawned;
 
     public float GravityScale;
     public float Drag;
@@ -580,6 +581,14 @@ public sealed class FireworksEngine
                 EmitCometTrail(c, renderer);
             }
 
+            // Optional head subshell: detonate after configured delay
+            if (!c.SubShellSpawned && TrySpawnCometSubShell(ref c, renderer))
+            {
+                c.Alive = false;
+                _comets.RemoveAt(i);
+                continue;
+            }
+
             // Integrate (semi-implicit Euler)
             c.Velocity += gravity * c.GravityScale * dt;
             c.Velocity = c.Velocity * MathF.Exp(-c.Drag * dt);
@@ -599,6 +608,55 @@ public sealed class FireworksEngine
             // write back struct/class state
             _comets[i] = c;
         }
+    }
+
+    private bool TrySpawnCometSubShell(ref Comet comet, D3D11Renderer renderer)
+    {
+        var subShellId = comet.Params.SubShellProfileId;
+        if (string.IsNullOrWhiteSpace(subShellId))
+            return false;
+
+        float triggerTime = comet.Params.SubShellDelaySeconds ?? comet.LifetimeSeconds;
+        if (comet.Age < triggerTime)
+            return false;
+
+        if (!_profiles.SubShells.TryGetValue(subShellId, out var subProfile))
+            return false;
+
+        if (!_profiles.Shells.TryGetValue(subProfile.ShellProfileId, out var shellProfile))
+            return false;
+
+        var schemeId = subProfile.ColorSchemeId ?? shellProfile.ColorSchemeId;
+        if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var scheme))
+            scheme = _profiles.ColorSchemes.Values.FirstOrDefault();
+
+        if (scheme is null)
+            return false;
+
+        var shell = new FireworkShell(
+            shellProfile,
+            scheme,
+            comet.Position,
+            Vector3.Zero,
+            dragK: ShellDragK,
+            fuseOverrideSeconds: 0.05f)
+        {
+            ShellId = _nextShellId++
+        };
+
+        comet.SubShellSpawned = true;
+
+        if (renderer.ShellsGpuRendered)
+        {
+            _gpuShells[shell.ShellId] = shell;
+            renderer.QueueShellGpu(comet.Position, Vector3.Zero, shell.FuseTimeSeconds, ShellDragK, ColorUtil.PickBaseColor(scheme), shell.ShellId);
+        }
+        else
+        {
+            _shells.Add(shell);
+        }
+
+        return true;
     }
 
     private void TriggerEvent(ShowEvent ev, D3D11Renderer renderer)
