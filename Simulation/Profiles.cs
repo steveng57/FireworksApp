@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Windows.Media;
 
@@ -587,6 +588,8 @@ public static class ProfileValidator
         }
 
         DetectShellSubshellCycles(shells, subshells);
+
+        LogSummary(profileSet);
     }
 
     private static void DetectShellSubshellCycles(
@@ -673,6 +676,13 @@ public static class ProfileValidator
     {
         if (!dictionary.ContainsKey(id))
             throw new InvalidOperationException(message);
+    }
+
+    [Conditional("DEBUG")]
+    public static void LogSummary(FireworksProfileSet profileSet)
+    {
+        ArgumentNullException.ThrowIfNull(profileSet);
+        Debug.WriteLine($"[Profiles] Canisters={profileSet.Canisters.Count}, Shells={profileSet.Shells.Count}, SubShells={profileSet.SubShells.Count}, GroundEffects={profileSet.GroundEffects.Count}, ColorSchemes={profileSet.ColorSchemes.Count}");
     }
 }
 
