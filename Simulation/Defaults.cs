@@ -70,7 +70,7 @@ public static class DefaultProfiles
             ["mixed"] = new ColorScheme("mixed", new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange, Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.1f, 1.5f),
             ["neon"] = new ColorScheme("neon", new[] { Colors.Lime, Colors.Magenta, Colors.Cyan, Colors.HotPink }, 0.12f, 0.8f),
             ["pastel"] = new ColorScheme("pastel", new[] { Colors.LightPink, Colors.LightBlue, Colors.LightGreen, Colors.Lavender }, 0.05f, 2.0f),
-
+            ["white"] = new ColorScheme("white", new[] { Colors.White }, 0.02f, 3.0f),
             ["debug"] = new ColorScheme("debug", new[] { Colors.White, Colors.Red, Colors.Lime, Colors.Blue, Colors.Yellow, Colors.Cyan, Colors.Magenta }, 0.2f, 0.5f),
             // id, base colors[], variation, boost
             ["gold"] = new ColorScheme(
@@ -210,7 +210,49 @@ public static class DefaultProfiles
                 ParticleCount: 5500,
                 ParticleLifetimeSeconds: 4.5f,
                 BurstSparkleRateHz: 16.0f,
-                BurstSparkleIntensity: 0.55f
+                BurstSparkleIntensity: 0.55f,
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 25.0f
+            ),
+
+            ["spoke_wheel_pop"] = new FireworkShellProfile(
+                Id: "spoke_wheel_pop",
+                BurstShape: FireworkBurstShape.SubShellSpokeWheelPop,
+                ColorSchemeId: "warm",
+                FuseTimeSeconds: 3.6f,
+                ExplosionRadius: 0.0f,
+                ParticleCount: 0,
+                ParticleLifetimeSeconds: 0.0f,
+                BurstSparkleRateHz: 0.0f,
+                BurstSparkleIntensity: 0.0f,
+                RingAxis: Vector3.UnitY,
+                RingAxisRandomTiltDegrees: 180.0f,
+                TrailParticleCount: 10,
+                TrailParticleLifetimeSeconds: 0.5f,
+                TrailSpeed: 4.0f,
+                TrailSmokeChance: 0.15f,
+                SubShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
+                {
+                    SubShellCount = 12,
+                    RingStartAngleDegrees = 0.0f,
+                    RingEndAngleDegrees = 360.0f,
+                    RingRadius = 25.0f,
+                    SubShellSpeed = 10.0f,
+                    SubShellFuseMinSeconds = 0.50f,
+                    SubShellFuseMaxSeconds = 1.5f,
+                    PopFlashParticleCount = 2000,
+                    PopFlashLifetime = 0.12f,
+                    PopFlashRadius = 1.2f,
+                    PopFlashIntensity = 8.0f,
+                    PopFlashFadeGamma = 2.2f,
+                    PopFlashColorSchemeId = "white",
+                    SubShellGravityScale = 0.95f,
+                    SubShellDrag = 0.07f,
+                    AngleJitterDegrees = 3.5f,
+                    TangentialSpeed = 3.0f,
+                    RingAxis = Vector3.UnitY,
+                    RingAxisRandomTiltDegrees = 180.0f
+                }
             ),
 
             ["willow_trail_only"] = new FireworkShellProfile(
@@ -272,7 +314,8 @@ public static class DefaultProfiles
                         TrailParticleCount = 6,
                         TrailParticleLifetime = 0.4f,
                         TrailSpeed = 3.0f,
-                        TrailSmokeChance = 0.15f
+                        TrailSmokeChance = 0.15f,
+                        SparkParticleCount = 3000,
                     }
                 ),
 
@@ -625,10 +668,10 @@ public static class DefaultShow
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
                 string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
-                float? muzzleVelocity = null;
 
                 // debug variations
-                //shellId = "basic";
+                //shellId = "spoke_wheel_pop";
+                // shellId = "spiral";
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
@@ -636,8 +679,8 @@ public static class DefaultShow
                     TimeSeconds: t,
                     CanisterId: canisterId,
                     ShellProfileId: shellId,
-                    ColorSchemeId: colorSchemeId,
-                    MuzzleVelocity: muzzleVelocity);
+                    ColorSchemeId: colorSchemeId
+                    );
                 events.Add(showEvent);
 
                 t += 0.20f;

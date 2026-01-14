@@ -694,8 +694,10 @@ internal sealed class ParticlesPipeline : IDisposable
 
         _cs = device.CreateComputeShader(csBytes);
         _csSpawn = csSpawnBytes.Length > 0 ? device.CreateComputeShader(csSpawnBytes) : null;
-        bool enableGpuSpawn = string.Equals(Environment.GetEnvironmentVariable(GpuSpawnEnvVar), "1", StringComparison.OrdinalIgnoreCase);
-        _gpuSpawnEnabled = enableGpuSpawn && _csSpawn is not null && _particleUAV is not null;
+        // Default ON (more bandwidth/stability now); allow explicit opt-out via FIREWORKS_GPU_SPAWN=0/false.
+        string? gpuSpawnEnv = Environment.GetEnvironmentVariable(GpuSpawnEnvVar);
+        bool disableGpuSpawn = string.Equals(gpuSpawnEnv, "0", StringComparison.OrdinalIgnoreCase) || string.Equals(gpuSpawnEnv, "false", StringComparison.OrdinalIgnoreCase);
+        _gpuSpawnEnabled = !disableGpuSpawn && _csSpawn is not null && _particleUAV is not null;
         GpuSpawnEnabled = true;
         _vs = device.CreateVertexShader(vsBytes);
         _ps = device.CreatePixelShader(psBytes);
