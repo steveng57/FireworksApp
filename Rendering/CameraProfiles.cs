@@ -61,7 +61,7 @@ public static class CameraProfiles
         240.0f,
         0.25f,
         0.22f,
-        false);
+        true);
 
     public static IReadOnlyDictionary<string, CameraProfile> All { get; } =
         new Dictionary<string, CameraProfile>(StringComparer.OrdinalIgnoreCase)
