@@ -410,6 +410,71 @@ public sealed record class ColorScheme(
     }
 }
 
+public static class SubShellPresets
+{
+    public static SubShellProfile Sphere(
+        string id,
+        string shellProfileId,
+        int count,
+        float minAltitudeToSpawn,
+        float delaySeconds = 0.15f,
+        float inheritParentVelocity = 0.2f,
+        float addedSpeed = 18.0f,
+        float directionJitter = 0.08f,
+        float speedJitter = 0.25f,
+        float positionJitter = 0.6f,
+        float childTimeScale = 1.0f,
+        string? colorSchemeId = null,
+        FireworkBurstShape? burstShapeOverride = null,
+        int maxSubshellDepth = 1) => new(
+            Id: id,
+            ShellProfileId: shellProfileId,
+            Count: count,
+            SpawnMode: SubShellSpawnMode.Sphere,
+            DelaySeconds: delaySeconds,
+            InheritParentVelocity: inheritParentVelocity,
+            AddedSpeed: addedSpeed,
+            DirectionJitter: directionJitter,
+            SpeedJitter: speedJitter,
+            PositionJitter: positionJitter,
+            ChildTimeScale: childTimeScale,
+            ColorSchemeId: colorSchemeId,
+            BurstShapeOverride: burstShapeOverride,
+            MinAltitudeToSpawn: minAltitudeToSpawn,
+            MaxSubshellDepth: maxSubshellDepth);
+
+    public static SubShellProfile Ring(
+        string id,
+        string shellProfileId,
+        int count,
+        float minAltitudeToSpawn,
+        float delaySeconds = 0.10f,
+        float inheritParentVelocity = 0.1f,
+        float addedSpeed = 12.0f,
+        float directionJitter = 0.05f,
+        float speedJitter = 0.20f,
+        float positionJitter = 0.4f,
+        float childTimeScale = 1.0f,
+        string? colorSchemeId = null,
+        FireworkBurstShape? burstShapeOverride = null,
+        int maxSubshellDepth = 1) => new(
+            Id: id,
+            ShellProfileId: shellProfileId,
+            Count: count,
+            SpawnMode: SubShellSpawnMode.Ring,
+            DelaySeconds: delaySeconds,
+            InheritParentVelocity: inheritParentVelocity,
+            AddedSpeed: addedSpeed,
+            DirectionJitter: directionJitter,
+            SpeedJitter: speedJitter,
+            PositionJitter: positionJitter,
+            ChildTimeScale: childTimeScale,
+            ColorSchemeId: colorSchemeId,
+            BurstShapeOverride: burstShapeOverride,
+            MinAltitudeToSpawn: minAltitudeToSpawn,
+            MaxSubshellDepth: maxSubshellDepth);
+}
+
 public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,

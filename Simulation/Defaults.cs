@@ -383,56 +383,24 @@ public static class DefaultProfiles
         // SubShell profiles: reusable child shell behaviors
         var subshellProfiles = new Dictionary<string, SubShellProfile>
         {
-            ["subshell_basic_pop"] = new SubShellProfile(
-                Id: "subshell_basic_pop",
-                ShellProfileId: "basic",
-                Count: 12,
-                SpawnMode: SubShellSpawnMode.Sphere,
-                DelaySeconds: 0.15f,
-                InheritParentVelocity: 0.2f,
-                AddedSpeed: 18.0f,
-                DirectionJitter: 0.08f,
-                SpeedJitter: 0.25f,
-                PositionJitter: 0.6f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: null,
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 5.0f,
-                MaxSubshellDepth: 1),
+            ["subshell_basic_pop"] = SubShellPresets.Sphere(
+                id: "subshell_basic_pop",
+                shellProfileId: "basic",
+                count: 12,
+                minAltitudeToSpawn: 5.0f),
 
-            ["subshell_willow_trail_only"] = new SubShellProfile(
-                Id: "subshell_willow_trail_only",
-                ShellProfileId: "willow_trail_only",
-                Count: 12,
-                SpawnMode: SubShellSpawnMode.Sphere,
-                DelaySeconds: 0.15f,
-                InheritParentVelocity: 0.2f,
-                AddedSpeed: 18.0f,
-                DirectionJitter: 0.08f,
-                SpeedJitter: 0.25f,
-                PositionJitter: 0.6f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: null,
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 5.0f,
-                MaxSubshellDepth: 1),
+            ["subshell_willow_trail_only"] = SubShellPresets.Sphere(
+                id: "subshell_willow_trail_only",
+                shellProfileId: "willow_trail_only",
+                count: 12,
+                minAltitudeToSpawn: 5.0f),
 
-            ["subshell_ring_sparkle"] = new SubShellProfile(
-                Id: "subshell_ring_sparkle",
-                ShellProfileId: "donut",
-                Count: 24,
-                SpawnMode: SubShellSpawnMode.Ring,
-                DelaySeconds: 0.10f,
-                InheritParentVelocity: 0.1f,
-                AddedSpeed: 12.0f,
-                DirectionJitter: 0.05f,
-                SpeedJitter: 0.20f,
-                PositionJitter: 0.4f,
-                ChildTimeScale: 1.0f,
-                ColorSchemeId: "neon",
-                BurstShapeOverride: null,
-                MinAltitudeToSpawn: 8.0f,
-                MaxSubshellDepth: 1)
+            ["subshell_ring_sparkle"] = SubShellPresets.Ring(
+                id: "subshell_ring_sparkle",
+                shellProfileId: "donut",
+                count: 24,
+                minAltitudeToSpawn: 8.0f,
+                colorSchemeId: "neon")
         };
 
         var groundEffects = new Dictionary<string, GroundEffectProfile>
