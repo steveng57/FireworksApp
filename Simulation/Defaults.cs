@@ -102,136 +102,135 @@ public static class DefaultProfiles
 
         var shells = new Dictionary<string, FireworkShellProfile>
         {
-            ["basic"] = new FireworkShellProfile(
-                Id: "basic",
-                BurstShape: FireworkBurstShape.Peony,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 3.8f,
-                ExplosionRadius: 12.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 2.5f,
-                BurstSparkleRateHz: 12.0f,
-                BurstSparkleIntensity: 0.35f, 
-                BurstSpeed: 9.0f),
+            ["basic"] = ShellPresets.Create(
+                id: "basic",
+                burstShape: FireworkBurstShape.Peony,
+                colorSchemeId: "warm",
+                fuseTimeSeconds: 3.8f,
+                explosionRadius: 12.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 2.5f,
+                burstSparkleRateHz: 12.0f,
+                burstSparkleIntensity: 0.35f,
+                burstSpeed: 9.0f),
 
-            ["chrys"] = new FireworkShellProfile(
-                Id: "chrys",
-                BurstShape: FireworkBurstShape.Chrysanthemum,
-                ColorSchemeId: "mixed",
-                FuseTimeSeconds: 3.9f,
-                ExplosionRadius: 13.0f,
-                ParticleCount: 5500,
-                ParticleLifetimeSeconds: 5.0f,
-                BurstSparkleRateHz: 14.0f,
-                BurstSparkleIntensity: 0.45f,
-                Emission: BurstEmissionSettings.Defaults with
+            ["chrys"] = ShellPresets.Create(
+                id: "chrys",
+                burstShape: FireworkBurstShape.Chrysanthemum,
+                colorSchemeId: "mixed",
+                fuseTimeSeconds: 3.9f,
+                explosionRadius: 13.0f,
+                particleCount: 5500,
+                particleLifetimeSeconds: 5.0f,
+                burstSparkleRateHz: 14.0f,
+                burstSparkleIntensity: 0.45f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     ChrysanthemumSpokeCount = 24,
                     ChrysanthemumSpokeJitter = 0.12f,
                 }),
 
-            ["willow"] = new FireworkShellProfile(
-                Id: "willow",
-                BurstShape: FireworkBurstShape.Willow,
-                ColorSchemeId: "pastel",
-                FuseTimeSeconds: 4.2f,
-                ExplosionRadius: 15.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 6.0f,
-                BurstSparkleRateHz: 8.0f,
-                BurstSparkleIntensity: 0.25f,
-                Emission: BurstEmissionSettings.Defaults with
+            ["willow"] = ShellPresets.Create(
+                id: "willow",
+                burstShape: FireworkBurstShape.Willow,
+                colorSchemeId: "pastel",
+                fuseTimeSeconds: 4.2f,
+                explosionRadius: 15.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 6.0f,
+                burstSparkleRateHz: 8.0f,
+                burstSparkleIntensity: 0.25f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     WillowDownwardBlend = 0.35f,
                 }),
 
-            ["palm"] = new FireworkShellProfile(
-                Id: "palm",
-                BurstShape: FireworkBurstShape.Palm,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 16.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 18.0f,
-                BurstSparkleIntensity: 0.65f,
-                Emission: BurstEmissionSettings.Defaults with
+            ["palm"] = ShellPresets.Create(
+                id: "palm",
+                burstShape: FireworkBurstShape.Palm,
+                colorSchemeId: "warm",
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 16.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 18.0f,
+                burstSparkleIntensity: 0.65f,
+                emission: BurstEmissionSettings.Defaults with
                 {
                     PalmFrondCount = 7,
                     PalmFrondConeAngleRadians = 0.65f,
                     PalmFrondJitterAngleRadians = 0.08f,
                 }),
 
-            ["donut"] = new FireworkShellProfile(
-                Id: "donut",
-                BurstShape: FireworkBurstShape.Ring,
-                ColorSchemeId: "cool",
-                FuseTimeSeconds: 4.1f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 5000,
-                ParticleLifetimeSeconds: 3.2f,
-                BurstSparkleRateHz: 5.0f,
-                BurstSparkleIntensity: 0.65f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 90.0f),
-            ["horsetail_gold"] = new FireworkShellProfile(
-                Id: "horsetail_gold",
-                BurstShape: FireworkBurstShape.Horsetail,
-                ColorSchemeId: "Gold",
-                FuseTimeSeconds: 3.2f,             // whatever works with your canister
-                ExplosionRadius: 45.0f,
-                ParticleCount: 4000,
-                ParticleLifetimeSeconds: 1.5f,
-                BurstSparkleRateHz: 6.0f,
-                BurstSparkleIntensity: 0.20f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f
-            ),
-            ["double_ring"] = new FireworkShellProfile(
-                Id: "double_ring",
-                BurstShape: FireworkBurstShape.DoubleRing,
-                ColorSchemeId: "gold",   // nice classy gold rings
-                FuseTimeSeconds: 4.1f,
-                ExplosionRadius: 16.0f,
-                ParticleCount: 4500,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 2.0f,
-                BurstSparkleIntensity: 0.65f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 18.0f
-            ),
+            ["donut"] = ShellPresets.Create(
+                id: "donut",
+                burstShape: FireworkBurstShape.Ring,
+                colorSchemeId: "cool",
+                fuseTimeSeconds: 4.1f,
+                explosionRadius: 14.0f,
+                particleCount: 5000,
+                particleLifetimeSeconds: 3.2f,
+                burstSparkleRateHz: 5.0f,
+                burstSparkleIntensity: 0.65f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 90.0f),
 
-            ["spiral"] = new FireworkShellProfile(
-                Id: "spiral",
-                BurstShape: FireworkBurstShape.Spiral,
-                ColorSchemeId: "neon",   // loud & colorful
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 5500,
-                ParticleLifetimeSeconds: 4.5f,
-                BurstSparkleRateHz: 16.0f,
-                BurstSparkleIntensity: 0.55f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 25.0f
-            ),
+            ["horsetail_gold"] = ShellPresets.Create(
+                id: "horsetail_gold",
+                burstShape: FireworkBurstShape.Horsetail,
+                colorSchemeId: "Gold",
+                fuseTimeSeconds: 3.2f,             // whatever works with your canister
+                explosionRadius: 45.0f,
+                particleCount: 4000,
+                particleLifetimeSeconds: 1.5f,
+                burstSparkleRateHz: 6.0f,
+                burstSparkleIntensity: 0.20f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 25.0f),
 
-            ["spoke_wheel_pop"] = new FireworkShellProfile(
-                Id: "spoke_wheel_pop",
-                BurstShape: FireworkBurstShape.SubShellSpokeWheelPop,
-                ColorSchemeId: "warm",
-                FuseTimeSeconds: 3.6f,
-                ExplosionRadius: 0.0f,
-                ParticleCount: 0,
-                ParticleLifetimeSeconds: 0.0f,
-                BurstSparkleRateHz: 0.0f,
-                BurstSparkleIntensity: 0.0f,
-                RingAxis: Vector3.UnitY,
-                RingAxisRandomTiltDegrees: 180.0f,
-                TrailParticleCount: 10,
-                TrailParticleLifetimeSeconds: 0.5f,
-                TrailSpeed: 4.0f,
-                TrailSmokeChance: 0.15f,
-                SubShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
+            ["double_ring"] = ShellPresets.Create(
+                id: "double_ring",
+                burstShape: FireworkBurstShape.DoubleRing,
+                colorSchemeId: "gold",   // nice classy gold rings
+                fuseTimeSeconds: 4.1f,
+                explosionRadius: 16.0f,
+                particleCount: 4500,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 2.0f,
+                burstSparkleIntensity: 0.65f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 18.0f),
+
+            ["spiral"] = ShellPresets.Create(
+                id: "spiral",
+                burstShape: FireworkBurstShape.Spiral,
+                colorSchemeId: "neon",   // loud & colorful
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 5500,
+                particleLifetimeSeconds: 4.5f,
+                burstSparkleRateHz: 16.0f,
+                burstSparkleIntensity: 0.55f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 25.0f),
+
+            ["spoke_wheel_pop"] = ShellPresets.Create(
+                id: "spoke_wheel_pop",
+                burstShape: FireworkBurstShape.SubShellSpokeWheelPop,
+                colorSchemeId: "warm",
+                fuseTimeSeconds: 3.6f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 180.0f,
+                trailParticleCount: 10,
+                trailParticleLifetimeSeconds: 0.5f,
+                trailSpeed: 4.0f,
+                trailSmokeChance: 0.15f,
+                subShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
                 {
                     SubShellCount = 12,
                     RingStartAngleDegrees = 0.0f,
@@ -252,36 +251,33 @@ public static class DefaultProfiles
                     TangentialSpeed = 3.0f,
                     RingAxis = Vector3.UnitY,
                     RingAxisRandomTiltDegrees = 180.0f
-                }
-            ),
+                }),
 
-            ["willow_trail_only"] = new FireworkShellProfile(
-                Id: "willow_trail_only",
-                BurstShape: FireworkBurstShape.Willow,
-                ColorSchemeId: "pastel",
-                FuseTimeSeconds: 2.0f,
-                ExplosionRadius: 0.0f,
-                ParticleCount: 0,
-                ParticleLifetimeSeconds: 0.0f,
-                SuppressBurst: true,
-                TerminalFadeOutSeconds: 1.5f,
-                TrailParticleCount: 12,
-                TrailParticleLifetimeSeconds: 0.8f,
-                TrailSpeed: 5.0f,
-                TrailSmokeChance: 0.2f
-            ),
+            ["willow_trail_only"] = ShellPresets.Create(
+                id: "willow_trail_only",
+                burstShape: FireworkBurstShape.Willow,
+                colorSchemeId: "pastel",
+                fuseTimeSeconds: 2.0f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                suppressBurst: true,
+                terminalFadeOutSeconds: 1.5f,
+                trailParticleLifetimeSeconds: 0.8f,
+                trailSpeed: 5.0f,
+                trailSmokeChance: 0.2f),
 
-            ["peony_to_willow"] = new FireworkShellProfile(
-                Id: "peony_to_willow",
-                BurstShape: FireworkBurstShape.PeonyToWillow,
-                ColorSchemeId: "gold",
-                FuseTimeSeconds: 4.0f,
-                ExplosionRadius: 14.0f,
-                ParticleCount: 100,
-                ParticleLifetimeSeconds: 3.0f,
-                BurstSparkleRateHz: 10.0f,
-                BurstSparkleIntensity: 0.40f,
-                PeonyToWillow: PeonyToWillowParams.Defaults with
+            ["peony_to_willow"] = ShellPresets.Create(
+                id: "peony_to_willow",
+                burstShape: FireworkBurstShape.PeonyToWillow,
+                colorSchemeId: "gold",
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 100,
+                particleLifetimeSeconds: 3.0f,
+                burstSparkleRateHz: 10.0f,
+                burstSparkleIntensity: 0.40f,
+                peonyToWillow: PeonyToWillowParams.Defaults with
                 {
                     WillowSubshellProfileId = "subshell_willow_trail_only",
                     //WillowSubshellProfileId = "subshell_ring_sparkle",
@@ -292,22 +288,21 @@ public static class DefaultProfiles
                     WillowLifetimeMultiplier = 2.2f,
                     WillowTrailSpawnRate = 8f,
                     WillowTrailSpeed = 2.2f
-                }
-            ),
+                }),
 
             // Finale: scatter mini report shells that pop as a single bright white flash.
             // Note: SubShells now support smoke trails. Tune TrailParticleCount/TrailParticleLifetime/TrailSmokeChance to balance visual quality vs performance.
-            ["finale_salute"] = new FireworkShellProfile(
-                    Id: "finale_salute",
-                    BurstShape: FireworkBurstShape.FinaleSalute,
-                    ColorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
-                    FuseTimeSeconds: 3.8f,
-                    ExplosionRadius: 0.0f,
-                    ParticleCount: 0,
-                    ParticleLifetimeSeconds: 0.10f,
-                    BurstSparkleRateHz: 0.0f,
-                    BurstSparkleIntensity: 0.0f,
-                    FinaleSalute: FinaleSaluteParams.Defaults with 
+            ["finale_salute"] = ShellPresets.Create(
+                    id: "finale_salute",
+                    burstShape: FireworkBurstShape.FinaleSalute,
+                    colorSchemeId: "debug", // ignored by PopFlash, but useful for debugging
+                    fuseTimeSeconds: 3.8f,
+                    explosionRadius: 0.0f,
+                    particleCount: 0,
+                    particleLifetimeSeconds: 0.10f,
+                    burstSparkleRateHz: 0.0f,
+                    burstSparkleIntensity: 0.0f,
+                    finaleSalute: FinaleSaluteParams.Defaults with 
                     { 
                         SubShellCount = 75,
                         // Trail tuning: reduce counts if performance is an issue
@@ -349,17 +344,17 @@ public static class DefaultProfiles
                 //    }
                 //),
 
-                ["comet_neon"] = new FireworkShellProfile(
-                    Id: "comet_neon",
-                    BurstShape: FireworkBurstShape.Comet,
-                    ColorSchemeId: "neon",
-                    FuseTimeSeconds: 3.9f,
-                    ExplosionRadius: 0.0f,
-                    ParticleCount: 0,
-                    ParticleLifetimeSeconds: 0.0f,
-                    BurstSparkleRateHz: 0.0f,
-                    BurstSparkleIntensity: 0.0f,
-                            Comet: CometParams.Defaults with
+                ["comet_neon"] = ShellPresets.Create(
+                    id: "comet_neon",
+                    burstShape: FireworkBurstShape.Comet,
+                    colorSchemeId: "neon",
+                    fuseTimeSeconds: 3.9f,
+                    explosionRadius: 0.0f,
+                    particleCount: 0,
+                    particleLifetimeSeconds: 0.0f,
+                    burstSparkleRateHz: 0.0f,
+                    burstSparkleIntensity: 0.0f,
+                            comet: CometParams.Defaults with
                             {
                                 CometCount = 50,
                                 CometSpeedMin = 15f,

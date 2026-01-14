@@ -475,6 +475,67 @@ public static class SubShellPresets
             MaxSubshellDepth: maxSubshellDepth);
 }
 
+public static class FireworkShellDefaults
+{
+    public const int TrailParticleCount = 12;
+    public const float TrailParticleLifetimeSeconds = 0.6f;
+    public const float TrailSpeed = 5.0f;
+    public const float TrailSmokeChance = 0.2f;
+    public const float BurstSparkleRateHz = 0.0f;
+    public const float BurstSparkleIntensity = 0.0f;
+}
+
+public static class ShellPresets
+{
+    public static FireworkShellProfile Create(
+        string id,
+        FireworkBurstShape burstShape,
+        string colorSchemeId,
+        float fuseTimeSeconds,
+        float explosionRadius,
+        int particleCount,
+        float particleLifetimeSeconds,
+        float? burstSpeed = null,
+        float? burstSparkleRateHz = null,
+        float? burstSparkleIntensity = null,
+        bool suppressBurst = false,
+        float terminalFadeOutSeconds = 0.0f,
+        int? trailParticleCount = null,
+        float? trailParticleLifetimeSeconds = null,
+        float? trailSpeed = null,
+        float? trailSmokeChance = null,
+        Vector3? ringAxis = null,
+        float ringAxisRandomTiltDegrees = 0.0f,
+        BurstEmissionSettings? emission = null,
+        FinaleSaluteParams? finaleSalute = null,
+        CometParams? comet = null,
+        PeonyToWillowParams? peonyToWillow = null,
+        SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null) => new(
+            Id: id,
+            BurstShape: burstShape,
+            ColorSchemeId: colorSchemeId,
+            FuseTimeSeconds: fuseTimeSeconds,
+            ExplosionRadius: explosionRadius,
+            ParticleCount: particleCount,
+            ParticleLifetimeSeconds: particleLifetimeSeconds,
+            BurstSpeed: burstSpeed,
+            BurstSparkleRateHz: burstSparkleRateHz ?? FireworkShellDefaults.BurstSparkleRateHz,
+            BurstSparkleIntensity: burstSparkleIntensity ?? FireworkShellDefaults.BurstSparkleIntensity,
+            SuppressBurst: suppressBurst,
+            TerminalFadeOutSeconds: terminalFadeOutSeconds,
+            TrailParticleCount: trailParticleCount ?? FireworkShellDefaults.TrailParticleCount,
+            TrailParticleLifetimeSeconds: trailParticleLifetimeSeconds ?? FireworkShellDefaults.TrailParticleLifetimeSeconds,
+            TrailSpeed: trailSpeed ?? FireworkShellDefaults.TrailSpeed,
+            TrailSmokeChance: trailSmokeChance ?? FireworkShellDefaults.TrailSmokeChance,
+            RingAxis: ringAxis,
+            RingAxisRandomTiltDegrees: ringAxisRandomTiltDegrees,
+            Emission: emission,
+            FinaleSalute: finaleSalute,
+            Comet: comet,
+            PeonyToWillow: peonyToWillow,
+            SubShellSpokeWheelPop: subShellSpokeWheelPop);
+}
+
 public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, CanisterProfile> Canisters,
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
