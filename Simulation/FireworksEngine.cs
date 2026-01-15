@@ -13,7 +13,8 @@ using Math = System.Math;
 public enum SubShellKind
 {
     FinaleSalute,
-    SpokeWheelPop
+    SpokeWheelPop,
+    SparklerLine
 }
 
 public sealed class SubShell
@@ -23,6 +24,7 @@ public sealed class SubShell
     public float Age;
     public float DetonateAt;
     public bool Detonated;
+    public bool DetonateOnExpire;
 
     public float GravityScale;
     public float Drag;
@@ -30,8 +32,11 @@ public sealed class SubShell
     public SubShellKind Kind;
     public FinaleSaluteParams? FinalePop;
     public SubShellSpokeWheelPopParams? SpokeWheelPop;
+    public SparklerLineTrailParams? SparklerTrail;
     public ColorScheme? ColorScheme;
     public Vector4 PopColor;
+    public Vector4 TrailColor;
+    public float TrailAccumulator;
 }
 
     public readonly struct PendingWillowHandoff
@@ -352,6 +357,7 @@ public sealed class FireworksEngine
                     Emission: shell.Profile.EmissionSettings,
                     FinaleSalute: shell.Profile.FinaleSaluteParams,
                     Comet: shell.Profile.CometParams,
+                    SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                     BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
                     PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -515,6 +521,10 @@ public sealed class FireworksEngine
             {
                 EmitSpokeWheelSubShellTrail(s, wheelPop, renderer);
             }
+            else if (s.Kind == SubShellKind.SparklerLine && s.SparklerTrail is { } sparkTrail && s.Velocity.LengthSquared() > 1e-6f)
+            {
+                EmitSparklerLineTrail(ref s, sparkTrail, renderer, dt);
+            }
 
             // Integrate (semi-implicit Euler)
             s.Velocity += gravity * s.GravityScale * dt;
@@ -526,7 +536,8 @@ public sealed class FireworksEngine
             {
                 s.Position = new Vector3(s.Position.X, groundY, s.Position.Z);
                 s.Detonated = true;
-                DetonateSubShell(s, renderer);
+                if (s.DetonateOnExpire)
+                    DetonateSubShell(s, renderer);
                 _subShells.RemoveAt(i);
                 continue;
             }
@@ -534,7 +545,8 @@ public sealed class FireworksEngine
             if (s.Age >= s.DetonateAt)
             {
                 s.Detonated = true;
-                DetonateSubShell(s, renderer);
+                if (s.DetonateOnExpire)
+                    DetonateSubShell(s, renderer);
                 _subShells.RemoveAt(i);
                 continue;
             }
@@ -858,13 +870,64 @@ public sealed class FireworksEngine
                 Age = 0.0f,
                 DetonateAt = detonateAt,
                 Detonated = false,
+                DetonateOnExpire = true,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
                 Kind = SubShellKind.FinaleSalute,
                 FinalePop = p,
                 SpokeWheelPop = null,
                 ColorScheme = popScheme,
-                PopColor = popColor
+                PopColor = popColor,
+                TrailColor = popColor,
+                TrailAccumulator = 0.0f
+            });
+        }
+    }
+
+    private void SpawnSparklingChrysanthemum(Vector3 origin, SparklingChrysanthemumParams p, BurstEmissionSettings emission, Vector4 baseColor)
+    {
+        int count = Math.Clamp(p.SubShellCount, 1, 2500);
+        var dirs = EmissionStyles.EmitChrysanthemum(count, emission);
+
+        float speedMin = MathF.Max(0.0f, p.SubShellSpeedMin);
+        float speedMax = MathF.Max(speedMin, p.SubShellSpeedMax);
+        float lifeMin = MathF.Max(0.05f, p.SubShellLifetimeMinSeconds);
+        float lifeMax = MathF.Max(lifeMin, p.SubShellLifetimeMaxSeconds);
+
+        var trail = p.Trail;
+
+        EmitSound(new SoundEvent(
+            SoundEventType.ShellBurst,
+            Position: origin,
+            Gain: 0.85f,
+            Loop: false));
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            float speedU = (float)_rng.NextDouble();
+            float speed = speedMin + speedU * (speedMax - speedMin);
+
+            float lifeU = (float)_rng.NextDouble();
+            float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
+
+            _subShells.Add(new SubShell
+            {
+                Position = origin,
+                Velocity = dirs[i] * speed,
+                Age = 0.0f,
+                DetonateAt = lifetime,
+                Detonated = false,
+                DetonateOnExpire = false,
+                GravityScale = p.SubShellGravityScale,
+                Drag = p.SubShellDrag,
+                Kind = SubShellKind.SparklerLine,
+                FinalePop = null,
+                SpokeWheelPop = null,
+                SparklerTrail = trail,
+                ColorScheme = null,
+                PopColor = baseColor,
+                TrailColor = baseColor * trail.BrightnessScalar,
+                TrailAccumulator = 0.0f
             });
         }
     }
@@ -965,13 +1028,16 @@ public sealed class FireworksEngine
                 Age = 0.0f,
                 DetonateAt = MathF.Max(0.0f, fuse),
                 Detonated = false,
+                DetonateOnExpire = true,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
                 Kind = SubShellKind.SpokeWheelPop,
                 FinalePop = null,
                 SpokeWheelPop = p,
                 ColorScheme = flashScheme,
-                PopColor = popColor
+                PopColor = popColor,
+                TrailColor = popColor,
+                TrailAccumulator = 0.0f
             });
         }
     }
@@ -1108,6 +1174,64 @@ public sealed class FireworksEngine
         {
             renderer.SpawnSmoke(s.Position);
         }
+    }
+
+    private void EmitSparklerLineTrail(ref SubShell s, SparklerLineTrailParams p, D3D11Renderer renderer, float dt)
+    {
+        if (dt <= 0.0f)
+            return;
+
+        Vector3 dir = Vector3.Normalize(s.Velocity);
+        if (dir.LengthSquared() < 1e-8f)
+            return;
+
+        // Taper emission over lifetime so the tail fades naturally.
+        float lifeT = s.DetonateAt > 1e-4f ? Math.Clamp(s.Age / s.DetonateAt, 0.0f, 1.0f) : 0.0f;
+        float rate = p.SparkRate * (1.0f - 0.45f * lifeT);
+
+        s.TrailAccumulator += rate * dt;
+        int spawnCount = (int)s.TrailAccumulator;
+        if (spawnCount <= 0)
+            return;
+
+        s.TrailAccumulator -= spawnCount;
+
+        Span<Vector3> dirs = spawnCount <= 64 ? stackalloc Vector3[64] : new Vector3[spawnCount];
+        Vector3 basis1 = Vector3.Cross(dir, Vector3.UnitY);
+        if (basis1.LengthSquared() < 1e-6f)
+            basis1 = Vector3.Cross(dir, Vector3.UnitX);
+        basis1 = Vector3.Normalize(basis1);
+        Vector3 basis2 = Vector3.Normalize(Vector3.Cross(dir, basis1));
+
+        float fanFactor = 1.0f - Math.Clamp(lifeT * 1.2f, 0.0f, 1.0f); // early = wide, later = tight
+        float jitter = MathF.Max(0.0f, p.SparkDirectionJitter) * (0.65f * fanFactor + 0.12f);
+        float speed = MathF.Max(0.0f, p.SparkSpeed) * (1.0f + 0.35f * fanFactor);
+        for (int i = 0; i < spawnCount; i++)
+        {
+            float angle = (float)(_rng.NextDouble() * MathF.Tau);
+
+            // Pure radial emission around travel axis; keep direction perpendicular to motion to avoid comet tails.
+            Vector3 radial = basis1 * MathF.Cos(angle) + basis2 * MathF.Sin(angle);
+
+            // Small in-plane flutter to avoid perfect ring banding, still perpendicular to dir.
+            Vector3 jitterVec = RandomUnitVector();
+            jitterVec -= dir * Vector3.Dot(jitterVec, dir); // project onto plane
+            if (jitterVec.LengthSquared() > 1e-8f)
+                jitterVec = Vector3.Normalize(jitterVec);
+            else
+                jitterVec = radial;
+
+            Vector3 d = radial + jitterVec * (jitter * 0.25f);
+            dirs[i] = Vector3.Normalize(d);
+        }
+
+        var trailColor = s.TrailColor;
+        renderer.SpawnBurstDirected(
+            s.Position,
+            trailColor,
+            speed: speed,
+            directions: dirs,
+            particleLifetimeSeconds: MathF.Max(0.03f, p.SparkLifetimeSeconds));
     }
 
     private void EmitSpokeWheelSubShellTrail(SubShell s, SubShellSpokeWheelPopParams p, D3D11Renderer renderer)
@@ -1778,6 +1902,12 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.SparklingChrysanthemum)
+        {
+            SpawnSparklingChrysanthemum(explosion.Position, explosion.SparklingChrysanthemum, explosion.Emission, explosion.BaseColor);
+            return;
+        }
+
         Vector3 ringAxis = Vector3.UnitY;
         if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
             ringAxis = Vector3.Normalize(configuredRingAxis);
@@ -1805,7 +1935,7 @@ public sealed class FireworksEngine
         var dirsDefault = explosion.BurstShape switch
         {
             FireworkBurstShape.Peony => EmissionStyles.EmitPeony(explosion.ParticleCount),
-              FireworkBurstShape.Chrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount, explosion.Emission),
+              FireworkBurstShape.SparklingChrysanthemum => EmissionStyles.EmitChrysanthemum(explosion.ParticleCount, explosion.Emission),
               FireworkBurstShape.Willow => EmissionStyles.EmitWillow(explosion.ParticleCount, explosion.Emission),
               FireworkBurstShape.Palm => EmissionStyles.EmitPalm(explosion.ParticleCount, explosion.Emission),
             FireworkBurstShape.Ring => EmissionStyles.EmitRing(explosion.ParticleCount, axis: ringAxis),
@@ -1942,6 +2072,7 @@ public sealed class FireworksEngine
                 Emission: shell.Profile.EmissionSettings,
                 FinaleSalute: shell.Profile.FinaleSaluteParams,
                 Comet: shell.Profile.CometParams,
+                SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                 BaseColor: ev.BaseColor,
                 PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                 SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -2222,6 +2353,7 @@ public sealed class FireworkShell
             Emission: Profile.EmissionSettings,
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
+            SparklingChrysanthemum: Profile.SparklingChrysanthemumParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
             PeonyToWillowParams: Profile.PeonyToWillowParams,
             SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
@@ -2250,6 +2382,7 @@ public readonly record struct ShellExplosion(
     Vector4 BaseColor,
     PeonyToWillowParams PeonyToWillowParams,
     SubShellSpokeWheelPopParams SubShellSpokeWheelPop,
+    SparklingChrysanthemumParams SparklingChrysanthemum,
     ColorScheme ColorScheme);
 
 internal static class ColorUtil
