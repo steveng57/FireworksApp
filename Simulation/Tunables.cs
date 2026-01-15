@@ -1,4 +1,5 @@
 using System;
+using FireworksApp.Rendering;
 
 namespace FireworksApp.Simulation;
 
@@ -6,6 +7,9 @@ internal static class Tunables
 {
     // Simulation pacing
     internal const float DefaultTimeScale = 0.80f;
+
+    // Rendering camera selection
+    internal const string DefaultCameraProfileId = CameraProfiles.GroundOrbitId;
 
     // Physics integration
     internal const float ShellDragK = 0.020f;

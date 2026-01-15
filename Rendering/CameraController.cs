@@ -45,25 +45,48 @@ public sealed class CameraController
         ArgumentNullException.ThrowIfNull(profile);
 
         _profile = profile;
-        _target = new Vector3(0.0f, profile.TargetHeightMeters, 0.0f);
-        _targetSmoothed = _target;
-        _distance = profile.DefaultDistanceMeters;
-        _distanceTarget = profile.DefaultDistanceMeters;
-        _distanceSmoothed = profile.DefaultDistanceMeters;
-        _pitch = profile.DefaultPitchRadians;
-        _pitchTarget = profile.DefaultPitchRadians;
-        _yaw = 0.0f;
-        _yawTarget = 0.0f;
-        _orbitAngle = 0.0f;
-        _orbitUserOffset = 0.0f;
-        _orbitUserOffsetTarget = 0.0f;
+        if (profile.Kind == CameraProfileKind.FixedCinematic)
+        {
+            _target = profile.FixedTarget;
+            _targetSmoothed = _target;
+
+            var (yaw, pitch, distance) = DeriveOrientation(profile.FixedPosition, profile.FixedTarget);
+            _yaw = yaw;
+            _yawTarget = yaw;
+            _pitch = pitch;
+            _pitchTarget = pitch;
+            _distance = distance;
+            _distanceTarget = distance;
+            _distanceSmoothed = distance;
+            _orbitAngle = 0.0f;
+            _orbitUserOffset = 0.0f;
+            _orbitUserOffsetTarget = 0.0f;
+        }
+        else
+        {
+            _target = new Vector3(0.0f, profile.TargetHeightMeters, 0.0f);
+            _targetSmoothed = _target;
+            _distance = profile.DefaultDistanceMeters;
+            _distanceTarget = profile.DefaultDistanceMeters;
+            _distanceSmoothed = profile.DefaultDistanceMeters;
+            _pitch = profile.DefaultPitchRadians;
+            _pitchTarget = profile.DefaultPitchRadians;
+            _yaw = 0.0f;
+            _yawTarget = 0.0f;
+            _orbitAngle = 0.0f;
+            _orbitUserOffset = 0.0f;
+            _orbitUserOffsetTarget = 0.0f;
+        }
         IsDirty = true;
     }
 
     public void OnMouseDrag(float deltaX, float deltaY)
     {
+        if (_profile.Kind == CameraProfileKind.FixedCinematic)
+            return;
+
         const float sensitivity = 0.01f;
-        if (_profile.Kind == CameraProfileKind.AerialOrbit)
+        if (_profile.Kind == CameraProfileKind.AerialOrbit || _profile.Kind == CameraProfileKind.GroundOrbit)
         {
             _orbitUserOffsetTarget += deltaX * sensitivity;
         }
@@ -79,6 +102,9 @@ public sealed class CameraController
 
     public void OnMouseWheel(float delta)
     {
+        if (_profile.Kind == CameraProfileKind.FixedCinematic)
+            return;
+
         _distanceTarget *= (float)System.Math.Pow(0.9, delta / 120.0);
         _distanceTarget = System.Math.Clamp(_distanceTarget, 5.0f, 450.0f);
         IsDirty = true;
@@ -104,12 +130,18 @@ public sealed class CameraController
         width = System.Math.Max(1, width);
         height = System.Math.Max(1, height);
 
-        if (!_profile.AllowPan)
+        bool isFixed = _profile.Kind == CameraProfileKind.FixedCinematic;
+
+        if (isFixed)
+        {
+            _target = _profile.FixedTarget;
+        }
+        else if (!_profile.AllowPan)
         {
             _target = new Vector3(0.0f, _profile.TargetHeightMeters, 0.0f);
         }
 
-        bool snap = dt <= 0.0f;
+        bool snap = dt <= 0.0f || isFixed;
 
         if (snap)
         {
@@ -155,7 +187,7 @@ public sealed class CameraController
         }
 
         float yaw;
-        if (_profile.Kind == CameraProfileKind.AerialOrbit)
+        if (_profile.Kind == CameraProfileKind.AerialOrbit || _profile.Kind == CameraProfileKind.GroundOrbit)
         {
             if (dt > 0.0f)
             {
@@ -180,14 +212,39 @@ public sealed class CameraController
         float aspect = height > 0 ? (float)width / height : 1.0f;
         var up = Vector3.UnitY;
 
+        if (isFixed)
+        {
+            var fixedTarget = _profile.FixedTarget;
+            var fixedEye = _profile.FixedPosition;
+
+            Position = fixedEye;
+            View = Matrix4x4.CreateLookAt(fixedEye, fixedTarget, up);
+            Projection = Matrix4x4.CreatePerspectiveFieldOfView(_profile.FieldOfViewRadians, aspect, 1.0f, 2000.0f);
+            IsDirty = false;
+            return;
+        }
+
         var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _distanceSmoothed;
         var target = _targetSmoothed;
         var eye = target + eyeOffset;
 
         Position = eye;
         View = Matrix4x4.CreateLookAt(eye, target, up);
-        Projection = Matrix4x4.CreatePerspectiveFieldOfView((float)(System.Math.PI / 4.0), aspect, 1.0f, 2000.0f);
+        Projection = Matrix4x4.CreatePerspectiveFieldOfView(_profile.FieldOfViewRadians, aspect, 1.0f, 2000.0f);
 
         IsDirty = false;
+    }
+
+    private static (float yaw, float pitch, float distance) DeriveOrientation(Vector3 eye, Vector3 target)
+    {
+        var offset = eye - target;
+        float distance = offset.Length();
+        if (distance <= 1e-4f)
+            return (0.0f, 0.0f, 0.1f);
+
+        var dir = offset / distance;
+        float pitch = (float)System.Math.Asin(dir.Y);
+        float yaw = (float)System.Math.Atan2(dir.X, dir.Z);
+        return (yaw, pitch, distance);
     }
 }

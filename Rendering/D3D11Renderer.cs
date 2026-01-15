@@ -145,7 +145,7 @@ public sealed class D3D11Renderer : IDisposable
     {
         _hwnd = hwnd;
         _deviceResources = new DeviceResources(hwnd);
-        _camera.SetProfile(CameraProfiles.AerialOrbit);
+        _camera.SetProfile(Tunables.DefaultCameraProfileId);
     }
 
     private static Vector3[] CreateUnitVectorTable()
