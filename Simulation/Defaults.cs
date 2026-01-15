@@ -132,7 +132,7 @@ public static class DefaultProfiles
             [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
             [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
             [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
-            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
+            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon,
         };
 
         // Ground-effect canisters: separate set, placed around the pad border.
