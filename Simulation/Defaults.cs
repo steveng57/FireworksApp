@@ -200,19 +200,33 @@ public static class DefaultProfiles
 
             [shellChrysId] = ShellPresets.Create(
                 id: shellChrysId,
-                burstShape: FireworkBurstShape.Chrysanthemum,
-                colorSchemeId: schemeMixed,
+                burstShape: FireworkBurstShape.SparklingChrysanthemum,
+                colorSchemeId: schemeGold,
                 fuseTimeSeconds: 3.9f,
                 explosionRadius: 13.0f,
-                particleCount: 5500,
-                particleLifetimeSeconds: 5.0f,
-                burstSparkleRateHz: 14.0f,
-                burstSparkleIntensity: 0.45f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
                 emission: BurstEmissionSettings.Defaults with
                 {
-                    ChrysanthemumSpokeCount = 24,
-                    ChrysanthemumSpokeJitter = 0.12f,
-                }),
+                    ChrysanthemumSpokeCount = 30,
+                    ChrysanthemumSpokeJitter = 0.10f,
+                },
+                sparklingChrysanthemum: new SparklingChrysanthemumParams(
+                    SubShellCount: 110,
+                    SubShellSpeedMin: 18.0f,
+                    SubShellSpeedMax: 26.0f,
+                    SubShellLifetimeMinSeconds: 1.2f,
+                    SubShellLifetimeMaxSeconds: 2.5f,
+                    SubShellGravityScale: 0.42f,
+                    SubShellDrag: 0.05f,
+                    Trail: new SparklerLineTrailParams(
+                        SparkRate: 190.0f,
+                        SparkLifetimeSeconds: 0.50f,
+                        SparkSpeed: 7.5f,
+                        SparkDirectionJitter: 0.32f,
+                        BrightnessScalar: 1.05f))),
 
             [shellWillowId] = ShellPresets.Create(
                 id: shellWillowId,

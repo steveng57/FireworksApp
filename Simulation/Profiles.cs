@@ -9,7 +9,7 @@ namespace FireworksApp.Simulation;
 public enum FireworkBurstShape
 {
     Peony,
-    Chrysanthemum,
+    SparklingChrysanthemum,
     Willow,
     Palm,
     Ring,
@@ -157,6 +157,42 @@ public sealed record CometParams(
         TrailColor: null,
         SubShellProfileId: null,
         SubShellDelaySeconds: null); // null = use burst color
+}
+
+public sealed record SparklerLineTrailParams(
+    float SparkRate,
+    float SparkLifetimeSeconds,
+    float SparkSpeed,
+    float SparkDirectionJitter,
+    float BrightnessScalar)
+{
+    public static SparklerLineTrailParams Defaults { get; } = new(
+        SparkRate: 180.0f,
+        SparkLifetimeSeconds: 0.35f,
+        SparkSpeed: 5.5f,
+        SparkDirectionJitter: 0.30f,
+        BrightnessScalar: 1.05f);
+}
+
+public sealed record SparklingChrysanthemumParams(
+    int SubShellCount,
+    float SubShellSpeedMin,
+    float SubShellSpeedMax,
+    float SubShellLifetimeMinSeconds,
+    float SubShellLifetimeMaxSeconds,
+    float SubShellGravityScale,
+    float SubShellDrag,
+    SparklerLineTrailParams Trail)
+{
+    public static SparklingChrysanthemumParams Defaults { get; } = new(
+        SubShellCount: 100,
+        SubShellSpeedMin: 18.0f,
+        SubShellSpeedMax: 26.0f,
+        SubShellLifetimeMinSeconds: 2.6f,
+        SubShellLifetimeMaxSeconds: 4.4f,
+        SubShellGravityScale: 0.65f,
+        SubShellDrag: 0.05f,
+        Trail: SparklerLineTrailParams.Defaults);
 }
 
 public sealed record SubShellSpokeWheelPopParams(
@@ -322,13 +358,15 @@ public sealed record class FireworkShellProfile(
         FinaleSaluteParams? FinaleSalute = null,
         CometParams? Comet = null,
         PeonyToWillowParams? PeonyToWillow = null,
-        SubShellSpokeWheelPopParams? SubShellSpokeWheelPop = null)
+        SubShellSpokeWheelPopParams? SubShellSpokeWheelPop = null,
+        SparklingChrysanthemumParams? SparklingChrysanthemum = null)
     {
         public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
         public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
         public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
         public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
         public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
+        public SparklingChrysanthemumParams SparklingChrysanthemumParams => SparklingChrysanthemum ?? Simulation.SparklingChrysanthemumParams.Defaults;
     }
 
 public sealed record BurstEmissionSettings(
@@ -638,7 +676,8 @@ public static class ShellPresets
         FinaleSaluteParams? finaleSalute = null,
         CometParams? comet = null,
         PeonyToWillowParams? peonyToWillow = null,
-        SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null) => new(
+        SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null,
+        SparklingChrysanthemumParams? sparklingChrysanthemum = null) => new(
             Id: id,
             BurstShape: burstShape,
             ColorSchemeId: colorSchemeId,
@@ -661,7 +700,8 @@ public static class ShellPresets
             FinaleSalute: finaleSalute,
             Comet: comet,
             PeonyToWillow: peonyToWillow,
-            SubShellSpokeWheelPop: subShellSpokeWheelPop);
+            SubShellSpokeWheelPop: subShellSpokeWheelPop,
+            SparklingChrysanthemum: sparklingChrysanthemum);
 }
 
 public static class ProfileValidator
