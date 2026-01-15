@@ -217,8 +217,8 @@ public static class DefaultProfiles
                     SubShellCount: 110,
                     SubShellSpeedMin: 18.0f,
                     SubShellSpeedMax: 26.0f,
-                    SubShellLifetimeMinSeconds: 2.2f,
-                    SubShellLifetimeMaxSeconds: 2.0f,
+                    SubShellLifetimeMinSeconds: 3.2f,
+                    SubShellLifetimeMaxSeconds: 5.0f,
                     SubShellGravityScale: 0.42f,
                     SubShellDrag: 0.05f,
                     Trail: new SparklerLineTrailParams(
