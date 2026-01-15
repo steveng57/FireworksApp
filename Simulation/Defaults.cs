@@ -190,8 +190,6 @@ public static class DefaultProfiles
 
         };
 
-        const string spokeWheelPopId = "spoke_wheel_pop";
-
         var shells = new Dictionary<string, FireworkShellProfile>
         {
             [shellBasicId] = ShellPresets.Create(
