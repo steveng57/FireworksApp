@@ -127,14 +127,6 @@ public static class DefaultProfiles
             [canC25] = new CanisterProfile(canC25, canTypeM8, new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), shellWillowId)
         };
 
-        var trailProfiles = new Dictionary<string, ShellTrailProfile>
-        {
-            [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
-            [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
-            [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
-            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon,
-        };
-
         // Ground-effect canisters: separate set, placed around the pad border.
         // The pad border spans 8m..10m; use ~9m for the centerline.
         const float groundHalf = 9.0f;
@@ -188,6 +180,20 @@ public static class DefaultProfiles
                 2.2f
             ),
 
+        };
+
+        var trailProfiles = new Dictionary<string, ShellTrailProfile>
+        {
+            [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
+            [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
+            [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
+            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
+        };
+
+        var subshellTrailProfiles = new Dictionary<string, SubShellTrailProfile>
+        {
+            [SubShellTrailPresets.FinaleDefault.Id] = SubShellTrailPresets.FinaleDefault,
+            [SubShellTrailPresets.SpokeWheel.Id] = SubShellTrailPresets.SpokeWheel
         };
 
         var shells = new Dictionary<string, FireworkShellProfile>
@@ -351,7 +357,8 @@ public static class DefaultProfiles
                     AngleJitterDegrees = 3.5f,
                     TangentialSpeed = 3.0f,
                     RingAxis = Vector3.UnitY,
-                    RingAxisRandomTiltDegrees = 180.0f
+                    RingAxisRandomTiltDegrees = 180.0f,
+                    TrailProfile = SubShellTrailPresets.SpokeWheel
                 }),
 
             [shellWillowTrailOnlyId] = ShellPresets.Create(
@@ -411,6 +418,7 @@ public static class DefaultProfiles
                         TrailSpeed = 3.0f,
                         TrailSmokeChance = 0.15f,
                         SparkParticleCount = 3000,
+                        TrailProfile = SubShellTrailPresets.FinaleDefault,
                     }
                 ),
 
@@ -683,7 +691,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles, trailProfiles);
+        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles, trailProfiles, subshellTrailProfiles);
         ProfileValidator.Validate(profileSet);
         return profileSet;
     }

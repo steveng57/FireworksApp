@@ -1138,7 +1138,8 @@ public sealed class FireworksEngine
             return;
 
         Vector3 dir = Vector3.Normalize(s.Velocity);
-        int particleCount = Math.Clamp(p.TrailParticleCount, 1, 20);
+        var trail = p.Trail;
+        int particleCount = Math.Clamp(trail.ParticleCount, 1, 20);
 
         Span<Vector3> dirs = stackalloc Vector3[particleCount];
         for (int i = 0; i < dirs.Length; i++)
@@ -1159,17 +1160,14 @@ public sealed class FireworksEngine
             dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
         }
 
-        // Subshell trail color: slightly dimmer and more orange than main shells
-        var trailColor = new Vector4(1.0f, 0.75f, 0.4f, 1.0f);
-
         renderer.SpawnBurstDirected(
             s.Position,
-            trailColor,
-            speed: p.TrailSpeed,
+            trail.Color,
+            speed: trail.Speed,
             directions: dirs,
-            particleLifetimeSeconds: p.TrailParticleLifetime);
+            particleLifetimeSeconds: trail.ParticleLifetimeSeconds);
 
-        if (_rng.NextDouble() < p.TrailSmokeChance)
+        if (_rng.NextDouble() < trail.SmokeChance)
         {
             renderer.SpawnSmoke(s.Position);
         }
@@ -1241,7 +1239,8 @@ public sealed class FireworksEngine
             return;
 
         Vector3 dir = Vector3.Normalize(s.Velocity);
-        int particleCount = Math.Clamp(p.TrailParticleCount, 1, 20);
+        var trail = p.Trail;
+        int particleCount = Math.Clamp(trail.ParticleCount, 1, 20);
 
         Span<Vector3> dirs = stackalloc Vector3[20];
         dirs = dirs.Slice(0, particleCount);
@@ -1263,17 +1262,14 @@ public sealed class FireworksEngine
             dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
         }
 
-        // Slightly dimmer than finale trails to keep contrast with pop flash
-        var trailColor = new Vector4(1.0f, 0.8f, 0.55f, 1.0f);
-
         renderer.SpawnBurstDirected(
             s.Position,
-            trailColor,
-            speed: p.TrailSpeed,
+            trail.Color,
+            speed: trail.Speed,
             directions: dirs,
-            particleLifetimeSeconds: p.TrailParticleLifetimeSeconds);
+            particleLifetimeSeconds: trail.ParticleLifetimeSeconds);
 
-        if (_rng.NextDouble() < p.TrailSmokeChance)
+        if (_rng.NextDouble() < trail.SmokeChance)
         {
             renderer.SpawnSmoke(s.Position);
         }
