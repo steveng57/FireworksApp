@@ -31,6 +31,7 @@ public partial class MainWindow : Window
             _toolbarWindow.Loaded += (_, _) => UpdateToolbarLocation();
             _toolbarWindow.StartClicked += (_, _) => DxView.Start();
             _toolbarWindow.StopClicked += (_, _) => DxView.Stop();
+            _toolbarWindow.ToggleMotionClicked += (_, _) => DxView.ToggleCameraMotion();
 
             DxView.Start();
             _toolbarWindow.Show();

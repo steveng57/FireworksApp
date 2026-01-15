@@ -15,6 +15,7 @@ using System.Windows;
 
 namespace FireworksApp.Rendering;
 
+using FireworksApp.Camera;
 using FireworksApp.Simulation;
 
 // Simple vertex for the launch pad (just a position in 3D).
@@ -137,25 +138,22 @@ public sealed class D3D11Renderer : IDisposable
 
     private Vector3 _schemeTint = Vector3.One;
 
-    // Simple orbit camera (around origin)
-    private float _cameraYaw = 0.0f;
-    private float _cameraPitch = 0.15f;
-    private float _cameraDistance = 200.0f;
-    private bool _cameraDirty = true;
-
-    private Vector3 _cameraTarget = new(0.0f, 80.0f, 0.0f);
-    
-    // Smoothed camera state for nicer motion
-    private Vector3 _cameraTargetSmoothed = Vector3.Zero;
-    private float _cameraDistanceSmoothed = 200.0f;
-
+    private readonly CameraController _camera = new();
     public Vector3 CameraPosition { get; private set; }
-    
+    public string CurrentCameraProfileId => _camera.Profile.Id;
+    public bool CameraMotionEnabled => _camera.MotionEnabled;
+
 
     public D3D11Renderer(nint hwnd)
     {
         _hwnd = hwnd;
         _deviceResources = new DeviceResources(hwnd);
+        _camera.SetProfile(Tunables.DefaultCameraProfileId);
+    }
+
+    public void SetCameraMotionEnabled(bool enabled)
+    {
+        _camera.SetMotionEnabled(enabled);
     }
 
     private static Vector3[] CreateUnitVectorTable()
@@ -234,36 +232,17 @@ public sealed class D3D11Renderer : IDisposable
 
     public void OnMouseDrag(float deltaX, float deltaY)
     {
-        // radians per pixel (tune later)
-        const float sensitivity = 0.01f;
-        _cameraYaw += deltaX * sensitivity;
-        _cameraPitch += deltaY * sensitivity;
-
-        // clamp pitch to avoid flipping
-        _cameraPitch = System.Math.Clamp(_cameraPitch, -1.2f, 1.2f);
-        _cameraDirty = true;
+        _camera.OnMouseDrag(deltaX, deltaY);
     }
 
     public void OnMouseWheel(float delta)
     {
-        // WPF delta is typically 120 per notch
-        _cameraDistance *= (float)System.Math.Pow(0.9, delta / 120.0);
-        _cameraDistance = System.Math.Clamp(_cameraDistance, 5.0f, 450.0f);
-        _cameraDirty = true;
+        _camera.OnMouseWheel(delta);
     }
 
     public void PanCamera(float deltaX, float deltaY)
     {
-        // World-units per pixel (tune later). Scale by distance so panning feels consistent.
-        float k = 0.0025f * _cameraDistance;
-
-        // Right and up vectors from current view matrix (world-space).
-        // view is orthonormal: right = (M11,M21,M31), up=(M12,M22,M32)
-        var right = new Vector3(_view.M11, _view.M21, _view.M31);
-        var up = new Vector3(_view.M12, _view.M22, _view.M32);
-
-        _cameraTarget += (-right * deltaX + up * deltaY) * k;
-        _cameraDirty = true;
+        _camera.Pan(deltaX, deltaY);
     }
 
     public void Render(float scaledDt)
@@ -289,12 +268,6 @@ public sealed class D3D11Renderer : IDisposable
         // Explicit per-frame state (avoid state leakage as the frame grows)
         _context.RSSetViewport(new Viewport(0, 0, _width, _height, 0.0f, 1.0f));
 
-
-        if (_cameraDirty)
-        {
-            UpdateSceneConstants(0.0f);
-            _cameraDirty = false;
-        }
 
         // Explicit per-frame state (avoid state leakage as the frame grows)
         _context.RSSetViewport(new Viewport(0, 0, _width, _height, 0.0f, 1.0f));
@@ -427,6 +400,16 @@ public sealed class D3D11Renderer : IDisposable
         }
 
         _hasInterpolatedState = true;
+    }
+
+    public void SetCameraProfile(string profileId)
+    {
+        _camera.SetProfile(profileId);
+    }
+
+    public void SetCameraProfile(CameraProfile profile)
+    {
+        _camera.SetProfile(profile);
     }
 
     private static uint PackFloat(float value)
@@ -1289,55 +1272,13 @@ public sealed class D3D11Renderer : IDisposable
         if (_context is null || _sceneCB is null)
             return;
 
-        float aspect = _height > 0 ? (float)_width / _height : 1.0f;
+        _camera.Update(dt, _width, _height);
 
-        var up = Vector3.UnitY;
+        _view = _camera.View;
+        _proj = _camera.Projection;
+        CameraPosition = _camera.Position;
 
-        // Smooth follow of target and distance so camera motion is less jerky.
-        // When dt <= 0 (e.g., during initialization / resize) snap directly.
-        if (dt <= 0.0f)
-        {
-            _cameraTargetSmoothed = _cameraTarget;
-            _cameraDistanceSmoothed = _cameraDistance;
-        }
-        else
-        {
-            const float followSpeed = 5.0f;
-            const float zoomSpeed = 5.0f;
-
-            float followT = 1.0f - (float)System.Math.Exp(-followSpeed * dt);
-            float zoomT = 1.0f - (float)System.Math.Exp(-zoomSpeed * dt);
-
-            // Clamp interpolation factors into [0,1] in case of extreme dt values.
-            if (followT < 0.0f) followT = 0.0f;
-            if (followT > 1.0f) followT = 1.0f;
-            if (zoomT < 0.0f) zoomT = 0.0f;
-            if (zoomT > 1.0f) zoomT = 1.0f;
-
-            _cameraTargetSmoothed = Vector3.Lerp(_cameraTargetSmoothed, _cameraTarget, followT);
-            _cameraDistanceSmoothed = _cameraDistanceSmoothed + (_cameraDistance - _cameraDistanceSmoothed) * zoomT;
-        }
-
-        float cy = (float)System.Math.Cos(_cameraYaw);
-        float sy = (float)System.Math.Sin(_cameraYaw);
-        float cp = (float)System.Math.Cos(_cameraPitch);
-        float sp = (float)System.Math.Sin(_cameraPitch);
-
-        // Spherical coordinates: forward is +Z
-        var eyeOffset = new Vector3(sy * cp, sp, cy * cp) * _cameraDistanceSmoothed;
-
-        var target = _cameraTargetSmoothed;
-        var eye = target + eyeOffset;
-
-        CameraPosition = eye;
-
-        _view = Matrix4x4.CreateLookAt(eye, target, up);
-        // Use clip planes suitable for ~500m fireworks scenes.
-        _proj = Matrix4x4.CreatePerspectiveFieldOfView((float)(System.Math.PI / 4.0), aspect, 1.0f, 2000.0f);
         var world = Matrix4x4.Identity;
-
-        // HLSL expects column-major by default; System.Numerics uses row-major.
-        // Transpose so mul(position, WorldViewProjection) matches.
         var wvp = Matrix4x4.Transpose(world * _view * _proj);
 
         var scene = new SceneCBData
@@ -1383,7 +1324,7 @@ public sealed class D3D11Renderer : IDisposable
         _context.RSSetViewport(new Viewport(0, 0, width, height, 0.0f, 1.0f));
 
         // aspect changed
-        _cameraDirty = true;
+        _camera.MarkDirty();
     }
 
     private void LoadPadShadersAndGeometry()
