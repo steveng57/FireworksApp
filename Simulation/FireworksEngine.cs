@@ -1203,9 +1203,11 @@ public sealed class FireworksEngine
         basis1 = Vector3.Normalize(basis1);
         Vector3 basis2 = Vector3.Normalize(Vector3.Cross(dir, basis1));
 
-        float fanFactor = 1.0f - Math.Clamp(lifeT * 1.2f, 0.0f, 1.0f); // early = wide, later = tight
-        float jitter = MathF.Max(0.0f, p.SparkDirectionJitter) * (0.65f * fanFactor + 0.12f);
-        float speed = MathF.Max(0.0f, p.SparkSpeed) * (1.0f + 0.35f * fanFactor);
+        // Early portion: allow wider, faster radial fan. After ~35% lifetime, clamp to a tight cylinder to avoid a cone.
+        float earlyT = Math.Clamp(lifeT / 0.35f, 0.0f, 1.0f);
+        float earlyFan = 1.0f - (earlyT * earlyT * (3.0f - 2.0f * earlyT));
+        float jitter = MathF.Max(0.0f, p.SparkDirectionJitter) * (0.22f + 0.78f * earlyFan);
+        float speed = MathF.Max(0.0f, p.SparkSpeed) * (0.38f + 0.92f * earlyFan);
         for (int i = 0; i < spawnCount; i++)
         {
             float angle = (float)(_rng.NextDouble() * MathF.Tau);

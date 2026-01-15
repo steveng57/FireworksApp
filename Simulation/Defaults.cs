@@ -217,15 +217,15 @@ public static class DefaultProfiles
                     SubShellCount: 110,
                     SubShellSpeedMin: 18.0f,
                     SubShellSpeedMax: 26.0f,
-                    SubShellLifetimeMinSeconds: 3.2f,
-                    SubShellLifetimeMaxSeconds: 5.0f,
+                    SubShellLifetimeMinSeconds: 1.2f,
+                    SubShellLifetimeMaxSeconds: 2.5f,
                     SubShellGravityScale: 0.42f,
                     SubShellDrag: 0.05f,
                     Trail: new SparklerLineTrailParams(
                         SparkRate: 190.0f,
-                        SparkLifetimeSeconds: 0.42f,
-                        SparkSpeed: 8.0f,
-                        SparkDirectionJitter: 0.35f,
+                        SparkLifetimeSeconds: 0.50f,
+                        SparkSpeed: 7.5f,
+                        SparkDirectionJitter: 0.32f,
                         BrightnessScalar: 1.05f))),
 
             [shellWillowId] = ShellPresets.Create(
