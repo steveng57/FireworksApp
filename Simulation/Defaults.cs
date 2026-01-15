@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -711,6 +712,7 @@ public static class DefaultShow
         var profiles = DefaultProfiles.Create();
         float t = 0;
         int gridSize = 5;
+        var random = new Random();
 
 
 
@@ -783,8 +785,9 @@ public static class DefaultShow
             for (int i = 0; i < mainCanisters; i++)
             {
                 string canisterId = profiles.Canisters.Keys.ElementAt(i % mainCanisters);
+                float jitter = (float)(random.NextDouble() * 0.1);
                 var finaleEvent = new ShowEvent(
-                    TimeSeconds: t,
+                    TimeSeconds: t + jitter,
                     CanisterId: canisterId,
                     ShellProfileId: DefaultIds.shellBasicId);
                 events.Add(finaleEvent);
