@@ -778,6 +778,21 @@ public static class DefaultShow
 
         t += 4.0f;
 
+        for (int j = 0; j < 3; j++)
+        {
+            for (int i = 0; i < mainCanisters; i++)
+            {
+                string canisterId = profiles.Canisters.Keys.ElementAt(i % mainCanisters);
+                var finaleEvent = new ShowEvent(
+                    TimeSeconds: t,
+                    CanisterId: canisterId,
+                    ShellProfileId: DefaultIds.shellBasicId);
+                events.Add(finaleEvent);
+                //t += 1.0f;
+            }
+            t += 8f;
+        }
+
         for (int n = 0; n < 20; n += 2)
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
