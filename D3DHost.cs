@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using FireworksApp.Audio;
 using FireworksApp.Rendering;
+using FireworksApp.Camera;
 using FireworksApp.Simulation;
 
 namespace FireworksApp;
@@ -33,6 +34,8 @@ public sealed class D3DHost : HwndHost
 
     private readonly Stopwatch _frameTimer = new();
     private double _accumulatedSimSeconds;
+    private bool _motionSuspended;
+    private string? _savedCameraProfileId;
 
     public int MouseMoveCount { get; private set; }
     public int MouseDownCount { get; private set; }
@@ -194,6 +197,25 @@ public sealed class D3DHost : HwndHost
         window?.KeyDown -= OnWindowKeyDown;
 
         _started = false;
+    }
+
+    public void ToggleCameraMotion()
+    {
+        if (_renderer is null)
+            return;
+
+        if (!_motionSuspended)
+        {
+            _savedCameraProfileId = _renderer.CurrentCameraProfileId;
+            _renderer.SetCameraProfile(CameraProfiles.StandardId);
+            _motionSuspended = true;
+        }
+        else
+        {
+            string targetId = _savedCameraProfileId ?? CameraProfiles.StandardId;
+            _renderer.SetCameraProfile(targetId);
+            _motionSuspended = false;
+        }
     }
 
     public void PauseRendering()

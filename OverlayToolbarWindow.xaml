@@ -22,7 +22,11 @@
                     Margin="0,0,8,0" />
             <Button x:Name="StopButton"
                     Content="Stop"
-                    MinWidth="72" />
+                    MinWidth="72"
+                    Margin="0,0,8,0" />
+            <Button x:Name="ToggleMotionButton"
+                    Content="Toggle Motion"
+                    MinWidth="96" />
         </StackPanel>
     </Border>
 </Window>

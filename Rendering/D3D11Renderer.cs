@@ -140,6 +140,7 @@ public sealed class D3D11Renderer : IDisposable
 
     private readonly CameraController _camera = new();
     public Vector3 CameraPosition { get; private set; }
+    public string CurrentCameraProfileId => _camera.Profile.Id;
 
 
     public D3D11Renderer(nint hwnd)
