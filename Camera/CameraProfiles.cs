@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace FireworksApp.Rendering;
+namespace FireworksApp.Camera;
 
 public enum CameraProfileKind
 {

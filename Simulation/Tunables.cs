@@ -1,5 +1,5 @@
 using System;
-using FireworksApp.Rendering;
+using FireworksApp.Camera;
 
 namespace FireworksApp.Simulation;
 

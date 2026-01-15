@@ -15,6 +15,7 @@ using System.Windows;
 
 namespace FireworksApp.Rendering;
 
+using FireworksApp.Camera;
 using FireworksApp.Simulation;
 
 // Simple vertex for the launch pad (just a position in 3D).

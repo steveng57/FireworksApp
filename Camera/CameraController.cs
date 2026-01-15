@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace FireworksApp.Rendering;
+namespace FireworksApp.Camera;
 
 public sealed class CameraController
 {
