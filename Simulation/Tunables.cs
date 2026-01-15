@@ -9,7 +9,7 @@ internal static class Tunables
     internal const float DefaultTimeScale = 0.80f;
 
     // Rendering camera selection
-    internal const string DefaultCameraProfileId = CameraProfiles.GroundOrbitId;
+    internal const string DefaultCameraProfileId = CameraProfiles.AerialOrbitId;
 
     // Physics integration
     internal const float ShellDragK = 0.020f;
