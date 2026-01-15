@@ -127,6 +127,14 @@ public static class DefaultProfiles
             [canC25] = new CanisterProfile(canC25, canTypeM8, new Vector2(4.0f, 4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(0.29883623f, 0.9063078f, 0.29883623f)), shellWillowId)
         };
 
+        var trailProfiles = new Dictionary<string, ShellTrailProfile>
+        {
+            [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
+            [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
+            [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
+            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
+        };
+
         // Ground-effect canisters: separate set, placed around the pad border.
         // The pad border spans 8m..10m; use ~9m for the centerline.
         const float groundHalf = 9.0f;
@@ -324,10 +332,7 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.0f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 180.0f,
-                trailParticleCount: ShellTrailPresets.ShortBright.Count,
-                trailParticleLifetimeSeconds: ShellTrailPresets.ShortBright.LifetimeSeconds,
-                trailSpeed: ShellTrailPresets.ShortBright.Speed,
-                trailSmokeChance: ShellTrailPresets.ShortBright.SmokeChance,
+                trailProfile: ShellTrailPresets.ShortBright,
                 subShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
                 {
                     SubShellCount = 12,
@@ -361,10 +366,7 @@ public static class DefaultProfiles
                 particleLifetimeSeconds: 0.0f,
                 suppressBurst: true,
                 terminalFadeOutSeconds: 1.5f,
-                trailParticleCount: ShellTrailPresets.WillowLingering.Count,
-                trailParticleLifetimeSeconds: ShellTrailPresets.WillowLingering.LifetimeSeconds,
-                trailSpeed: ShellTrailPresets.WillowLingering.Speed,
-                trailSmokeChance: ShellTrailPresets.WillowLingering.SmokeChance),
+                trailProfile: ShellTrailPresets.WillowLingering),
 
             [shellPeonyToWillowId] = ShellPresets.Create(
                 id: shellPeonyToWillowId,
@@ -453,6 +455,7 @@ public static class DefaultProfiles
                     particleLifetimeSeconds: 0.0f,
                     burstSparkleRateHz: 0.0f,
                     burstSparkleIntensity: 0.0f,
+                    trailProfile: ShellTrailPresets.CometNeon,
                             comet: CometParams.Defaults with
                             {
                                 CometCount = 50,
@@ -682,7 +685,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles, trailProfiles);
         ProfileValidator.Validate(profileSet);
         return profileSet;
     }

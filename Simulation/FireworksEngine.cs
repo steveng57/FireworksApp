@@ -2271,8 +2271,7 @@ public sealed class FireworkShell
             dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
         }
 
-        // LOCAL trail color
-        var trailColor = new Vector4(1.0f, 0.85f, 0.5f, 1.0f);
+        var trailColor = Profile.TrailColor;
 
         if (_terminalState == ShellTerminalState.Fading)
         {
