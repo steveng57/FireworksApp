@@ -99,7 +99,7 @@ public static class DefaultProfiles
     public static FireworksProfileSet Create()
     {
         // Shell-launch canisters (keep as-is, centered around the pad).
-        var canisters = new Dictionary<string, CanisterProfile>
+        var canisterProfiles = new Dictionary<string, CanisterProfile>
         {
             [canC01] = new CanisterProfile(canC01, canTypeM2, new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
             [canC02] = new CanisterProfile(canC02, canTypeM3, new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
@@ -148,9 +148,9 @@ public static class DefaultProfiles
         };
 
         foreach (var kvp in groundCanisters)
-            canisters.Add(kvp.Key, kvp.Value);
+            canisterProfiles.Add(kvp.Key, kvp.Value);
 
-        var schemes = new Dictionary<string, ColorScheme>
+        var colorSchemeProfiles = new Dictionary<string, ColorScheme>
         {
             [schemeWarm] = new ColorScheme(schemeWarm, new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
             [schemeCool] = new ColorScheme(schemeCool, new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
@@ -201,7 +201,7 @@ public static class DefaultProfiles
             [SubShellTrailPresets.SpokeWheel.Id] = SubShellTrailPresets.SpokeWheel
         };
 
-        var shells = new Dictionary<string, FireworkShellProfile>
+        var shellProfiles = new Dictionary<string, FireworkShellProfile>
         {
             [shellBasicId] = ShellPresets.Create(
                 id: shellBasicId,
@@ -511,7 +511,7 @@ public static class DefaultProfiles
                 colorSchemeId: schemeNeon)
         };
 
-        var groundEffects = new Dictionary<string, GroundEffectProfile>
+        var groundEffectProfiles = new Dictionary<string, GroundEffectProfile>
         {
             [groundFountainWarmId] = GroundEffectPresets.Fountain(
                 id: groundFountainWarmId,
@@ -696,7 +696,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles, trailProfiles, subshellTrailProfiles);
+        var profileSet = new FireworksProfileSet(canisterProfiles, shellProfiles, groundEffectProfiles, colorSchemeProfiles, subshellProfiles, trailProfiles, subshellTrailProfiles);
         ProfileValidator.Validate(profileSet);
         return profileSet;
     }
