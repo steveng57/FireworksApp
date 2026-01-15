@@ -7,8 +7,7 @@ namespace FireworksApp.Simulation;
 
 public static class DefaultProfiles
 {
-    public static FireworksProfileSet Create()
-    {
+
         const float canisterSpacingScale = 1.5f;
         // IDs consolidated to avoid typos.
         const string canTypeM2 = "M2";
@@ -93,6 +92,8 @@ public static class DefaultProfiles
         const string groundBloomBrocadeId = "bloom_brocade";
         const string groundGlitterPulseId = "glitter_pulse";
 
+    public static FireworksProfileSet Create()
+    {
         // Shell-launch canisters (keep as-is, centered around the pad).
         var canisters = new Dictionary<string, CanisterProfile>
         {
@@ -740,6 +741,10 @@ public static class DefaultShow
                 string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
+                if (shellId == "chrys")
+                {
+
+                }
                 string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
 
                 // debug variations
