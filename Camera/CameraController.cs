@@ -21,6 +21,7 @@ public sealed class CameraController
     private float _orbitAngle;
     private float _orbitUserOffset;
     private float _orbitUserOffsetTarget;
+    private bool _motionEnabled = true;
 
     public Matrix4x4 View { get; private set; }
     public Matrix4x4 Projection { get; private set; }
@@ -28,6 +29,7 @@ public sealed class CameraController
 
     public CameraProfile Profile => _profile;
     public bool IsDirty { get; private set; }
+    public bool MotionEnabled => _motionEnabled;
 
     public void SetProfile(string profileId)
     {
@@ -77,6 +79,13 @@ public sealed class CameraController
             _orbitUserOffset = 0.0f;
             _orbitUserOffsetTarget = 0.0f;
         }
+        _motionEnabled = true;
+        IsDirty = true;
+    }
+
+    public void SetMotionEnabled(bool enabled)
+    {
+        _motionEnabled = enabled;
         IsDirty = true;
     }
 
@@ -189,7 +198,7 @@ public sealed class CameraController
         float yaw;
         if (_profile.Kind == CameraProfileKind.AerialOrbit || _profile.Kind == CameraProfileKind.GroundOrbit)
         {
-            if (dt > 0.0f)
+            if (dt > 0.0f && _motionEnabled)
             {
                 _orbitAngle += _profile.OrbitSpeedRadiansPerSecond * dt;
                 const float twoPi = (float)(System.Math.PI * 2.0);

@@ -206,15 +206,13 @@ public sealed class D3DHost : HwndHost
 
         if (!_motionSuspended)
         {
-            _savedCameraProfileId = _renderer.CurrentCameraProfileId;
-            _renderer.SetCameraProfile(CameraProfiles.StandardId);
             _motionSuspended = true;
+            _renderer.SetCameraMotionEnabled(false);
         }
         else
         {
-            string targetId = _savedCameraProfileId ?? CameraProfiles.StandardId;
-            _renderer.SetCameraProfile(targetId);
             _motionSuspended = false;
+            _renderer.SetCameraMotionEnabled(true);
         }
     }
 

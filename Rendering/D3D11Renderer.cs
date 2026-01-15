@@ -141,6 +141,7 @@ public sealed class D3D11Renderer : IDisposable
     private readonly CameraController _camera = new();
     public Vector3 CameraPosition { get; private set; }
     public string CurrentCameraProfileId => _camera.Profile.Id;
+    public bool CameraMotionEnabled => _camera.MotionEnabled;
 
 
     public D3D11Renderer(nint hwnd)
@@ -148,6 +149,11 @@ public sealed class D3D11Renderer : IDisposable
         _hwnd = hwnd;
         _deviceResources = new DeviceResources(hwnd);
         _camera.SetProfile(Tunables.DefaultCameraProfileId);
+    }
+
+    public void SetCameraMotionEnabled(bool enabled)
+    {
+        _camera.SetMotionEnabled(enabled);
     }
 
     private static Vector3[] CreateUnitVectorTable()
