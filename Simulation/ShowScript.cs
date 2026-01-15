@@ -8,8 +8,8 @@ public sealed record class ShowEvent(
     string CanisterId,
     string? ShellProfileId = null,
     string? GroundEffectProfileId = null,
-    string? ColorSchemeId = null,
-    float? MuzzleVelocity = null);
+    string? ColorSchemeId = null
+);
 
 public sealed record class ShowScript(IReadOnlyList<ShowEvent> Events)
 {

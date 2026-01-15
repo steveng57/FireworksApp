@@ -114,7 +114,7 @@ public sealed class FireworksEngine
 
     public void Launch(string canisterId, string shellProfileId, D3D11Renderer renderer, string? colorSchemeId = null, float? muzzleVelocity = null)
     {
-        TriggerEvent(new ShowEvent(TimeSeconds: ShowTimeSeconds, CanisterId: canisterId, ShellProfileId: shellProfileId, GroundEffectProfileId: null, ColorSchemeId: colorSchemeId, MuzzleVelocity: muzzleVelocity), renderer);
+        TriggerEvent(new ShowEvent(TimeSeconds: ShowTimeSeconds, CanisterId: canisterId, ShellProfileId: shellProfileId, GroundEffectProfileId: null, ColorSchemeId: colorSchemeId), renderer);
     }
 
     public IReadOnlyList<Canister> Canisters => _canisters;
@@ -718,8 +718,7 @@ public sealed class FireworksEngine
         if (!_profiles.Shells.TryGetValue(ev.ShellProfileId!, out var shellProfile))
             return;
 
-        var muzzle = ev.MuzzleVelocity ??
-            (canister.Type.MuzzleVelocityMin + (float)_rng.NextDouble() * (canister.Type.MuzzleVelocityMax - canister.Type.MuzzleVelocityMin));
+        var muzzle = (canister.Type.MuzzleVelocityMin + (float)_rng.NextDouble() * (canister.Type.MuzzleVelocityMax - canister.Type.MuzzleVelocityMin));
 
         if (!canister.CanFire)
             return;
