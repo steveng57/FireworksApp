@@ -486,11 +486,12 @@ public sealed partial class D3D11Renderer
                 startColor,
                 Tunables.SmokeLifetimeMinSeconds,
                 Tunables.SmokeLifetimeMaxSeconds,
-                (uint)_rng.Next());
+                (uint)_rng.Next(),
+                out int enqueued);
 
             if (queued)
             {
-                _particleWriteCursor = (start + count) % _particleCapacity;
+                _particleWriteCursor = (start + enqueued) % _particleCapacity;
                 return;
             }
         }

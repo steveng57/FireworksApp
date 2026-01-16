@@ -136,8 +136,11 @@ internal sealed partial class ParticlesPipeline
         Vector4 baseColor,
         float lifetimeMinSeconds,
         float lifetimeMaxSeconds,
-        uint seed)
+        uint seed,
+        out int enqueuedCount)
     {
+        enqueuedCount = 0;
+
         if (!CanGpuSpawn || count <= 0)
             return false;
 
@@ -145,6 +148,7 @@ internal sealed partial class ParticlesPipeline
         if (maxCount <= 0)
             return false;
         count = System.Math.Min(count, maxCount);
+        enqueuedCount = count;
 
         float lifeMin = System.Math.Max(0.0f, lifetimeMinSeconds);
         float lifeMax = System.Math.Max(lifeMin, lifetimeMaxSeconds);
