@@ -102,6 +102,11 @@ internal sealed partial class ParticlesPipeline : IDisposable
 
     public bool CanGpuSpawn => _gpuSpawnEnabled && _csSpawn is not null && _particleUAV is not null;
 
+    private readonly int _counterReadbackIntervalMs = GetReadbackIntervalFromEnv("FIREWORKS_COUNTER_READBACK_MS", Debugger.IsAttached ? 0 : 250);
+    private long _lastCounterReadbackTick;
+    private readonly int _detonationReadbackIntervalMs = GetReadbackIntervalFromEnv("FIREWORKS_DETONATION_READBACK_MS", 0);
+    private long _lastDetonationReadbackTick;
+
     private bool _enableCounterReadback = true;
     public bool EnableCounterReadback
     {
@@ -114,6 +119,9 @@ internal sealed partial class ParticlesPipeline : IDisposable
     public int ReadDetonations(ID3D11DeviceContext context, Span<DetonationEvent> destination)
     {
         if (_detonationReadback is null || _detonationBuffer is null || _detonationCountBuffer is null || _detonationCountReadback is null)
+            return 0;
+
+        if (!ShouldPerformReadback(ref _lastDetonationReadbackTick, _detonationReadbackIntervalMs))
             return 0;
 
         context.CopyResource(_detonationCountReadback, _detonationCountBuffer);
@@ -188,4 +196,29 @@ internal sealed partial class ParticlesPipeline : IDisposable
     }
 
     partial void DisposeCore();
+
+    private static int GetReadbackIntervalFromEnv(string envVar, int defaultMilliseconds)
+    {
+        string? value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+            return defaultMilliseconds;
+
+        if (!int.TryParse(value, out int parsed))
+            return defaultMilliseconds;
+
+        return System.Math.Clamp(parsed, 0, 10_000);
+    }
+
+    private static bool ShouldPerformReadback(ref long lastTick, int intervalMs)
+    {
+        if (intervalMs <= 0)
+            return true;
+
+        long now = Environment.TickCount64;
+        if (now - lastTick < intervalMs)
+            return false;
+
+        lastTick = now;
+        return true;
+    }
 }
