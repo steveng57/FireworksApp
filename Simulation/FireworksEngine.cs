@@ -2303,6 +2303,7 @@ public sealed class FireworkShell
 
     public FireworkShellProfile Profile { get; }
     public ColorScheme ColorScheme { get; }
+    public TrailProfile Trail { get; }
 
     public uint ShellId { get; init; }
 
@@ -2341,6 +2342,7 @@ public sealed class FireworkShell
     {
         Profile = profile;
         ColorScheme = colorScheme;
+        Trail = profile.Trail;
         Position = position;
         Velocity = velocity;
         DragK = dragK;
@@ -2385,10 +2387,10 @@ public sealed class FireworkShell
 
         Vector3 dir = Vector3.Normalize(Velocity);
 
-        int particleCount = Math.Clamp(Profile.TrailParticleCount, 1, 64);
+        int particleCount = Math.Clamp(Trail.ParticleCount, 1, 64);
         const float coneAngle = 5f * (MathF.PI / 180f);
 
-        var trailColor = Profile.TrailColor;
+        var trailColor = Trail.Color;
 
         if (_terminalState == ShellTerminalState.Fading)
         {
@@ -2401,13 +2403,13 @@ public sealed class FireworkShell
         renderer.SpawnBurstCone(
             position: Position,
             baseColor: trailColor,
-            speed: MathF.Max(0.0f, Profile.TrailSpeed),
+            speed: MathF.Max(0.0f, Trail.Speed),
             baseDirection: -dir,
             coneAngleRadians: coneAngle,
             count: particleCount,
-            particleLifetimeSeconds: MathF.Max(0.01f, Profile.TrailParticleLifetimeSeconds));
+            particleLifetimeSeconds: MathF.Max(0.01f, Trail.ParticleLifetimeSeconds));
 
-        if (_rng.NextDouble() < Math.Clamp(Profile.TrailSmokeChance, 0.0f, 1.0f))
+        if (_rng.NextDouble() < Math.Clamp(Trail.SmokeChance, 0.0f, 1.0f))
         {
             renderer.SpawnSmoke(Position);
         }

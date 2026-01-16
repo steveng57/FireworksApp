@@ -188,7 +188,7 @@ public static class DefaultProfiles
 
         };
 
-        var trailProfiles = new Dictionary<string, ShellTrailProfile>
+        var trailProfiles = new Dictionary<string, TrailProfile>
         {
             [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
             [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
@@ -196,7 +196,7 @@ public static class DefaultProfiles
             [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
         };
 
-        var subshellTrailProfiles = new Dictionary<string, SubShellTrailProfile>
+        var subshellTrailProfiles = new Dictionary<string, TrailProfile>
         {
             [SubShellTrailPresets.FinaleDefault.Id] = SubShellTrailPresets.FinaleDefault,
             [SubShellTrailPresets.SpokeWheel.Id] = SubShellTrailPresets.SpokeWheel

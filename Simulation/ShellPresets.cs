@@ -17,7 +17,7 @@ public static class ShellPresets
         float? burstSparkleIntensity = null,
         bool suppressBurst = false,
         float terminalFadeOutSeconds = 0.0f,
-        ShellTrailProfile? trailProfile = null,
+        TrailProfile? trailProfile = null,
         Vector3? ringAxis = null,
         float ringAxisRandomTiltDegrees = 0.0f,
         BurstEmissionSettings? emission = null,

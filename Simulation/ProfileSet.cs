@@ -11,8 +11,8 @@ public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, GroundEffectProfile> GroundEffects,
     IReadOnlyDictionary<string, ColorScheme> ColorSchemes,
     IReadOnlyDictionary<string, SubShellProfile> SubShells,
-    IReadOnlyDictionary<string, ShellTrailProfile> TrailProfiles,
-    IReadOnlyDictionary<string, SubShellTrailProfile> SubShellTrailProfiles);
+    IReadOnlyDictionary<string, TrailProfile> TrailProfiles,
+    IReadOnlyDictionary<string, TrailProfile> SubShellTrailProfiles);
 
 public static class ProfileValidator
 {

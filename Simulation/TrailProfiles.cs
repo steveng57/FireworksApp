@@ -14,15 +14,7 @@ public static class FireworkShellDefaults
 
 public readonly record struct ShellTrailParams(int Count, float LifetimeSeconds, float Speed, float SmokeChance);
 
-public sealed record class SubShellTrailProfile(
-    string Id,
-    int ParticleCount,
-    float ParticleLifetimeSeconds,
-    float Speed,
-    float SmokeChance,
-    Vector4 Color);
-
-public sealed record class ShellTrailProfile(
+public sealed record class TrailProfile(
     string Id,
     int ParticleCount,
     float ParticleLifetimeSeconds,
@@ -34,7 +26,7 @@ public static class ShellTrailPresets
 {
     private static readonly Vector4 DefaultTrailColor = new(1.0f, 0.85f, 0.5f, 1.0f);
 
-    public static ShellTrailProfile Default => new(
+    public static TrailProfile Default => new(
         Id: "trail_default",
         ParticleCount: FireworkShellDefaults.TrailParticleCount,
         ParticleLifetimeSeconds: FireworkShellDefaults.TrailParticleLifetimeSeconds,
@@ -42,7 +34,7 @@ public static class ShellTrailPresets
         SmokeChance: FireworkShellDefaults.TrailSmokeChance,
         Color: DefaultTrailColor);
 
-    public static ShellTrailProfile ShortBright => new(
+    public static TrailProfile ShortBright => new(
         Id: "trail_short_bright",
         ParticleCount: 10,
         ParticleLifetimeSeconds: 0.5f,
@@ -50,7 +42,7 @@ public static class ShellTrailPresets
         SmokeChance: 0.15f,
         Color: DefaultTrailColor);
 
-    public static ShellTrailProfile WillowLingering => new(
+    public static TrailProfile WillowLingering => new(
         Id: "trail_willow_lingering",
         ParticleCount: 12,
         ParticleLifetimeSeconds: 0.8f,
@@ -58,7 +50,7 @@ public static class ShellTrailPresets
         SmokeChance: 0.2f,
         Color: DefaultTrailColor);
 
-    public static ShellTrailProfile CometNeon => new(
+    public static TrailProfile CometNeon => new(
         Id: "trail_comet_neon",
         ParticleCount: 12,
         ParticleLifetimeSeconds: 0.5f,
@@ -72,7 +64,7 @@ public static class SubShellTrailPresets
     private static readonly Vector4 FinaleTrailColor = new(1.0f, 0.75f, 0.4f, 1.0f);
     private static readonly Vector4 SpokeTrailColor = new(1.0f, 0.8f, 0.55f, 1.0f);
 
-    public static SubShellTrailProfile FinaleDefault => new(
+    public static TrailProfile FinaleDefault => new(
         Id: "subshell_trail_finale",
         ParticleCount: 6,
         ParticleLifetimeSeconds: 0.4f,
@@ -80,7 +72,7 @@ public static class SubShellTrailPresets
         SmokeChance: 0.15f,
         Color: FinaleTrailColor);
 
-    public static SubShellTrailProfile SpokeWheel => new(
+    public static TrailProfile SpokeWheel => new(
         Id: "subshell_trail_spoke_wheel",
         ParticleCount: 6,
         ParticleLifetimeSeconds: 0.4f,
