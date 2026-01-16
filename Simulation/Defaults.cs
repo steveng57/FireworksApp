@@ -241,11 +241,11 @@ public static class DefaultProfiles
                     SubShellDrag: 0.05f,
                     Trail: new SparklerLineTrailParams(
                         SparkRate: 190.0f,
-                        SparkLifetimeSeconds: 0.50f,
+                        SparkLifetimeSeconds: 0.75f,
                         SparkSpeed: 7.5f,
                         SparkDirectionJitter: 0.32f,
                         BrightnessScalar: 1.05f,
-                        MinSpawnPerTick: 40))),
+                        MinSpawnPerTick: 32))),
 
             [shellWillowId] = ShellPresets.Create(
                 id: shellWillowId,
