@@ -701,14 +701,43 @@ public sealed partial class D3D11Renderer
 
         int start = _particleWriteCursor;
 
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            Vector3 dir = velocity.LengthSquared() > 1e-6f ? Vector3.Normalize(velocity) : Vector3.UnitY;
+            const float coneDeg = 12.0f;
+            float coneRad = coneDeg * (MathF.PI / 180f);
+            float jitter = 0.08f; // negative age jitter to stagger spawns
+
+            bool queued = _particlesPipeline.QueueTrailSpawn(
+                particleStart: start,
+                count: count,
+                origin: position,
+                baseDirection: -dir,
+                baseColor: color,
+                speed: ShellTrailSpeed,
+                lifetimeSeconds: ShellTrailLifetimeSeconds,
+                sparkleRateHz: 0.0f,
+                sparkleIntensity: 0.0f,
+                coneAngleRadians: coneRad,
+                spawnJitterSeconds: jitter,
+                seed: (uint)_rng.Next(),
+                out int enqueued);
+
+            if (queued)
+            {
+                _particleWriteCursor = (start + enqueued) % _particleCapacity;
+                return;
+            }
+        }
+
         var staging = RentParticleArray(count);
 
-        Vector3 dir = velocity.LengthSquared() > 1e-6f ? Vector3.Normalize(velocity) : Vector3.UnitY;
-        Vector3 back = -dir;
-        Vector3 right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
+        Vector3 dirFallback = velocity.LengthSquared() > 1e-6f ? Vector3.Normalize(velocity) : Vector3.UnitY;
+        Vector3 back = -dirFallback;
+        Vector3 right = Vector3.Normalize(Vector3.Cross(dirFallback, Vector3.UnitY));
         if (right.LengthSquared() < 1e-6f)
             right = Vector3.UnitX;
-        Vector3 up = Vector3.Normalize(Vector3.Cross(right, dir));
+        Vector3 up = Vector3.Normalize(Vector3.Cross(right, dirFallback));
 
         try
         {

@@ -102,7 +102,15 @@ struct SpawnRequest
     float SparkleRateHz;
     float SparkleIntensity;
     uint Seed;
-    float3 _pad; // repurposed per-kind (e.g., shell velocity)
+    float3 _pad; // repurposed per-kind (e.g., shell velocity or base direction)
+
+    // Trail-only packed params (asuint/asfloat):
+    // TrailParamsX = particle count
+    // TrailParamsY = cone angle radians
+    // TrailParamsZ = spawn jitter seconds
+    uint TrailParamsX;
+    uint TrailParamsY;
+    uint TrailParamsZ;
 
     float4 BaseColor;
 };
@@ -219,6 +227,61 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
                 p._pad.y = asuint(req.SparkleIntensity);
                 p._pad.z = seed;
             }
+
+            Particles[dst] = p;
+        }
+    }
+    else if (req.RequestKind == 5)
+    {
+        // GPU-driven trails: emit sparks in a small cone behind the shell direction.
+        float3 baseDir = SafeNormalize(req._pad, float3(0.0f, 1.0f, 0.0f));
+        float cone = asfloat(req.TrailParamsY);
+        float jitter = asfloat(req.TrailParamsZ);
+        uint trailCount = (uint)max(1.0f, asfloat(req.TrailParamsX));
+
+        // Spread work: each request handles Count particles already clamped CPU-side.
+        uint emitCount = min(trailCount, req.Count);
+
+        float3 axis1 = cross(baseDir, float3(0.0f, 1.0f, 0.0f));
+        axis1 = SafeNormalize(axis1, float3(1.0f, 0.0f, 0.0f));
+        float3 axis2 = SafeNormalize(cross(baseDir, axis1), float3(0.0f, 0.0f, 1.0f));
+
+        for (uint i = 0; i < emitCount; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            float yawU = Hash01(seed);
+            float pitchU = Hash01(seed ^ 0x31415926u);
+            float yaw = yawU * 6.2831853f;
+            float pitch = pitchU * cone;
+
+            float sYaw, cYaw;
+            float sPitch, cPitch;
+            sincos(yaw, sYaw, cYaw);
+            sincos(pitch, sPitch, cPitch);
+
+            float3 dirOffset = (axis1 * cYaw + axis2 * sYaw) * sPitch;
+            float3 dir = SafeNormalize(baseDir * cPitch + dirOffset, baseDir);
+
+            float jitterT = jitter > 0.0f ? Hash01(seed ^ 0xABCDEFu) * jitter : 0.0f;
+
+            float speedMul = 0.85f + 0.30f * Hash01(seed ^ 0xFEEDC0DEu);
+            float3 vel = dir * (req.Speed * speedMul);
+
+            float life = max(0.01f, req.Lifetime * (0.70f + 0.60f * Hash01(seed ^ 0x123123u)));
+
+            Particle p;
+            p.Position = req.Origin;
+            p.Velocity = vel;
+            p.Age = -jitterT;
+            p.Lifetime = life;
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = 2u;
+            p._pad.x = asuint(req.SparkleRateHz);
+            p._pad.y = asuint(req.SparkleIntensity);
+            p._pad.z = seed;
 
             Particles[dst] = p;
         }

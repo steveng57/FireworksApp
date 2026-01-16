@@ -31,7 +31,16 @@ internal sealed partial class ParticlesPipeline
         public float SparkleRateHz;
         public float SparkleIntensity;
         public uint Seed;
-        public Vector3 _pad;
+        public Vector3 _pad; // For trails and shells, this may carry direction/velocity.
+
+        // Trail-only payload:
+        // _pad = base direction
+        // TrailParamsX = packed float: count (float bits so HLSL can unpack via asfloat)
+        // TrailParamsY = packed float: cone angle radians
+        // TrailParamsZ = packed float: spawn jitter seconds
+        public uint TrailParamsX;
+        public uint TrailParamsY;
+        public uint TrailParamsZ;
 
         public Vector4 BaseColor;
     }
@@ -84,6 +93,70 @@ internal sealed partial class ParticlesPipeline
             SparkleIntensity = inten,
             Seed = seed,
             _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueTrailSpawn(
+        int particleStart,
+        int count,
+        Vector3 origin,
+        Vector3 baseDirection,
+        Vector4 baseColor,
+        float speed,
+        float lifetimeSeconds,
+        float sparkleRateHz,
+        float sparkleIntensity,
+        float coneAngleRadians,
+        float spawnJitterSeconds,
+        uint seed,
+        out int enqueuedCount)
+    {
+        enqueuedCount = 0;
+
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+        enqueuedCount = count;
+
+        Vector3 dir = baseDirection;
+        float lenSq = dir.LengthSquared();
+        if (lenSq < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir /= System.MathF.Sqrt(lenSq);
+
+        float angle = System.Math.Max(0.0f, coneAngleRadians);
+        float life = System.Math.Max(0.0f, lifetimeSeconds);
+        float rate = System.Math.Max(0.0f, sparkleRateHz);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+        float jitter = System.Math.Max(0.0f, spawnJitterSeconds);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 5u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = speed,
+            ConeAngleRadians = angle,
+            Lifetime = life,
+            CrackleProbability = 0.0f,
+            SparkleRateHz = rate,
+            SparkleIntensity = inten,
+            Seed = seed,
+            _pad = dir,
+            TrailParamsX = (uint)BitConverter.SingleToUInt32Bits(count),
+            TrailParamsY = (uint)BitConverter.SingleToUInt32Bits(angle),
+            TrailParamsZ = (uint)BitConverter.SingleToUInt32Bits(jitter),
             BaseColor = baseColor
         };
 
