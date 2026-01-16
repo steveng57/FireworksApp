@@ -23,13 +23,24 @@ internal sealed partial class ParticlesPipeline
         public Vector3 Origin;
         public float Speed;
 
+        public float ConeAngleRadians;
+
         public float Lifetime;
         public float CrackleProbability;
 
         public float SparkleRateHz;
         public float SparkleIntensity;
         public uint Seed;
-        public Vector3 _pad;
+        public Vector3 _pad; // For trails and shells, this may carry direction/velocity.
+
+        // Trail-only payload:
+        // _pad = base direction
+        // TrailParamsX = packed float: count (float bits so HLSL can unpack via asfloat)
+        // TrailParamsY = packed float: cone angle radians
+        // TrailParamsZ = packed float: spawn jitter seconds
+        public uint TrailParamsX;
+        public uint TrailParamsY;
+        public uint TrailParamsZ;
 
         public Vector4 BaseColor;
     }
@@ -75,12 +86,77 @@ internal sealed partial class ParticlesPipeline
             Count = (uint)directions.Length,
             Origin = origin,
             Speed = speed,
+            ConeAngleRadians = 0.0f,
             Lifetime = life,
             CrackleProbability = crackle,
             SparkleRateHz = rate,
             SparkleIntensity = inten,
             Seed = seed,
             _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueTrailSpawn(
+        int particleStart,
+        int count,
+        Vector3 origin,
+        Vector3 baseDirection,
+        Vector4 baseColor,
+        float speed,
+        float lifetimeSeconds,
+        float sparkleRateHz,
+        float sparkleIntensity,
+        float coneAngleRadians,
+        float spawnJitterSeconds,
+        uint seed,
+        out int enqueuedCount)
+    {
+        enqueuedCount = 0;
+
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+        enqueuedCount = count;
+
+        Vector3 dir = baseDirection;
+        float lenSq = dir.LengthSquared();
+        if (lenSq < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir /= System.MathF.Sqrt(lenSq);
+
+        float angle = System.Math.Max(0.0f, coneAngleRadians);
+        float life = System.Math.Max(0.0f, lifetimeSeconds);
+        float rate = System.Math.Max(0.0f, sparkleRateHz);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+        float jitter = System.Math.Max(0.0f, spawnJitterSeconds);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 5u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = speed,
+            ConeAngleRadians = angle,
+            Lifetime = life,
+            CrackleProbability = 0.0f,
+            SparkleRateHz = rate,
+            SparkleIntensity = inten,
+            Seed = seed,
+            _pad = dir,
+            TrailParamsX = (uint)BitConverter.SingleToUInt32Bits(count),
+            TrailParamsY = (uint)BitConverter.SingleToUInt32Bits(angle),
+            TrailParamsZ = (uint)BitConverter.SingleToUInt32Bits(jitter),
             BaseColor = baseColor
         };
 
@@ -112,6 +188,7 @@ internal sealed partial class ParticlesPipeline
             Count = 1,
             Origin = position,
             Speed = 0.0f,
+            ConeAngleRadians = 0.0f,
             Lifetime = System.Math.Max(0.0f, fuseSeconds),
             CrackleProbability = 0.0f,
             SparkleRateHz = 0.0f,
@@ -132,8 +209,11 @@ internal sealed partial class ParticlesPipeline
         Vector4 baseColor,
         float lifetimeMinSeconds,
         float lifetimeMaxSeconds,
-        uint seed)
+        uint seed,
+        out int enqueuedCount)
     {
+        enqueuedCount = 0;
+
         if (!CanGpuSpawn || count <= 0)
             return false;
 
@@ -141,6 +221,7 @@ internal sealed partial class ParticlesPipeline
         if (maxCount <= 0)
             return false;
         count = System.Math.Min(count, maxCount);
+        enqueuedCount = count;
 
         float lifeMin = System.Math.Max(0.0f, lifetimeMinSeconds);
         float lifeMax = System.Math.Max(lifeMin, lifetimeMaxSeconds);
@@ -153,12 +234,70 @@ internal sealed partial class ParticlesPipeline
             Count = (uint)count,
             Origin = origin,
             Speed = 0.0f,
+            ConeAngleRadians = 0.0f,
             Lifetime = lifeMin,
             CrackleProbability = 0.0f,
             SparkleRateHz = lifeMax,
             SparkleIntensity = 0.0f,
             Seed = seed,
             _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueSparkBurstCone(
+        int particleStart,
+        int count,
+        Vector3 baseDirection,
+        float coneAngleRadians,
+        Vector3 origin,
+        Vector4 baseColor,
+        float speed,
+        float lifetimeSeconds,
+        float sparkleRateHz,
+        float sparkleIntensity,
+        float crackleProbability,
+        uint seed)
+    {
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+
+        Vector3 dir = baseDirection;
+        float lenSq = dir.LengthSquared();
+        if (lenSq < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir /= System.MathF.Sqrt(lenSq);
+
+        float angle = System.Math.Max(0.0f, coneAngleRadians);
+        float life = System.Math.Max(0.0f, lifetimeSeconds);
+        float rate = System.Math.Max(0.0f, sparkleRateHz);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+        float crackle = System.Math.Clamp(crackleProbability, 0.0f, 1.0f);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 4u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = speed,
+            ConeAngleRadians = angle,
+            Lifetime = life,
+            CrackleProbability = crackle,
+            SparkleRateHz = rate,
+            SparkleIntensity = inten,
+            Seed = seed,
+            _pad = dir,
             BaseColor = baseColor
         };
 
@@ -181,18 +320,21 @@ internal sealed partial class ParticlesPipeline
         return buf;
     }
 
-    private void EnsureSpawnBuffer(ref ID3D11Buffer? buffer, ref ID3D11ShaderResourceView? srv, ref int capacity, int requiredElements, int stride, ID3D11Device device)
+    private void EnsureSpawnBuffer(ref ID3D11Buffer? buffer, ref ID3D11ShaderResourceView? srv, ref int capacity, int requiredElements, int stride, ID3D11Device device, int prealloc)
     {
         if (requiredElements <= 0)
             return;
 
-        if (buffer is not null && requiredElements <= capacity)
+        int target = System.Math.Max(requiredElements, prealloc);
+
+        if (buffer is not null && target <= capacity)
             return;
 
         buffer?.Dispose();
         srv?.Dispose();
 
-        capacity = System.Math.Max(requiredElements, 1);
+        int newCapacity = capacity > 0 ? System.Math.Max(target, capacity * 2) : target;
+        capacity = System.Math.Max(newCapacity, 1);
 
         buffer = device.CreateBuffer(new BufferDescription
         {
@@ -234,9 +376,9 @@ internal sealed partial class ParticlesPipeline
         if (device is null)
             return;
 
-        EnsureSpawnBuffer(ref _spawnRequestBuffer, ref _spawnRequestSRV, ref _spawnRequestCapacity, reqCount, _spawnRequestStride, device);
+        EnsureSpawnBuffer(ref _spawnRequestBuffer, ref _spawnRequestSRV, ref _spawnRequestCapacity, reqCount, _spawnRequestStride, device, _spawnRequestPrealloc);
         if (dirCount > 0)
-            EnsureSpawnBuffer(ref _spawnDirectionBuffer, ref _spawnDirectionSRV, ref _spawnDirectionCapacity, dirCount, _spawnDirectionStride, device);
+            EnsureSpawnBuffer(ref _spawnDirectionBuffer, ref _spawnDirectionSRV, ref _spawnDirectionCapacity, dirCount, _spawnDirectionStride, device, _spawnDirectionPrealloc);
 
         if (_spawnRequestBuffer is null || _spawnRequestSRV is null)
             return;

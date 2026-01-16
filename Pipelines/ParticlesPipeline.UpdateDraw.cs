@@ -84,7 +84,7 @@ internal sealed partial class ParticlesPipeline
         context.CSSetUnorderedAccessViews(0, _nullUavs, null);
         context.CSSetShader(null);
 
-        if (_enableCounterReadback && _perKindCountersReadback is not null && _perKindCountersBuffer is not null)
+        if (_enableCounterReadback && _perKindCountersReadback is not null && _perKindCountersBuffer is not null && ShouldPerformReadback(ref _lastCounterReadbackTick, _counterReadbackIntervalMs))
         {
             context.CopyResource(_perKindCountersReadback, _perKindCountersBuffer);
 
