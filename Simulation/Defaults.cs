@@ -244,7 +244,8 @@ public static class DefaultProfiles
                         SparkLifetimeSeconds: 0.50f,
                         SparkSpeed: 7.5f,
                         SparkDirectionJitter: 0.32f,
-                        BrightnessScalar: 1.05f))),
+                        BrightnessScalar: 1.05f,
+                        MinSpawnPerTick: 40))),
 
             [shellWillowId] = ShellPresets.Create(
                 id: shellWillowId,
