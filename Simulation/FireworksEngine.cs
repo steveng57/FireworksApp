@@ -1193,7 +1193,7 @@ public sealed class FireworksEngine
 
         s.TrailAccumulator -= spawnCount;
 
-        Span<Vector3> dirs = spawnCount <= 64 ? stackalloc Vector3[64] : new Vector3[spawnCount];
+        Span<Vector3> dirs = spawnCount <= 64 ? stackalloc Vector3[spawnCount] : new Vector3[spawnCount];
         Vector3 basis1 = Vector3.Cross(dir, Vector3.UnitY);
         if (basis1.LengthSquared() < 1e-6f)
             basis1 = Vector3.Cross(dir, Vector3.UnitX);
