@@ -44,6 +44,8 @@ internal sealed partial class ParticlesPipeline : IDisposable
     private ID3D11ShaderResourceView? _spawnDirectionSRV;
     private int _spawnRequestCapacity;
     private int _spawnDirectionCapacity;
+    private readonly int _spawnRequestPrealloc = GetSpawnPreallocFromEnv("FIREWORKS_SPAWN_REQUEST_PREALLOC", 4096, 1, 131072);
+    private readonly int _spawnDirectionPrealloc = GetSpawnPreallocFromEnv("FIREWORKS_SPAWN_DIRECTION_PREALLOC", 65536, 1, 1048576);
     private int _spawnRequestStride = Marshal.SizeOf<GpuSpawnRequest>();
     private int _spawnDirectionStride = Marshal.SizeOf<Vector3>();
 
@@ -220,5 +222,17 @@ internal sealed partial class ParticlesPipeline : IDisposable
 
         lastTick = now;
         return true;
+    }
+
+    private static int GetSpawnPreallocFromEnv(string envVar, int defaultValue, int minValue, int maxValue)
+    {
+        string? value = Environment.GetEnvironmentVariable(envVar);
+        if (string.IsNullOrWhiteSpace(value))
+            return defaultValue;
+
+        if (!int.TryParse(value, out int parsed))
+            return defaultValue;
+
+        return System.Math.Clamp(parsed, minValue, maxValue);
     }
 }

@@ -243,18 +243,21 @@ internal sealed partial class ParticlesPipeline
         return buf;
     }
 
-    private void EnsureSpawnBuffer(ref ID3D11Buffer? buffer, ref ID3D11ShaderResourceView? srv, ref int capacity, int requiredElements, int stride, ID3D11Device device)
+    private void EnsureSpawnBuffer(ref ID3D11Buffer? buffer, ref ID3D11ShaderResourceView? srv, ref int capacity, int requiredElements, int stride, ID3D11Device device, int prealloc)
     {
         if (requiredElements <= 0)
             return;
 
-        if (buffer is not null && requiredElements <= capacity)
+        int target = System.Math.Max(requiredElements, prealloc);
+
+        if (buffer is not null && target <= capacity)
             return;
 
         buffer?.Dispose();
         srv?.Dispose();
 
-        capacity = System.Math.Max(requiredElements, 1);
+        int newCapacity = capacity > 0 ? System.Math.Max(target, capacity * 2) : target;
+        capacity = System.Math.Max(newCapacity, 1);
 
         buffer = device.CreateBuffer(new BufferDescription
         {
@@ -296,9 +299,9 @@ internal sealed partial class ParticlesPipeline
         if (device is null)
             return;
 
-        EnsureSpawnBuffer(ref _spawnRequestBuffer, ref _spawnRequestSRV, ref _spawnRequestCapacity, reqCount, _spawnRequestStride, device);
+        EnsureSpawnBuffer(ref _spawnRequestBuffer, ref _spawnRequestSRV, ref _spawnRequestCapacity, reqCount, _spawnRequestStride, device, _spawnRequestPrealloc);
         if (dirCount > 0)
-            EnsureSpawnBuffer(ref _spawnDirectionBuffer, ref _spawnDirectionSRV, ref _spawnDirectionCapacity, dirCount, _spawnDirectionStride, device);
+            EnsureSpawnBuffer(ref _spawnDirectionBuffer, ref _spawnDirectionSRV, ref _spawnDirectionCapacity, dirCount, _spawnDirectionStride, device, _spawnDirectionPrealloc);
 
         if (_spawnRequestBuffer is null || _spawnRequestSRV is null)
             return;
