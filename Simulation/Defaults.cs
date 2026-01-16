@@ -780,6 +780,8 @@ public static class DefaultShow
 
         t += 4.0f;
 
+        // Finale - Part 1: all canisters fire basic shells in sequence, three times.
+
         for (int j = 0; j < 3; j++)
         {
             for (int i = 0; i < mainCanisters; i++)
@@ -795,6 +797,8 @@ public static class DefaultShow
             }
             t += 8f;
         }
+
+        // Finale - Part 2: alternating comet neon and peony-to-willow shells.
 
         for (int n = 0; n < 20; n += 2)
         {
@@ -816,6 +820,8 @@ public static class DefaultShow
         }
 
         t += 8.0f;
+
+        // Finale - Part 3: rapid-fire finale salute shells from all canisters.
 
         for (int n = 0; n < 10; n++)
         {
