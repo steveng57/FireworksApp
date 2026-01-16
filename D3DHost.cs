@@ -35,7 +35,7 @@ public sealed class D3DHost : HwndHost
     private readonly Stopwatch _frameTimer = new();
     private double _accumulatedSimSeconds;
     private bool _motionSuspended;
-    private string? _savedCameraProfileId;
+    //private string? _savedCameraProfileId;
 
     public int MouseMoveCount { get; private set; }
     public int MouseDownCount { get; private set; }

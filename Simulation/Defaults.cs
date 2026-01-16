@@ -1,100 +1,106 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Windows.Media;
+using static FireworksApp.Simulation.DefaultIds;
 
 namespace FireworksApp.Simulation;
 
+internal static class DefaultIds
+{
+    public const float canisterSpacingScale = 1.5f;
+
+    public const string canTypeM2 = "M2";
+    public const string canTypeM3 = "M3";
+    public const string canTypeM4 = "M4";
+    public const string canTypeM5 = "M5";
+    public const string canTypeM6 = "M6";
+    public const string canTypeM8 = "M8";
+    public const string canTypeM10 = "M10";
+
+    public const string canC01 = "c01";
+    public const string canC02 = "c02";
+    public const string canC03 = "c03";
+    public const string canC04 = "c04";
+    public const string canC05 = "c05";
+    public const string canC06 = "c06";
+    public const string canC07 = "c07";
+    public const string canC08 = "c08";
+    public const string canC09 = "c09";
+    public const string canC10 = "c10";
+    public const string canC11 = "c11";
+    public const string canC12 = "c12";
+    public const string canC13 = "c13";
+    public const string canC14 = "c14";
+    public const string canC15 = "c15";
+    public const string canC16 = "c16";
+    public const string canC17 = "c17";
+    public const string canC18 = "c18";
+    public const string canC19 = "c19";
+    public const string canC20 = "c20";
+    public const string canC21 = "c21";
+    public const string canC22 = "c22";
+    public const string canC23 = "c23";
+    public const string canC24 = "c24";
+    public const string canC25 = "c25";
+
+    public const string canG01 = "g01";
+    public const string canG02 = "g02";
+    public const string canG03 = "g03";
+    public const string canG04 = "g04";
+    public const string canG05 = "g05";
+    public const string canG06 = "g06";
+    public const string canG07 = "g07";
+    public const string canG08 = "g08";
+
+    public const string schemeWarm = "warm";
+    public const string schemeCool = "cool";
+    public const string schemeMixed = "mixed";
+    public const string schemeNeon = "neon";
+    public const string schemePastel = "pastel";
+    public const string schemeWhite = "white";
+    public const string schemeDebug = "debug";
+    public const string schemeGold = "gold";
+    public const string schemeBrocadeGold = "brocadegold";
+
+    public const string shellBasicId = "basic";
+    public const string shellChrysId = "chrys";
+    public const string shellWillowId = "willow";
+    public const string shellPalmId = "palm";
+    public const string shellDonutId = "donut";
+    public const string shellHorsetailGoldId = "horsetail_gold";
+    public const string shellDoubleRingId = "double_ring";
+    public const string shellSpiralId = "spiral";
+    public const string shellSpokeWheelPopId = "spoke_wheel_pop";
+    public const string shellWillowTrailOnlyId = "willow_trail_only";
+    public const string shellPeonyToWillowId = "peony_to_willow";
+    public const string shellFinaleSaluteId = "finale_salute";
+    public const string shellCometNeonId = "comet_neon";
+
+    public const string subshellBasicPopId = "subshell_basic_pop";
+    public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
+    public const string subshellRingSparkleId = "subshell_ring_sparkle";
+
+    public const string groundFountainWarmId = "fountain_warm";
+    public const string groundSpinnerNeonId = "spinner_neon";
+    public const string groundSpinnerNeonVId = "spinner_neon_v";
+    public const string groundMineMixedId = "mine_mixed";
+    public const string groundBengalWarmId = "bengal_warm";
+    public const string groundLanceHeartId = "lance_heart";
+    public const string groundWaterfallGoldId = "waterfall_gold";
+    public const string groundChaserZipperId = "chaser_zipper";
+    public const string groundBloomBrocadeId = "bloom_brocade";
+    public const string groundGlitterPulseId = "glitter_pulse";
+}
+
 public static class DefaultProfiles
 {
+
     public static FireworksProfileSet Create()
     {
-        const float canisterSpacingScale = 1.5f;
-        // IDs consolidated to avoid typos.
-        const string canTypeM2 = "M2";
-        const string canTypeM3 = "M3";
-        const string canTypeM4 = "M4";
-        const string canTypeM5 = "M5";
-        const string canTypeM6 = "M6";
-        const string canTypeM8 = "M8";
-        const string canTypeM10 = "M10";
-
-        const string canC01 = "c01";
-        const string canC02 = "c02";
-        const string canC03 = "c03";
-        const string canC04 = "c04";
-        const string canC05 = "c05";
-        const string canC06 = "c06";
-        const string canC07 = "c07";
-        const string canC08 = "c08";
-        const string canC09 = "c09";
-        const string canC10 = "c10";
-        const string canC11 = "c11";
-        const string canC12 = "c12";
-        const string canC13 = "c13";
-        const string canC14 = "c14";
-        const string canC15 = "c15";
-        const string canC16 = "c16";
-        const string canC17 = "c17";
-        const string canC18 = "c18";
-        const string canC19 = "c19";
-        const string canC20 = "c20";
-        const string canC21 = "c21";
-        const string canC22 = "c22";
-        const string canC23 = "c23";
-        const string canC24 = "c24";
-        const string canC25 = "c25";
-
-        const string canG01 = "g01";
-        const string canG02 = "g02";
-        const string canG03 = "g03";
-        const string canG04 = "g04";
-        const string canG05 = "g05";
-        const string canG06 = "g06";
-        const string canG07 = "g07";
-        const string canG08 = "g08";
-
-        const string schemeWarm = "warm";
-        const string schemeCool = "cool";
-        const string schemeMixed = "mixed";
-        const string schemeNeon = "neon";
-        const string schemePastel = "pastel";
-        const string schemeWhite = "white";
-        const string schemeDebug = "debug";
-        const string schemeGold = "gold";
-        const string schemeBrocadeGold = "brocadegold";
-
-        const string shellBasicId = "basic";
-        const string shellChrysId = "chrys";
-        const string shellWillowId = "willow";
-        const string shellPalmId = "palm";
-        const string shellDonutId = "donut";
-        const string shellHorsetailGoldId = "horsetail_gold";
-        const string shellDoubleRingId = "double_ring";
-        const string shellSpiralId = "spiral";
-        const string shellSpokeWheelPopId = "spoke_wheel_pop";
-        const string shellWillowTrailOnlyId = "willow_trail_only";
-        const string shellPeonyToWillowId = "peony_to_willow";
-        const string shellFinaleSaluteId = "finale_salute";
-        const string shellCometNeonId = "comet_neon";
-
-        const string subshellBasicPopId = "subshell_basic_pop";
-        const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
-        const string subshellRingSparkleId = "subshell_ring_sparkle";
-
-        const string groundFountainWarmId = "fountain_warm";
-        const string groundSpinnerNeonId = "spinner_neon";
-        const string groundSpinnerNeonVId = "spinner_neon_v";
-        const string groundMineMixedId = "mine_mixed";
-        const string groundBengalWarmId = "bengal_warm";
-        const string groundLanceHeartId = "lance_heart";
-        const string groundWaterfallGoldId = "waterfall_gold";
-        const string groundChaserZipperId = "chaser_zipper";
-        const string groundBloomBrocadeId = "bloom_brocade";
-        const string groundGlitterPulseId = "glitter_pulse";
-
         // Shell-launch canisters (keep as-is, centered around the pad).
-        var canisters = new Dictionary<string, CanisterProfile>
+        var canisterProfiles = new Dictionary<string, CanisterProfile>
         {
             [canC01] = new CanisterProfile(canC01, canTypeM2, new Vector2(-4.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.29883623f, 0.9063078f, -0.29883623f)), shellBasicId),
             [canC02] = new CanisterProfile(canC02, canTypeM3, new Vector2(-2.0f, -4.0f) * canisterSpacingScale, Vector3.Normalize(new Vector3(-0.13395266f, 0.9238795f, -0.26790532f)), shellBasicId),
@@ -143,9 +149,9 @@ public static class DefaultProfiles
         };
 
         foreach (var kvp in groundCanisters)
-            canisters.Add(kvp.Key, kvp.Value);
+            canisterProfiles.Add(kvp.Key, kvp.Value);
 
-        var schemes = new Dictionary<string, ColorScheme>
+        var colorSchemeProfiles = new Dictionary<string, ColorScheme>
         {
             [schemeWarm] = new ColorScheme(schemeWarm, new[] { Colors.Gold, Colors.OrangeRed, Colors.Orange }, 0.08f, 1.2f),
             [schemeCool] = new ColorScheme(schemeCool, new[] { Colors.DeepSkyBlue, Colors.MediumPurple, Colors.LimeGreen }, 0.08f, 1.2f),
@@ -182,9 +188,21 @@ public static class DefaultProfiles
 
         };
 
-        const string spokeWheelPopId = "spoke_wheel_pop";
+        var trailProfiles = new Dictionary<string, ShellTrailProfile>
+        {
+            [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
+            [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
+            [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
+            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
+        };
 
-        var shells = new Dictionary<string, FireworkShellProfile>
+        var subshellTrailProfiles = new Dictionary<string, SubShellTrailProfile>
+        {
+            [SubShellTrailPresets.FinaleDefault.Id] = SubShellTrailPresets.FinaleDefault,
+            [SubShellTrailPresets.SpokeWheel.Id] = SubShellTrailPresets.SpokeWheel
+        };
+
+        var shellProfiles = new Dictionary<string, FireworkShellProfile>
         {
             [shellBasicId] = ShellPresets.Create(
                 id: shellBasicId,
@@ -215,8 +233,8 @@ public static class DefaultProfiles
                 },
                 sparklingChrysanthemum: new SparklingChrysanthemumParams(
                     SubShellCount: 110,
-                    SubShellSpeedMin: 18.0f,
-                    SubShellSpeedMax: 26.0f,
+                    SubShellSpeedMin: 25.0f,
+                    SubShellSpeedMax: 35.0f,
                     SubShellLifetimeMinSeconds: 1.2f,
                     SubShellLifetimeMaxSeconds: 2.5f,
                     SubShellGravityScale: 0.42f,
@@ -324,10 +342,7 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.0f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 180.0f,
-                trailParticleCount: ShellTrailPresets.ShortBright.Count,
-                trailParticleLifetimeSeconds: ShellTrailPresets.ShortBright.LifetimeSeconds,
-                trailSpeed: ShellTrailPresets.ShortBright.Speed,
-                trailSmokeChance: ShellTrailPresets.ShortBright.SmokeChance,
+                trailProfile: ShellTrailPresets.ShortBright,
                 subShellSpokeWheelPop: SubShellSpokeWheelPopParams.Defaults with
                 {
                     SubShellCount = 12,
@@ -348,7 +363,8 @@ public static class DefaultProfiles
                     AngleJitterDegrees = 3.5f,
                     TangentialSpeed = 3.0f,
                     RingAxis = Vector3.UnitY,
-                    RingAxisRandomTiltDegrees = 180.0f
+                    RingAxisRandomTiltDegrees = 180.0f,
+                    TrailProfile = SubShellTrailPresets.SpokeWheel
                 }),
 
             [shellWillowTrailOnlyId] = ShellPresets.Create(
@@ -361,10 +377,7 @@ public static class DefaultProfiles
                 particleLifetimeSeconds: 0.0f,
                 suppressBurst: true,
                 terminalFadeOutSeconds: 1.5f,
-                trailParticleCount: ShellTrailPresets.WillowLingering.Count,
-                trailParticleLifetimeSeconds: ShellTrailPresets.WillowLingering.LifetimeSeconds,
-                trailSpeed: ShellTrailPresets.WillowLingering.Speed,
-                trailSmokeChance: ShellTrailPresets.WillowLingering.SmokeChance),
+                trailProfile: ShellTrailPresets.WillowLingering),
 
             [shellPeonyToWillowId] = ShellPresets.Create(
                 id: shellPeonyToWillowId,
@@ -411,6 +424,7 @@ public static class DefaultProfiles
                         TrailSpeed = 3.0f,
                         TrailSmokeChance = 0.15f,
                         SparkParticleCount = 3000,
+                        TrailProfile = SubShellTrailPresets.FinaleDefault,
                     }
                 ),
 
@@ -453,6 +467,7 @@ public static class DefaultProfiles
                     particleLifetimeSeconds: 0.0f,
                     burstSparkleRateHz: 0.0f,
                     burstSparkleIntensity: 0.0f,
+                    trailProfile: ShellTrailPresets.CometNeon,
                             comet: CometParams.Defaults with
                             {
                                 CometCount = 50,
@@ -497,7 +512,7 @@ public static class DefaultProfiles
                 colorSchemeId: schemeNeon)
         };
 
-        var groundEffects = new Dictionary<string, GroundEffectProfile>
+        var groundEffectProfiles = new Dictionary<string, GroundEffectProfile>
         {
             [groundFountainWarmId] = GroundEffectPresets.Fountain(
                 id: groundFountainWarmId,
@@ -682,7 +697,7 @@ public static class DefaultProfiles
                 SmokeAmount: 0.18f),
         };
 
-        var profileSet = new FireworksProfileSet(canisters, shells, groundEffects, schemes, subshellProfiles);
+        var profileSet = new FireworksProfileSet(canisterProfiles, shellProfiles, groundEffectProfiles, colorSchemeProfiles, subshellProfiles, trailProfiles, subshellTrailProfiles);
         ProfileValidator.Validate(profileSet);
         return profileSet;
     }
@@ -697,6 +712,7 @@ public static class DefaultShow
         var profiles = DefaultProfiles.Create();
         float t = 0;
         int gridSize = 5;
+        var random = new Random();
 
 
 
@@ -721,7 +737,7 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "willow_trail_only")).ToList();
+        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == DefaultIds.shellFinaleSaluteId || kvp.Key == DefaultIds.shellWillowTrailOnlyId)).ToList();
         //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
@@ -731,7 +747,16 @@ public static class DefaultShow
                 string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
-                string colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+                string colorSchemeId;
+                if (shellId != DefaultIds.shellChrysId)
+                {
+                    colorSchemeId = profiles.ColorSchemes.Keys.ElementAt((i + j) % profiles.ColorSchemes.Count);
+                }
+                else
+                {
+                    // Chrysanthemum shells look best in gold colors.
+                    colorSchemeId = DefaultIds.schemeGold;
+                }
 
                 // debug variations
                 //shellId = "spoke_wheel_pop";
@@ -755,6 +780,26 @@ public static class DefaultShow
 
         t += 4.0f;
 
+        // Finale - Part 1: all canisters fire basic shells in sequence, three times.
+
+        for (int j = 0; j < 3; j++)
+        {
+            for (int i = 0; i < mainCanisters; i++)
+            {
+                string canisterId = profiles.Canisters.Keys.ElementAt(i % mainCanisters);
+                float jitter = (float)(random.NextDouble() * 0.1);
+                var finaleEvent = new ShowEvent(
+                    TimeSeconds: t + jitter,
+                    CanisterId: canisterId,
+                    ShellProfileId: DefaultIds.shellBasicId);
+                events.Add(finaleEvent);
+                //t += 1.0f;
+            }
+            t += 8f;
+        }
+
+        // Finale - Part 2: alternating comet neon and peony-to-willow shells.
+
         for (int n = 0; n < 20; n += 2)
         {
             string canisterId = profiles.Canisters.Keys.ElementAt(n % mainCanisters);
@@ -775,6 +820,8 @@ public static class DefaultShow
         }
 
         t += 8.0f;
+
+        // Finale - Part 3: rapid-fire finale salute shells from all canisters.
 
         for (int n = 0; n < 10; n++)
         {

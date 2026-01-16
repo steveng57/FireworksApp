@@ -220,7 +220,8 @@ public sealed record SubShellSpokeWheelPopParams(
     int TrailParticleCount = 6,
     float TrailParticleLifetimeSeconds = 0.4f,
     float TrailSpeed = 3.0f,
-    float TrailSmokeChance = 0.15f)
+    float TrailSmokeChance = 0.15f,
+    SubShellTrailProfile? TrailProfile = null)
 {
     public static SubShellSpokeWheelPopParams Defaults { get; } = new(
         SubShellCount: 12,
@@ -247,7 +248,16 @@ public sealed record SubShellSpokeWheelPopParams(
         TrailParticleCount: 6,
         TrailParticleLifetimeSeconds: 0.4f,
         TrailSpeed: 3.0f,
-        TrailSmokeChance: 0.15f);
+        TrailSmokeChance: 0.15f,
+        TrailProfile: null);
+
+    public SubShellTrailProfile Trail => TrailProfile ?? new SubShellTrailProfile(
+        Id: "subshell_trail_spoke_inline",
+        ParticleCount: TrailParticleCount,
+        ParticleLifetimeSeconds: TrailParticleLifetimeSeconds,
+        Speed: TrailSpeed,
+        SmokeChance: TrailSmokeChance,
+        Color: new Vector4(1.0f, 0.8f, 0.55f, 1.0f));
 }
 
 public sealed record FinaleSaluteParams(
@@ -270,7 +280,8 @@ public sealed record FinaleSaluteParams(
     float TrailParticleLifetime = 0.4f,
     float TrailSpeed = 3.0f,
     float TrailSmokeChance = 0.15f,
-    string? PopFlashColorSchemeId = null)
+    string? PopFlashColorSchemeId = null,
+    SubShellTrailProfile? TrailProfile = null)
 {
     public static FinaleSaluteParams Defaults { get; } = new(
         SubShellCount: 50,
@@ -292,7 +303,16 @@ public sealed record FinaleSaluteParams(
         TrailParticleLifetime: 0.4f,
         TrailSpeed: 3.0f,
         TrailSmokeChance: 0.15f,
-        PopFlashColorSchemeId: null);
+        PopFlashColorSchemeId: null,
+        TrailProfile: null);
+
+    public SubShellTrailProfile Trail => TrailProfile ?? new SubShellTrailProfile(
+        Id: "subshell_trail_finale_inline",
+        ParticleCount: TrailParticleCount,
+        ParticleLifetimeSeconds: TrailParticleLifetime,
+        Speed: TrailSpeed,
+        SmokeChance: TrailSmokeChance,
+        Color: new Vector4(1.0f, 0.75f, 0.4f, 1.0f));
 }
 
 public enum GroundEffectType
@@ -347,11 +367,7 @@ public sealed record class FireworkShellProfile(
         // If TerminalFadeOutSeconds > 0, the shell remains alive for that duration and its trail emission fades to zero.
         bool SuppressBurst = false,
         float TerminalFadeOutSeconds = 0.0f,
-        // Shell trail emission parameters (used during flight/fall, not the burst).
-        int TrailParticleCount = 12,
-        float TrailParticleLifetimeSeconds = 0.6f,
-        float TrailSpeed = 5.0f,
-        float TrailSmokeChance = 0.2f,
+        ShellTrailProfile? TrailProfile = null,
         Vector3? RingAxis = null,
         float RingAxisRandomTiltDegrees = 0.0f,
         BurstEmissionSettings? Emission = null,
@@ -367,6 +383,13 @@ public sealed record class FireworkShellProfile(
         public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
         public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
         public SparklingChrysanthemumParams SparklingChrysanthemumParams => SparklingChrysanthemum ?? Simulation.SparklingChrysanthemumParams.Defaults;
+
+        public ShellTrailProfile Trail => TrailProfile ?? ShellTrailPresets.Default;
+        public int TrailParticleCount => Trail.ParticleCount;
+        public float TrailParticleLifetimeSeconds => Trail.ParticleLifetimeSeconds;
+        public float TrailSpeed => Trail.Speed;
+        public float TrailSmokeChance => Trail.SmokeChance;
+        public Vector4 TrailColor => Trail.Color;
     }
 
 public sealed record BurstEmissionSettings(
@@ -630,25 +653,79 @@ public static class FireworkShellDefaults
 
 public readonly record struct ShellTrailParams(int Count, float LifetimeSeconds, float Speed, float SmokeChance);
 
+public sealed record class SubShellTrailProfile(
+    string Id,
+    int ParticleCount,
+    float ParticleLifetimeSeconds,
+    float Speed,
+    float SmokeChance,
+    Vector4 Color);
+
+public sealed record class ShellTrailProfile(
+    string Id,
+    int ParticleCount,
+    float ParticleLifetimeSeconds,
+    float Speed,
+    float SmokeChance,
+    Vector4 Color);
+
 public static class ShellTrailPresets
 {
-    public static ShellTrailParams Default => new(
-        Count: FireworkShellDefaults.TrailParticleCount,
-        LifetimeSeconds: FireworkShellDefaults.TrailParticleLifetimeSeconds,
+    private static readonly Vector4 DefaultTrailColor = new(1.0f, 0.85f, 0.5f, 1.0f);
+
+    public static ShellTrailProfile Default => new(
+        Id: "trail_default",
+        ParticleCount: FireworkShellDefaults.TrailParticleCount,
+        ParticleLifetimeSeconds: FireworkShellDefaults.TrailParticleLifetimeSeconds,
         Speed: FireworkShellDefaults.TrailSpeed,
-        SmokeChance: FireworkShellDefaults.TrailSmokeChance);
+        SmokeChance: FireworkShellDefaults.TrailSmokeChance,
+        Color: DefaultTrailColor);
 
-    public static ShellTrailParams ShortBright => new(
-        Count: 10,
-        LifetimeSeconds: 0.5f,
+    public static ShellTrailProfile ShortBright => new(
+        Id: "trail_short_bright",
+        ParticleCount: 10,
+        ParticleLifetimeSeconds: 0.5f,
         Speed: 4.0f,
-        SmokeChance: 0.15f);
+        SmokeChance: 0.15f,
+        Color: DefaultTrailColor);
 
-    public static ShellTrailParams WillowLingering => new(
-        Count: 12,
-        LifetimeSeconds: 0.8f,
+    public static ShellTrailProfile WillowLingering => new(
+        Id: "trail_willow_lingering",
+        ParticleCount: 12,
+        ParticleLifetimeSeconds: 0.8f,
         Speed: 5.0f,
-        SmokeChance: 0.2f);
+        SmokeChance: 0.2f,
+        Color: DefaultTrailColor);
+
+    public static ShellTrailProfile CometNeon => new(
+        Id: "trail_comet_neon",
+        ParticleCount: 12,
+        ParticleLifetimeSeconds: 0.5f,
+        Speed: 5.0f,
+        SmokeChance: 0.18f,
+        Color: DefaultTrailColor);
+}
+
+public static class SubShellTrailPresets
+{
+    private static readonly Vector4 FinaleTrailColor = new(1.0f, 0.75f, 0.4f, 1.0f);
+    private static readonly Vector4 SpokeTrailColor = new(1.0f, 0.8f, 0.55f, 1.0f);
+
+    public static SubShellTrailProfile FinaleDefault => new(
+        Id: "subshell_trail_finale",
+        ParticleCount: 6,
+        ParticleLifetimeSeconds: 0.4f,
+        Speed: 3.0f,
+        SmokeChance: 0.15f,
+        Color: FinaleTrailColor);
+
+    public static SubShellTrailProfile SpokeWheel => new(
+        Id: "subshell_trail_spoke_wheel",
+        ParticleCount: 6,
+        ParticleLifetimeSeconds: 0.4f,
+        Speed: 3.0f,
+        SmokeChance: 0.15f,
+        Color: SpokeTrailColor);
 }
 
 public static class ShellPresets
@@ -666,10 +743,7 @@ public static class ShellPresets
         float? burstSparkleIntensity = null,
         bool suppressBurst = false,
         float terminalFadeOutSeconds = 0.0f,
-        int? trailParticleCount = null,
-        float? trailParticleLifetimeSeconds = null,
-        float? trailSpeed = null,
-        float? trailSmokeChance = null,
+        ShellTrailProfile? trailProfile = null,
         Vector3? ringAxis = null,
         float ringAxisRandomTiltDegrees = 0.0f,
         BurstEmissionSettings? emission = null,
@@ -690,10 +764,7 @@ public static class ShellPresets
             BurstSparkleIntensity: burstSparkleIntensity ?? FireworkShellDefaults.BurstSparkleIntensity,
             SuppressBurst: suppressBurst,
             TerminalFadeOutSeconds: terminalFadeOutSeconds,
-            TrailParticleCount: trailParticleCount ?? FireworkShellDefaults.TrailParticleCount,
-            TrailParticleLifetimeSeconds: trailParticleLifetimeSeconds ?? FireworkShellDefaults.TrailParticleLifetimeSeconds,
-            TrailSpeed: trailSpeed ?? FireworkShellDefaults.TrailSpeed,
-            TrailSmokeChance: trailSmokeChance ?? FireworkShellDefaults.TrailSmokeChance,
+            TrailProfile: trailProfile ?? ShellTrailPresets.Default,
             RingAxis: ringAxis,
             RingAxisRandomTiltDegrees: ringAxisRandomTiltDegrees,
             Emission: emission,
@@ -713,15 +784,34 @@ public static class ProfileValidator
         var shells = profileSet.Shells;
         var subshells = profileSet.SubShells;
         var colorSchemes = profileSet.ColorSchemes;
+        var trailProfiles = profileSet.TrailProfiles;
+        var subshellTrailProfiles = profileSet.SubShellTrailProfiles;
 
         foreach (var canister in profileSet.Canisters.Values)
         {
             EnsureExists(shells, canister.DefaultShellProfileId, $"Canister {canister.Id} references missing shell profile");
         }
 
+        if (subshellTrailProfiles.Count > 0)
+        {
+            foreach (var shell in shells.Values)
+            {
+                if (shell.FinaleSalute is { TrailProfile: { } finaleTrail })
+                    EnsureExists(subshellTrailProfiles, finaleTrail.Id, $"Shell {shell.Id} finale trail references missing subshell trail profile {finaleTrail.Id}");
+
+                if (shell.SubShellSpokeWheelPop is { TrailProfile: { } spokeTrail })
+                    EnsureExists(subshellTrailProfiles, spokeTrail.Id, $"Shell {shell.Id} spoke wheel trail references missing subshell trail profile {spokeTrail.Id}");
+            }
+        }
+
         foreach (var shell in shells.Values)
         {
             EnsureExists(colorSchemes, shell.ColorSchemeId, $"Shell {shell.Id} references missing color scheme");
+
+            if (trailProfiles.Count > 0)
+            {
+                EnsureExists(trailProfiles, shell.Trail.Id, $"Shell {shell.Id} references missing trail profile {shell.Trail.Id}");
+            }
 
             if (shell.PeonyToWillow is { } peonyToWillow)
             {
@@ -850,7 +940,7 @@ public static class ProfileValidator
     public static void LogSummary(FireworksProfileSet profileSet)
     {
         ArgumentNullException.ThrowIfNull(profileSet);
-        Debug.WriteLine($"[Profiles] Canisters={profileSet.Canisters.Count}, Shells={profileSet.Shells.Count}, SubShells={profileSet.SubShells.Count}, GroundEffects={profileSet.GroundEffects.Count}, ColorSchemes={profileSet.ColorSchemes.Count}");
+        Debug.WriteLine($"[Profiles] Canisters={profileSet.Canisters.Count}, Shells={profileSet.Shells.Count}, SubShells={profileSet.SubShells.Count}, GroundEffects={profileSet.GroundEffects.Count}, ColorSchemes={profileSet.ColorSchemes.Count}, TrailProfiles={profileSet.TrailProfiles.Count}, SubShellTrailProfiles={profileSet.SubShellTrailProfiles.Count}");
     }
 
     [Conditional("DEBUG")]
@@ -894,7 +984,9 @@ public sealed record class FireworksProfileSet(
     IReadOnlyDictionary<string, FireworkShellProfile> Shells,
     IReadOnlyDictionary<string, GroundEffectProfile> GroundEffects,
     IReadOnlyDictionary<string, ColorScheme> ColorSchemes,
-    IReadOnlyDictionary<string, SubShellProfile> SubShells);
+    IReadOnlyDictionary<string, SubShellProfile> SubShells,
+    IReadOnlyDictionary<string, ShellTrailProfile> TrailProfiles,
+    IReadOnlyDictionary<string, SubShellTrailProfile> SubShellTrailProfiles);
 
 public enum SubShellSpawnMode
 {
