@@ -2251,28 +2251,7 @@ public sealed class FireworkShell
         Vector3 dir = Vector3.Normalize(Velocity);
 
         int particleCount = Math.Clamp(Profile.TrailParticleCount, 1, 64);
-        Span<Vector3> dirs = particleCount <= 64
-            ? stackalloc Vector3[64]
-            : new Vector3[particleCount];
-
-        dirs = dirs.Slice(0, particleCount);
-        for (int i = 0; i < dirs.Length; i++)
-        {
-            Vector3 baseDir = -dir;
-
-            // tiny cone around baseDir
-            float angle = 5f * (MathF.PI / 180f);
-            float yaw = (float)(_rng.NextDouble() * MathF.PI * 2f);
-            float pitch = (float)(_rng.NextDouble() * angle);
-
-            Vector3 axis = Vector3.Normalize(Vector3.Cross(baseDir, Vector3.UnitY));
-            if (axis.LengthSquared() < 1e-6f)
-                axis = Vector3.UnitX;
-
-            var qYaw = Quaternion.CreateFromAxisAngle(baseDir, yaw);
-            var qPitch = Quaternion.CreateFromAxisAngle(axis, pitch);
-            dirs[i] = Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
-        }
+        const float coneAngle = 5f * (MathF.PI / 180f);
 
         var trailColor = Profile.TrailColor;
 
@@ -2284,11 +2263,13 @@ public sealed class FireworkShell
         }
         // trailColor = new Vector4(0.0f, 1.0f, 0.0f, 1.0f); // pure green for debugging
 
-        renderer.SpawnBurstDirected(
-            Position,
-            trailColor,
+        renderer.SpawnBurstCone(
+            position: Position,
+            baseColor: trailColor,
             speed: MathF.Max(0.0f, Profile.TrailSpeed),
-            directions: dirs,
+            baseDirection: -dir,
+            coneAngleRadians: coneAngle,
+            count: particleCount,
             particleLifetimeSeconds: MathF.Max(0.01f, Profile.TrailParticleLifetimeSeconds));
 
         if (_rng.NextDouble() < Math.Clamp(Profile.TrailSmokeChance, 0.0f, 1.0f))

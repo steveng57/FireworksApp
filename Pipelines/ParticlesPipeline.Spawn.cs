@@ -23,6 +23,8 @@ internal sealed partial class ParticlesPipeline
         public Vector3 Origin;
         public float Speed;
 
+        public float ConeAngleRadians;
+
         public float Lifetime;
         public float CrackleProbability;
 
@@ -75,6 +77,7 @@ internal sealed partial class ParticlesPipeline
             Count = (uint)directions.Length,
             Origin = origin,
             Speed = speed,
+            ConeAngleRadians = 0.0f,
             Lifetime = life,
             CrackleProbability = crackle,
             SparkleRateHz = rate,
@@ -112,6 +115,7 @@ internal sealed partial class ParticlesPipeline
             Count = 1,
             Origin = position,
             Speed = 0.0f,
+            ConeAngleRadians = 0.0f,
             Lifetime = System.Math.Max(0.0f, fuseSeconds),
             CrackleProbability = 0.0f,
             SparkleRateHz = 0.0f,
@@ -153,12 +157,70 @@ internal sealed partial class ParticlesPipeline
             Count = (uint)count,
             Origin = origin,
             Speed = 0.0f,
+            ConeAngleRadians = 0.0f,
             Lifetime = lifeMin,
             CrackleProbability = 0.0f,
             SparkleRateHz = lifeMax,
             SparkleIntensity = 0.0f,
             Seed = seed,
             _pad = Vector3.Zero,
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
+    public bool QueueSparkBurstCone(
+        int particleStart,
+        int count,
+        Vector3 baseDirection,
+        float coneAngleRadians,
+        Vector3 origin,
+        Vector4 baseColor,
+        float speed,
+        float lifetimeSeconds,
+        float sparkleRateHz,
+        float sparkleIntensity,
+        float crackleProbability,
+        uint seed)
+    {
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+
+        Vector3 dir = baseDirection;
+        float lenSq = dir.LengthSquared();
+        if (lenSq < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir /= System.MathF.Sqrt(lenSq);
+
+        float angle = System.Math.Max(0.0f, coneAngleRadians);
+        float life = System.Math.Max(0.0f, lifetimeSeconds);
+        float rate = System.Math.Max(0.0f, sparkleRateHz);
+        float inten = System.Math.Max(0.0f, sparkleIntensity);
+        float crackle = System.Math.Clamp(crackleProbability, 0.0f, 1.0f);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 4u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = speed,
+            ConeAngleRadians = angle,
+            Lifetime = life,
+            CrackleProbability = crackle,
+            SparkleRateHz = rate,
+            SparkleIntensity = inten,
+            Seed = seed,
+            _pad = dir,
             BaseColor = baseColor
         };
 

@@ -86,13 +86,15 @@ static const float SparkDragK = 0.015f;
 // GPU spawn requests (read-only SRV during CSSpawn)
 struct SpawnRequest
 {
-    uint RequestKind;     // 1 = Spark/Crackle burst with provided directions, 2 = Smoke, 3 = Shell
+    uint RequestKind;     // 1 = Spark/Crackle with CPU directions, 2 = Smoke, 3 = Shell, 4 = Spark/Crackle cone on GPU
     uint ParticleStart;   // destination start index in particle buffer
     uint DirStart;        // offset into SpawnDirections
     uint Count;           // particle count
 
     float3 Origin;
     float Speed;          // base speed scalar
+
+    float ConeAngleRadians; // optional cone half-angle for GPU-generated directions
 
     float Lifetime;       // base lifetime seconds
     float CrackleProbability;
@@ -176,6 +178,81 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
             uint seed = req.Seed ^ (dst * 747796405u);
 
             float uSpeed = Hash01(seed);
+            float speedMul = 0.65f + (uSpeed * uSpeed) * 0.85f;
+            float3 vel = dir * (req.Speed * speedMul);
+
+            float uCrackle = Hash01(seed ^ 0xBADC0DEu);
+            bool crackle = (uCrackle < req.CrackleProbability);
+
+            float lifetime;
+            if (crackle)
+            {
+                float uLife = Hash01(seed ^ 0xCAFEF00Du);
+                lifetime = 0.03f + uLife * 0.06f;
+            }
+            else
+            {
+                float r = Hash01(seed ^ 0x12345u);
+                float tail = r * r;
+                float lifeMul = 0.55f + 1.60f * tail;
+                lifetime = max(0.05f, req.Lifetime * lifeMul);
+            }
+
+            Particle p;
+            p.Position = req.Origin;
+            p.Velocity = vel;
+            p.Age = 0.0f;
+            p.Lifetime = lifetime;
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = crackle ? 4u : 2u;
+
+            if (crackle)
+            {
+                p._pad.x = seed ^ 0xDEADBEEFu;
+                p._pad.y = seed ^ 0xF00DF00Du;
+                p._pad.z = seed ^ 0x0F0F0F0Fu;
+            }
+            else
+            {
+                p._pad.x = asuint(req.SparkleRateHz);
+                p._pad.y = asuint(req.SparkleIntensity);
+                p._pad.z = seed;
+            }
+
+            Particles[dst] = p;
+        }
+    }
+    else if (req.RequestKind == 4)
+    {
+        // Spark/Crackle burst with GPU-generated cone directions.
+        float3 baseDir = SafeNormalize(req._pad, float3(0.0f, 1.0f, 0.0f));
+        float halfAngle = max(0.0f, req.ConeAngleRadians);
+
+        // Build an orthonormal basis around baseDir.
+        float3 axis1 = cross(baseDir, float3(0.0f, 1.0f, 0.0f));
+        axis1 = SafeNormalize(axis1, float3(1.0f, 0.0f, 0.0f));
+        float3 axis2 = SafeNormalize(cross(baseDir, axis1), float3(0.0f, 0.0f, 1.0f));
+
+        for (uint i = 0; i < req.Count; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            float yawU = Hash01(seed);
+            float pitchU = Hash01(seed ^ 0x2468ACE0u);
+            float yaw = yawU * 6.2831853f;
+            float pitch = pitchU * halfAngle;
+
+            float sYaw, cYaw;
+            float sPitch, cPitch;
+            sincos(yaw, sYaw, cYaw);
+            sincos(pitch, sPitch, cPitch);
+
+            float3 dirOffset = (axis1 * cYaw + axis2 * sYaw) * sPitch;
+            float3 dir = SafeNormalize(baseDir * cPitch + dirOffset, baseDir);
+
+            float uSpeed = Hash01(seed ^ 0xAAAAu);
             float speedMul = 0.65f + (uSpeed * uSpeed) * 0.85f;
             float3 vel = dir * (req.Speed * speedMul);
 
