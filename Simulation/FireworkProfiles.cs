@@ -32,7 +32,7 @@ public sealed record class FireworkShellProfile(
     float BurstSparkleIntensity = 0.0f,
     bool SuppressBurst = false,
     float TerminalFadeOutSeconds = 0.0f,
-    ShellTrailProfile? TrailProfile = null,
+    TrailProfile? TrailProfile = null,
     Vector3? RingAxis = null,
     float RingAxisRandomTiltDegrees = 0.0f,
     BurstEmissionSettings? Emission = null,
@@ -49,7 +49,7 @@ public sealed record class FireworkShellProfile(
     public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
     public SparklingChrysanthemumParams SparklingChrysanthemumParams => SparklingChrysanthemum ?? Simulation.SparklingChrysanthemumParams.Defaults;
 
-    public ShellTrailProfile Trail => TrailProfile ?? ShellTrailPresets.Default;
+    public TrailProfile Trail => TrailProfile ?? ShellTrailPresets.Default;
     public int TrailParticleCount => Trail.ParticleCount;
     public float TrailParticleLifetimeSeconds => Trail.ParticleLifetimeSeconds;
     public float TrailSpeed => Trail.Speed;

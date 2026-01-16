@@ -19,6 +19,41 @@ public enum SubShellKind
 
 public sealed class SubShell
 {
+    public SubShell(SubShellState state, SubShellPayload payload)
+    {
+        State = state;
+        Payload = payload;
+    }
+
+    public SubShellState State;
+    public SubShellPayload Payload { get; }
+
+    public ref Vector3 Position => ref State.Position;
+    public ref Vector3 Velocity => ref State.Velocity;
+    public ref float Age => ref State.Age;
+    public ref float DetonateAt => ref State.DetonateAt;
+    public ref bool Detonated => ref State.Detonated;
+    public ref bool DetonateOnExpire => ref State.DetonateOnExpire;
+    public ref float GravityScale => ref State.GravityScale;
+    public ref float Drag => ref State.Drag;
+
+    public float TrailAccumulator
+    {
+        get => State.TrailAccumulator;
+        set => State.TrailAccumulator = value;
+    }
+
+    public SubShellKind Kind => Payload.Kind;
+    public FinaleSaluteParams? FinalePop => Payload.TryGetFinale(out var data) ? data.Params : null;
+    public SubShellSpokeWheelPopParams? SpokeWheelPop => Payload.TryGetSpokeWheel(out var data) ? data.Params : null;
+    public SparklerLineTrailParams? SparklerTrail => Payload.TryGetSparklerLine(out var data) ? data.Trail : null;
+    public ColorScheme? ColorScheme => Payload.ColorScheme;
+    public Vector4 PopColor => Payload.PopColor;
+    public Vector4 TrailColor => Payload.TrailColor;
+}
+
+public struct SubShellState
+{
     public Vector3 Position;
     public Vector3 Velocity;
     public float Age;
@@ -28,15 +63,114 @@ public sealed class SubShell
 
     public float GravityScale;
     public float Drag;
-
-    public SubShellKind Kind;
-    public FinaleSaluteParams? FinalePop;
-    public SubShellSpokeWheelPopParams? SpokeWheelPop;
-    public SparklerLineTrailParams? SparklerTrail;
-    public ColorScheme? ColorScheme;
-    public Vector4 PopColor;
-    public Vector4 TrailColor;
     public float TrailAccumulator;
+}
+
+public readonly struct SubShellPayload
+{
+    private readonly FinaleSaluteSubShellData _finale;
+    private readonly SpokeWheelSubShellData _spokeWheel;
+    private readonly SparklerLineSubShellData _sparkler;
+
+    private SubShellPayload(SubShellKind kind, FinaleSaluteSubShellData finale, SpokeWheelSubShellData spokeWheel, SparklerLineSubShellData sparkler)
+    {
+        Kind = kind;
+        _finale = finale;
+        _spokeWheel = spokeWheel;
+        _sparkler = sparkler;
+    }
+
+    public SubShellKind Kind { get; }
+
+    public static SubShellPayload Finale(FinaleSaluteSubShellData data) => new(SubShellKind.FinaleSalute, data, default, default);
+    public static SubShellPayload SpokeWheel(SpokeWheelSubShellData data) => new(SubShellKind.SpokeWheelPop, default, data, default);
+    public static SubShellPayload SparklerLine(SparklerLineSubShellData data) => new(SubShellKind.SparklerLine, default, default, data);
+
+    public bool TryGetFinale(out FinaleSaluteSubShellData data)
+    {
+        data = _finale;
+        return Kind == SubShellKind.FinaleSalute;
+    }
+
+    public bool TryGetSpokeWheel(out SpokeWheelSubShellData data)
+    {
+        data = _spokeWheel;
+        return Kind == SubShellKind.SpokeWheelPop;
+    }
+
+    public bool TryGetSparklerLine(out SparklerLineSubShellData data)
+    {
+        data = _sparkler;
+        return Kind == SubShellKind.SparklerLine;
+    }
+
+    public Vector4 PopColor => Kind switch
+    {
+        SubShellKind.FinaleSalute => _finale.PopColor,
+        SubShellKind.SpokeWheelPop => _spokeWheel.PopColor,
+        SubShellKind.SparklerLine => _sparkler.PopColor,
+        _ => default
+    };
+
+    public Vector4 TrailColor => Kind switch
+    {
+        SubShellKind.FinaleSalute => _finale.TrailColor,
+        SubShellKind.SpokeWheelPop => _spokeWheel.TrailColor,
+        SubShellKind.SparklerLine => _sparkler.TrailColor,
+        _ => default
+    };
+
+    public ColorScheme? ColorScheme => Kind switch
+    {
+        SubShellKind.FinaleSalute => _finale.ColorScheme,
+        SubShellKind.SpokeWheelPop => _spokeWheel.ColorScheme,
+        _ => null
+    };
+}
+
+public readonly struct FinaleSaluteSubShellData
+{
+    public FinaleSaluteSubShellData(FinaleSaluteParams parameters, ColorScheme? colorScheme, Vector4 popColor, Vector4 trailColor)
+    {
+        Params = parameters;
+        ColorScheme = colorScheme;
+        PopColor = popColor;
+        TrailColor = trailColor;
+    }
+
+    public FinaleSaluteParams Params { get; }
+    public ColorScheme? ColorScheme { get; }
+    public Vector4 PopColor { get; }
+    public Vector4 TrailColor { get; }
+}
+
+public readonly struct SpokeWheelSubShellData
+{
+    public SpokeWheelSubShellData(SubShellSpokeWheelPopParams parameters, ColorScheme colorScheme, Vector4 popColor)
+    {
+        Params = parameters;
+        ColorScheme = colorScheme;
+        PopColor = popColor;
+    }
+
+    public SubShellSpokeWheelPopParams Params { get; }
+    public ColorScheme ColorScheme { get; }
+    public Vector4 PopColor { get; }
+    public Vector4 TrailColor => PopColor;
+}
+
+public readonly struct SparklerLineSubShellData
+{
+    public SparklerLineSubShellData(SparklerLineTrailParams trail, Vector4 popColor, Vector4 trailColor)
+    {
+        Trail = trail;
+        PopColor = popColor;
+        TrailColor = trailColor;
+    }
+
+    public SparklerLineTrailParams Trail { get; }
+    public Vector4 PopColor { get; }
+    public Vector4 TrailColor { get; }
 }
 
     public readonly struct PendingWillowHandoff
@@ -513,17 +647,18 @@ public sealed class FireworksEngine
             s.Age += dt;
 
             // Emit trail particles for this subshell
-            if (s.Kind == SubShellKind.FinaleSalute && s.FinalePop is { } finalePop && finalePop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
+            float speedSq = s.Velocity.LengthSquared();
+            if (s.Kind == SubShellKind.FinaleSalute && speedSq > 1e-4f && s.Payload.TryGetFinale(out var finale) && finale.Params.EnableSubShellTrails)
             {
-                EmitSubShellTrail(s, finalePop, renderer);
+                EmitSubShellTrail(s, finale.Params, renderer);
             }
-            else if (s.Kind == SubShellKind.SpokeWheelPop && s.SpokeWheelPop is { } wheelPop && wheelPop.EnableSubShellTrails && s.Velocity.LengthSquared() > 1e-4f)
+            else if (s.Kind == SubShellKind.SpokeWheelPop && speedSq > 1e-4f && s.Payload.TryGetSpokeWheel(out var wheel) && wheel.Params.EnableSubShellTrails)
             {
-                EmitSpokeWheelSubShellTrail(s, wheelPop, renderer);
+                EmitSpokeWheelSubShellTrail(s, wheel.Params, renderer);
             }
-            else if (s.Kind == SubShellKind.SparklerLine && s.SparklerTrail is { } sparkTrail && s.Velocity.LengthSquared() > 1e-6f)
+            else if (s.Kind == SubShellKind.SparklerLine && speedSq > 1e-6f && s.Payload.TryGetSparklerLine(out var sparkler))
             {
-                EmitSparklerLineTrail(ref s, sparkTrail, renderer, dt);
+                EmitSparklerLineTrail(ref s, sparkler.Trail, renderer, dt);
             }
 
             // Integrate (semi-implicit Euler)
@@ -560,12 +695,12 @@ public sealed class FireworksEngine
     {
         switch (s.Kind)
         {
-            case SubShellKind.FinaleSalute when s.FinalePop is { } finale:
-                SpawnPopFlash(s.Position, finale, s.PopColor, renderer);
+            case SubShellKind.FinaleSalute when s.Payload.TryGetFinale(out var finale):
+                SpawnPopFlash(s.Position, finale.Params, s.PopColor, renderer);
                 break;
 
-            case SubShellKind.SpokeWheelPop when s.SpokeWheelPop is { } wheel:
-                SpawnSpokeWheelPopFlash(s, wheel, renderer);
+            case SubShellKind.SpokeWheelPop when s.Payload.TryGetSpokeWheel(out var wheel):
+                SpawnSpokeWheelPopFlash(s, wheel.Params, renderer);
                 break;
         }
     }
@@ -862,7 +997,7 @@ public sealed class FireworksEngine
             float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.DetonateJitterMax;
             float detonateAt = System.Math.Clamp(baseDelay + jitter, p.DetonateDelayMin, p.DetonateDelayMax);
 
-            _subShells.Add(new SubShell
+            var state = new SubShellState
             {
                 Position = origin,
                 Velocity = vel,
@@ -872,14 +1007,16 @@ public sealed class FireworksEngine
                 DetonateOnExpire = true,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
-                Kind = SubShellKind.FinaleSalute,
-                FinalePop = p,
-                SpokeWheelPop = null,
-                ColorScheme = popScheme,
-                PopColor = popColor,
-                TrailColor = popColor,
                 TrailAccumulator = 0.0f
-            });
+            };
+
+            var payload = SubShellPayload.Finale(new FinaleSaluteSubShellData(
+                parameters: p,
+                colorScheme: popScheme,
+                popColor: popColor,
+                trailColor: popColor));
+
+            _subShells.Add(new SubShell(state, payload));
         }
     }
 
@@ -909,7 +1046,7 @@ public sealed class FireworksEngine
             float lifeU = (float)_rng.NextDouble();
             float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
 
-            _subShells.Add(new SubShell
+            var state = new SubShellState
             {
                 Position = origin,
                 Velocity = dirs[i] * speed,
@@ -919,15 +1056,15 @@ public sealed class FireworksEngine
                 DetonateOnExpire = false,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
-                Kind = SubShellKind.SparklerLine,
-                FinalePop = null,
-                SpokeWheelPop = null,
-                SparklerTrail = trail,
-                ColorScheme = null,
-                PopColor = baseColor,
-                TrailColor = baseColor * trail.BrightnessScalar,
                 TrailAccumulator = 0.0f
-            });
+            };
+
+            var payload = SubShellPayload.SparklerLine(new SparklerLineSubShellData(
+                trail,
+                popColor: baseColor,
+                trailColor: baseColor * trail.BrightnessScalar));
+
+            _subShells.Add(new SubShell(state, payload));
         }
     }
 
@@ -1020,7 +1157,7 @@ public sealed class FireworksEngine
             Vector3 spawnPos = origin;
             Vector4 popColor = PickWheelPopColor(p, flashScheme, parentBaseColor);
 
-            _subShells.Add(new SubShell
+            var state = new SubShellState
             {
                 Position = spawnPos,
                 Velocity = vel,
@@ -1030,14 +1167,12 @@ public sealed class FireworksEngine
                 DetonateOnExpire = true,
                 GravityScale = p.SubShellGravityScale,
                 Drag = p.SubShellDrag,
-                Kind = SubShellKind.SpokeWheelPop,
-                FinalePop = null,
-                SpokeWheelPop = p,
-                ColorScheme = flashScheme,
-                PopColor = popColor,
-                TrailColor = popColor,
                 TrailAccumulator = 0.0f
-            });
+            };
+
+            var payload = SubShellPayload.SpokeWheel(new SpokeWheelSubShellData(p, flashScheme, popColor));
+
+            _subShells.Add(new SubShell(state, payload));
         }
     }
 
@@ -2168,6 +2303,7 @@ public sealed class FireworkShell
 
     public FireworkShellProfile Profile { get; }
     public ColorScheme ColorScheme { get; }
+    public TrailProfile Trail { get; }
 
     public uint ShellId { get; init; }
 
@@ -2206,6 +2342,7 @@ public sealed class FireworkShell
     {
         Profile = profile;
         ColorScheme = colorScheme;
+        Trail = profile.Trail;
         Position = position;
         Velocity = velocity;
         DragK = dragK;
@@ -2250,10 +2387,10 @@ public sealed class FireworkShell
 
         Vector3 dir = Vector3.Normalize(Velocity);
 
-        int particleCount = Math.Clamp(Profile.TrailParticleCount, 1, 64);
+        int particleCount = Math.Clamp(Trail.ParticleCount, 1, 64);
         const float coneAngle = 5f * (MathF.PI / 180f);
 
-        var trailColor = Profile.TrailColor;
+        var trailColor = Trail.Color;
 
         if (_terminalState == ShellTerminalState.Fading)
         {
@@ -2266,13 +2403,13 @@ public sealed class FireworkShell
         renderer.SpawnBurstCone(
             position: Position,
             baseColor: trailColor,
-            speed: MathF.Max(0.0f, Profile.TrailSpeed),
+            speed: MathF.Max(0.0f, Trail.Speed),
             baseDirection: -dir,
             coneAngleRadians: coneAngle,
             count: particleCount,
-            particleLifetimeSeconds: MathF.Max(0.01f, Profile.TrailParticleLifetimeSeconds));
+            particleLifetimeSeconds: MathF.Max(0.01f, Trail.ParticleLifetimeSeconds));
 
-        if (_rng.NextDouble() < Math.Clamp(Profile.TrailSmokeChance, 0.0f, 1.0f))
+        if (_rng.NextDouble() < Math.Clamp(Trail.SmokeChance, 0.0f, 1.0f))
         {
             renderer.SpawnSmoke(Position);
         }

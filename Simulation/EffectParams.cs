@@ -101,7 +101,7 @@ public sealed record SubShellSpokeWheelPopParams(
     float TrailParticleLifetimeSeconds = 0.4f,
     float TrailSpeed = 3.0f,
     float TrailSmokeChance = 0.15f,
-    SubShellTrailProfile? TrailProfile = null)
+    TrailProfile? TrailProfile = null)
 {
     public static SubShellSpokeWheelPopParams Defaults { get; } = new(
         SubShellCount: 12,
@@ -131,7 +131,7 @@ public sealed record SubShellSpokeWheelPopParams(
         TrailSmokeChance: 0.15f,
         TrailProfile: null);
 
-    public SubShellTrailProfile Trail => TrailProfile ?? new SubShellTrailProfile(
+    public TrailProfile Trail => TrailProfile ?? new TrailProfile(
         Id: "subshell_trail_spoke_inline",
         ParticleCount: TrailParticleCount,
         ParticleLifetimeSeconds: TrailParticleLifetimeSeconds,
@@ -161,7 +161,7 @@ public sealed record FinaleSaluteParams(
     float TrailSpeed = 3.0f,
     float TrailSmokeChance = 0.15f,
     string? PopFlashColorSchemeId = null,
-    SubShellTrailProfile? TrailProfile = null)
+    TrailProfile? TrailProfile = null)
 {
     public static FinaleSaluteParams Defaults { get; } = new(
         SubShellCount: 50,
@@ -186,7 +186,7 @@ public sealed record FinaleSaluteParams(
         PopFlashColorSchemeId: null,
         TrailProfile: null);
 
-    public SubShellTrailProfile Trail => TrailProfile ?? new SubShellTrailProfile(
+    public TrailProfile Trail => TrailProfile ?? new TrailProfile(
         Id: "subshell_trail_finale_inline",
         ParticleCount: TrailParticleCount,
         ParticleLifetimeSeconds: TrailParticleLifetime,
