@@ -233,8 +233,8 @@ public static class DefaultProfiles
                 },
                 sparklingChrysanthemum: new SparklingChrysanthemumParams(
                     SubShellCount: 110,
-                    SubShellSpeedMin: 18.0f,
-                    SubShellSpeedMax: 26.0f,
+                    SubShellSpeedMin: 25.0f,
+                    SubShellSpeedMax: 35.0f,
                     SubShellLifetimeMinSeconds: 1.2f,
                     SubShellLifetimeMaxSeconds: 2.5f,
                     SubShellGravityScale: 0.42f,
