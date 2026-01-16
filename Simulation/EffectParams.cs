@@ -42,14 +42,16 @@ public sealed record SparklerLineTrailParams(
     float SparkLifetimeSeconds,
     float SparkSpeed,
     float SparkDirectionJitter,
-    float BrightnessScalar)
+    float BrightnessScalar,
+    int MinSpawnPerTick = 0)
 {
     public static SparklerLineTrailParams Defaults { get; } = new(
         SparkRate: 180.0f,
         SparkLifetimeSeconds: 0.35f,
         SparkSpeed: 5.5f,
         SparkDirectionJitter: 0.30f,
-        BrightnessScalar: 1.05f);
+        BrightnessScalar: 1.05f,
+        MinSpawnPerTick: 0);
 }
 
 public sealed record SparklingChrysanthemumParams(

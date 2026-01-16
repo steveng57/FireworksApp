@@ -1191,9 +1191,17 @@ public sealed class FireworksEngine
         if (spawnCount <= 0)
             return;
 
+        int minBatch = p.MinSpawnPerTick;
+        if (minBatch > 0 && spawnCount < minBatch)
+        {
+            // Borrow against future accumulator to avoid negative remainder after subtracting spawnCount.
+            s.TrailAccumulator += (minBatch - spawnCount);
+            spawnCount = minBatch;
+        }
+
         s.TrailAccumulator -= spawnCount;
 
-        Span<Vector3> dirs = spawnCount <= 64 ? stackalloc Vector3[64] : new Vector3[spawnCount];
+        Span<Vector3> dirs = spawnCount <= 64 ? stackalloc Vector3[spawnCount] : new Vector3[spawnCount];
         Vector3 basis1 = Vector3.Cross(dir, Vector3.UnitY);
         if (basis1.LengthSquared() < 1e-6f)
             basis1 = Vector3.Cross(dir, Vector3.UnitX);
