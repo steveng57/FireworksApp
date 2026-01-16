@@ -15,6 +15,8 @@ internal sealed class ShellPipeline : IDisposable
     private ID3D11PixelShader? _ps;
     private ID3D11InputLayout? _inputLayout;
     private ID3D11Buffer? _vb;
+    private ID3D11Buffer? _instanceBuffer;
+    private int _instanceCapacity;
     private int _vertexCount;
 
     public void Initialize(ID3D11Device device)
@@ -39,7 +41,8 @@ internal sealed class ShellPipeline : IDisposable
         var elements = new[]
         {
             new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
-            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0)
+            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0),
+            new InputElementDescription("INSTANCEPOS", 0, Format.R32G32B32_Float, 0, 1, InputClassification.PerInstanceData, 1)
         };
         _inputLayout = device.CreateInputLayout(elements, vsBytes);
     }
@@ -123,45 +126,57 @@ internal sealed class ShellPipeline : IDisposable
         if (_vb is null || _vs is null || _ps is null || _inputLayout is null)
             return;
 
-        int stride = Marshal.SizeOf<GroundVertex>();
-        uint[] strides = new[] { (uint)stride };
-        uint[] offsets = new[] { 0u };
+        int instanceCount = shells.Count;
+        if (instanceCount == 0)
+            return;
+
+        int vertexStride = Marshal.SizeOf<GroundVertex>();
+        uint[] strides = new[] { (uint)vertexStride, (uint)Marshal.SizeOf<Vector3>() };
+        uint[] offsets = new[] { 0u, 0u };
 
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         context.IASetInputLayout(_inputLayout);
-        context.IASetVertexBuffers(0, 1, new[] { _vb }, strides, offsets);
+        EnsureInstanceBuffer(context.Device, instanceCount);
+        if (_instanceBuffer is null)
+            return;
+
+        var mappedInstances = context.Map(_instanceBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            unsafe
+            {
+                var dst = (Vector3*)mappedInstances.DataPointer;
+                for (int i = 0; i < instanceCount; i++)
+                {
+                    dst[i] = shells[i].Position;
+                }
+            }
+        }
+        finally
+        {
+            context.Unmap(_instanceBuffer, 0);
+        }
+
+        context.IASetVertexBuffers(0, 2, new[] { _vb, _instanceBuffer }, strides, offsets);
 
         context.VSSetShader(_vs);
         context.PSSetShader(_ps);
-
-        for (int i = 0; i < shells.Count; i++)
-        {
-            var s = shells[i];
-            var world = Matrix4x4.CreateTranslation(s.Position);
-            var wvp = Matrix4x4.Transpose(world * view * proj);
-
-            if (objectCB != null)
-            {
-                var obj = new SceneCBData { WorldViewProjection = wvp, World = Matrix4x4.Transpose(world) };
-                var mapped = context.Map(objectCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
-                Marshal.StructureToPtr(obj, mapped.DataPointer, false);
-                context.Unmap(objectCB, 0);
-                context.VSSetConstantBuffer(0, objectCB);
-            }
-
-            context.Draw((uint)_vertexCount, 0);
-        }
 
         if (sceneCB != null)
         {
             context.VSSetConstantBuffer(0, sceneCB);
         }
+
+        context.DrawInstanced((uint)_vertexCount, (uint)instanceCount, 0, 0);
     }
 
     public void Dispose()
     {
         _vb?.Dispose();
         _vb = null;
+
+        _instanceBuffer?.Dispose();
+        _instanceBuffer = null;
 
         _inputLayout?.Dispose();
         _inputLayout = null;
@@ -171,5 +186,28 @@ internal sealed class ShellPipeline : IDisposable
 
         _ps?.Dispose();
         _ps = null;
+    }
+
+    private void EnsureInstanceBuffer(ID3D11Device? device, int requiredInstances)
+    {
+        if (device is null || requiredInstances <= 0)
+            return;
+
+        if (_instanceBuffer is not null && requiredInstances <= _instanceCapacity)
+            return;
+
+        _instanceBuffer?.Dispose();
+
+        _instanceCapacity = _instanceCapacity > 0 ? Math.Max(requiredInstances, _instanceCapacity * 2) : Math.Max(requiredInstances, 64);
+
+        _instanceBuffer = device.CreateBuffer(new BufferDescription
+        {
+            BindFlags = BindFlags.VertexBuffer,
+            Usage = ResourceUsage.Dynamic,
+            CPUAccessFlags = CpuAccessFlags.Write,
+            MiscFlags = ResourceOptionFlags.None,
+            ByteWidth = (uint)(_instanceCapacity * Marshal.SizeOf<Vector3>()),
+            StructureByteStride = (uint)Marshal.SizeOf<Vector3>()
+        });
     }
 }

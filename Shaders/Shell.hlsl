@@ -3,6 +3,7 @@
 
 cbuffer SceneCB : register(b0)
 {
+    // View-projection matrix (world assumed identity; instance data provides translation).
     float4x4 WorldViewProjection;
 };
 
@@ -10,6 +11,7 @@ struct VSIn
 {
     float3 Position : POSITION;
     float3 Normal   : NORMAL;
+    float3 InstancePos : INSTANCEPOS;
 };
 
 struct VSOut
@@ -20,7 +22,8 @@ struct VSOut
 VSOut VSMain(VSIn input)
 {
     VSOut o;
-    o.Position = mul(float4(input.Position, 1.0f), WorldViewProjection);
+    float3 worldPos = input.Position + input.InstancePos;
+    o.Position = mul(float4(worldPos, 1.0f), WorldViewProjection);
     return o;
 }
 
