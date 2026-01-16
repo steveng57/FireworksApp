@@ -1,0 +1,131 @@
+using System.Numerics;
+using System.Windows.Media;
+
+namespace FireworksApp.Simulation;
+
+public enum GroundEffectType
+{
+    Fountain,
+    Spinner,
+    Strobe,
+    Mine,
+    BengalFlare,
+    LanceworkPanel,
+    WaterfallCurtain,
+    ChaserLine,
+    GroundBloom,
+    PulsingGlitterFountain
+}
+
+public sealed record class GroundEffectProfile(
+    string Id,
+    GroundEffectType Type,
+    ColorSchemeId ColorSchemeId,
+    float DurationSeconds,
+    float EmissionRate,
+    Vector2 ParticleVelocityRange,
+    float ParticleLifetimeSeconds,
+    float GravityFactor,
+    float BrightnessScalar,
+    float HeightOffsetMeters = 0.0f,
+    float ConeAngleDegrees = 35.0f,
+    float FlickerIntensity = 0.08f,
+    float AngularVelocityRadiansPerSec = 6.0f,
+    float EmissionRadius = 0.15f,
+    Vector3? SpinnerAxis = null,
+    float FlashIntervalSeconds = 0.22f,
+    float FlashDutyCycle = 0.35f,
+    float FlashBrightness = 1.8f,
+    float ResidualSparkDensity = 0.18f,
+    float BurstRate = 2.0f,
+    int ParticlesPerBurst = 1200,
+    float SmokeAmount = 0.0f,
+    float FlameHeightMeters = 1.2f,
+    float FlameNoiseAmplitude = 0.15f,
+    float LocalLightRadiusMeters = 5.0f,
+    float LocalLightIntensity = 1.0f,
+    float OccasionalSparkRate = 0.0f,
+    int GridWidth = 0,
+    int GridHeight = 0,
+    ulong[]? PatternFrames = null,
+    float PatternFrameDurationSeconds = 0.25f,
+    float CellFlameHeightMeters = 0.35f,
+    float CellFlickerAmount = 0.10f,
+    int EmitterCount = 0,
+    float CurtainWidthMeters = 8.0f,
+    float EmitterHeightMeters = 4.0f,
+    float SparkFallSpeed = 4.0f,
+    float DensityOverTime = 1.0f,
+    int PointCount = 0,
+    float PointSpacingMeters = 0.5f,
+    float ChaseSpeed = 4.0f,
+    GroundEffectType? EffectPerPoint = null,
+    int BurstParticlesPerPoint = 900,
+    float BurstVelocity = 8.0f,
+    bool ReverseOrBounce = false,
+    float SpinRateOverTime = 0.0f,
+    Vector3 GroundDriftVelocity = default,
+    Vector4[]? ColorPhases = null,
+    float PulseFrequencyHz = 6.0f,
+    float PulseDepth = 0.7f,
+    float GlitterParticleRatio = 0.35f,
+    float GlowDecayTimeSeconds = 0.12f);
+
+public sealed class GroundEffectInstance
+{
+    public GroundEffectProfile Profile { get; }
+    public Canister Canister { get; }
+    public ColorScheme ColorScheme { get; }
+
+    public float StartTimeSeconds { get; }
+    public float DurationSeconds { get; }
+
+    public float ElapsedSeconds { get; private set; }
+    public float EmissionAccumulator { get; private set; }
+    public int BurstCounter { get; private set; }
+
+    public bool Alive => ElapsedSeconds < DurationSeconds;
+
+    public GroundEffectInstance(GroundEffectProfile profile, Canister canister, ColorScheme colorScheme, float startTimeSeconds)
+    {
+        Profile = profile;
+        Canister = canister;
+        ColorScheme = colorScheme;
+        StartTimeSeconds = startTimeSeconds;
+        DurationSeconds = Math.Max(0.0f, profile.DurationSeconds);
+    }
+
+    public void Update(float dt)
+    {
+        if (dt <= 0.0f)
+            return;
+
+        ElapsedSeconds += dt;
+    }
+
+    public void AddEmission(float particlesToSpawn)
+    {
+        EmissionAccumulator += particlesToSpawn;
+    }
+
+    public int ConsumeWholeParticles()
+    {
+        int n = (int)EmissionAccumulator;
+        EmissionAccumulator -= n;
+        return n;
+    }
+
+    public int NextBurstIndex() => BurstCounter++;
+}
+
+public sealed record class ColorScheme(
+    string Id,
+    Color[] BaseColors,
+    float ColorVariation,
+    float FadeOutSeconds)
+{
+    public ColorScheme(string id, IReadOnlyList<Color> baseColors, float colorVariation, float fadeOutSeconds)
+        : this(id, baseColors is Color[] arr ? arr : new List<Color>(baseColors).ToArray(), colorVariation, fadeOutSeconds)
+    {
+    }
+}

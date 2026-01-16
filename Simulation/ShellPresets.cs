@@ -1,0 +1,50 @@
+using System.Numerics;
+
+namespace FireworksApp.Simulation;
+
+public static class ShellPresets
+{
+    public static FireworkShellProfile Create(
+        string id,
+        FireworkBurstShape burstShape,
+        ColorSchemeId colorSchemeId,
+        float fuseTimeSeconds,
+        float explosionRadius,
+        int particleCount,
+        float particleLifetimeSeconds,
+        float? burstSpeed = null,
+        float? burstSparkleRateHz = null,
+        float? burstSparkleIntensity = null,
+        bool suppressBurst = false,
+        float terminalFadeOutSeconds = 0.0f,
+        ShellTrailProfile? trailProfile = null,
+        Vector3? ringAxis = null,
+        float ringAxisRandomTiltDegrees = 0.0f,
+        BurstEmissionSettings? emission = null,
+        FinaleSaluteParams? finaleSalute = null,
+        CometParams? comet = null,
+        PeonyToWillowParams? peonyToWillow = null,
+        SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null,
+        SparklingChrysanthemumParams? sparklingChrysanthemum = null) => new(
+            Id: id,
+            BurstShape: burstShape,
+            ColorSchemeId: colorSchemeId,
+            FuseTimeSeconds: fuseTimeSeconds,
+            ExplosionRadius: explosionRadius,
+            ParticleCount: particleCount,
+            ParticleLifetimeSeconds: particleLifetimeSeconds,
+            BurstSpeed: burstSpeed,
+            BurstSparkleRateHz: burstSparkleRateHz ?? FireworkShellDefaults.BurstSparkleRateHz,
+            BurstSparkleIntensity: burstSparkleIntensity ?? FireworkShellDefaults.BurstSparkleIntensity,
+            SuppressBurst: suppressBurst,
+            TerminalFadeOutSeconds: terminalFadeOutSeconds,
+            TrailProfile: trailProfile ?? ShellTrailPresets.Default,
+            RingAxis: ringAxis,
+            RingAxisRandomTiltDegrees: ringAxisRandomTiltDegrees,
+            Emission: emission,
+            FinaleSalute: finaleSalute,
+            Comet: comet,
+            PeonyToWillow: peonyToWillow,
+            SubShellSpokeWheelPop: subShellSpokeWheelPop,
+            SparklingChrysanthemum: sparklingChrysanthemum);
+}
