@@ -8,6 +8,7 @@ public enum SoundEventType
     ShellLaunch,
     ShellBurst,
     Crackle,
+    FastCrackle,
     FinaleCluster,
     SpokeWheelPop
 }
