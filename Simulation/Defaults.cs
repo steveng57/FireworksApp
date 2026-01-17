@@ -248,46 +248,6 @@ public static class DefaultProfiles
                         BrightnessScalar: 1.05f,
                         MinSpawnPerTick: 32))),
 
-            [shellFishId] = ShellPresets.Create(
-                id: shellFishId,
-                burstShape: FireworkBurstShape.Fish,
-                colorSchemeId: schemeNeon,
-                fuseTimeSeconds: 3.9f,
-                explosionRadius: 13.0f,
-                particleCount: 0,
-                particleLifetimeSeconds: 0.0f,
-                burstSparkleRateHz: 0.0f,
-                burstSparkleIntensity: 0.0f,
-                emission: BurstEmissionSettings.Defaults with
-                {
-                    ChrysanthemumSpokeCount = 32,
-                    ChrysanthemumSpokeJitter = 0.12f,
-                },
-                fish: new FishParams(
-                    SubShellCount: 95,
-                    SubShellSpeedMin: 18.0f,
-                    SubShellSpeedMax: 30.0f,
-                    SubShellLifetimeMinSeconds: 1.6f,
-                    SubShellLifetimeMaxSeconds: 2.5f,
-                    SubShellGravityScale: 0.58f,
-                    SubShellDrag: 0.06f,
-
-                    JerkCountMin: 4,
-                    JerkCountMax: 9,
-                    JerkIntervalMinSeconds: 0.10f,
-                    JerkIntervalMaxSeconds: 0.32f,
-                    JerkMaxAngleDegrees: 75.0f,
-                    SpeedJitter: 0.12f,
-                    UpBiasPerJerk: 0.08f,
-
-                    Trail: new SparklerLineTrailParams(
-                        SparkRate: 150.0f,
-                        SparkLifetimeSeconds: 0.60f,
-                        SparkSpeed: 2.4f,
-                        SparkDirectionJitter: 0.38f,
-                        BrightnessScalar: 1.05f,
-                        MinSpawnPerTick: 30))),
-
             [shellWillowId] = ShellPresets.Create(
                 id: shellWillowId,
                 burstShape: FireworkBurstShape.Willow,
@@ -332,6 +292,46 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.65f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 90.0f),
+
+            [shellFishId] = ShellPresets.Create(
+                id: shellFishId,
+                burstShape: FireworkBurstShape.Fish,
+                colorSchemeId: schemeNeon,
+                fuseTimeSeconds: 3.9f,
+                explosionRadius: 13.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                emission: BurstEmissionSettings.Defaults with
+                {
+                    ChrysanthemumSpokeCount = 36,
+                    ChrysanthemumSpokeJitter = 0.12f,
+                },
+                fish: new FishParams(
+                    SubShellCount: 72,
+                    SubShellSpeedMin: 18.0f,
+                    SubShellSpeedMax: 30.0f,
+                    SubShellLifetimeMinSeconds: 1.6f,
+                    SubShellLifetimeMaxSeconds: 3.0f,
+                    SubShellGravityScale: 0.58f,
+                    SubShellDrag: 0.06f,
+
+                    JerkCountMin: 4,
+                    JerkCountMax: 9,
+                    JerkIntervalMinSeconds: 0.10f,
+                    JerkIntervalMaxSeconds: 0.32f,
+                    JerkMaxAngleDegrees: 75.0f,
+                    SpeedJitter: 0.12f,
+                    UpBiasPerJerk: 0.08f,
+
+                    Trail: new SparklerLineTrailParams(
+                        SparkRate: 150.0f,
+                        SparkLifetimeSeconds: 0.60f,
+                        SparkSpeed: 2.4f,
+                        SparkDirectionJitter: 0.38f,
+                        BrightnessScalar: 1.05f,
+                        MinSpawnPerTick: 30))),
 
             [shellHorsetailGoldId] = ShellPresets.Create(
                 id: shellHorsetailGoldId,
@@ -803,7 +803,7 @@ public static class DefaultShow
                 // debug variations
                 //shellId = "spoke_wheel_pop";
                 // shellId = "peony_to_willow";
-                shellId = shellFishId;
+                //shellId = shellFishId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
