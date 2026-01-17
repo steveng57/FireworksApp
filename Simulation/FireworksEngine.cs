@@ -14,7 +14,8 @@ public enum SubShellKind
 {
     FinaleSalute,
     SpokeWheelPop,
-    SparklerLine
+    SparklerLine,
+    Fish
 }
 
 public sealed class SubShell
@@ -43,6 +44,9 @@ public sealed class SubShell
         set => State.TrailAccumulator = value;
     }
 
+    public ref float NextJerkAt => ref State.NextJerkAt;
+    public ref int JerksRemaining => ref State.JerksRemaining;
+
     public SubShellKind Kind => Payload.Kind;
     public FinaleSaluteParams? FinalePop => Payload.TryGetFinale(out var data) ? data.Params : null;
     public SubShellSpokeWheelPopParams? SpokeWheelPop => Payload.TryGetSpokeWheel(out var data) ? data.Params : null;
@@ -64,6 +68,9 @@ public struct SubShellState
     public float GravityScale;
     public float Drag;
     public float TrailAccumulator;
+
+    public float NextJerkAt;
+    public int JerksRemaining;
 }
 
 public readonly struct SubShellPayload
@@ -71,20 +78,23 @@ public readonly struct SubShellPayload
     private readonly FinaleSaluteSubShellData _finale;
     private readonly SpokeWheelSubShellData _spokeWheel;
     private readonly SparklerLineSubShellData _sparkler;
+    private readonly FishSubShellData _fish;
 
-    private SubShellPayload(SubShellKind kind, FinaleSaluteSubShellData finale, SpokeWheelSubShellData spokeWheel, SparklerLineSubShellData sparkler)
+    private SubShellPayload(SubShellKind kind, FinaleSaluteSubShellData finale, SpokeWheelSubShellData spokeWheel, SparklerLineSubShellData sparkler, FishSubShellData fish)
     {
         Kind = kind;
         _finale = finale;
         _spokeWheel = spokeWheel;
         _sparkler = sparkler;
+        _fish = fish;
     }
 
     public SubShellKind Kind { get; }
 
-    public static SubShellPayload Finale(FinaleSaluteSubShellData data) => new(SubShellKind.FinaleSalute, data, default, default);
-    public static SubShellPayload SpokeWheel(SpokeWheelSubShellData data) => new(SubShellKind.SpokeWheelPop, default, data, default);
-    public static SubShellPayload SparklerLine(SparklerLineSubShellData data) => new(SubShellKind.SparklerLine, default, default, data);
+    public static SubShellPayload Finale(FinaleSaluteSubShellData data) => new(SubShellKind.FinaleSalute, data, default, default, default);
+    public static SubShellPayload SpokeWheel(SpokeWheelSubShellData data) => new(SubShellKind.SpokeWheelPop, default, data, default, default);
+    public static SubShellPayload SparklerLine(SparklerLineSubShellData data) => new(SubShellKind.SparklerLine, default, default, data, default);
+    public static SubShellPayload Fish(FishSubShellData data) => new(SubShellKind.Fish, default, default, default, data);
 
     public bool TryGetFinale(out FinaleSaluteSubShellData data)
     {
@@ -104,11 +114,18 @@ public readonly struct SubShellPayload
         return Kind == SubShellKind.SparklerLine;
     }
 
+    public bool TryGetFish(out FishSubShellData data)
+    {
+        data = _fish;
+        return Kind == SubShellKind.Fish;
+    }
+
     public Vector4 PopColor => Kind switch
     {
         SubShellKind.FinaleSalute => _finale.PopColor,
         SubShellKind.SpokeWheelPop => _spokeWheel.PopColor,
         SubShellKind.SparklerLine => _sparkler.PopColor,
+        SubShellKind.Fish => _fish.PopColor,
         _ => default
     };
 
@@ -117,6 +134,7 @@ public readonly struct SubShellPayload
         SubShellKind.FinaleSalute => _finale.TrailColor,
         SubShellKind.SpokeWheelPop => _spokeWheel.TrailColor,
         SubShellKind.SparklerLine => _sparkler.TrailColor,
+        SubShellKind.Fish => _fish.TrailColor,
         _ => default
     };
 
@@ -168,6 +186,22 @@ public readonly struct SparklerLineSubShellData
         TrailColor = trailColor;
     }
 
+    public SparklerLineTrailParams Trail { get; }
+    public Vector4 PopColor { get; }
+    public Vector4 TrailColor { get; }
+}
+
+public readonly struct FishSubShellData
+{
+    public FishSubShellData(FishParams parameters, SparklerLineTrailParams trail, Vector4 popColor, Vector4 trailColor)
+    {
+        Params = parameters;
+        Trail = trail;
+        PopColor = popColor;
+        TrailColor = trailColor;
+    }
+
+    public FishParams Params { get; }
     public SparklerLineTrailParams Trail { get; }
     public Vector4 PopColor { get; }
     public Vector4 TrailColor { get; }
@@ -492,6 +526,7 @@ public sealed class FireworksEngine
                     FinaleSalute: shell.Profile.FinaleSaluteParams,
                     Comet: shell.Profile.CometParams,
                     SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
+                    Fish: shell.Profile.FishParams,
                     BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
                     PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -660,6 +695,11 @@ public sealed class FireworksEngine
             {
                 EmitSparklerLineTrail(ref s, sparkler.Trail, renderer, dt);
             }
+            else if (s.Kind == SubShellKind.Fish && speedSq > 1e-6f && s.Payload.TryGetFish(out var fish))
+            {
+                ApplyFishJerk(ref s, fish.Params);
+                EmitSparklerLineTrail(ref s, fish.Trail, renderer, dt);
+            }
 
             // Integrate (semi-implicit Euler)
             s.Velocity += gravity * s.GravityScale * dt;
@@ -689,6 +729,49 @@ public sealed class FireworksEngine
             // write back struct/class state
             _subShells[i] = s;
         }
+    }
+
+    private void ApplyFishJerk(ref SubShell s, FishParams p)
+    {
+        if (s.JerksRemaining <= 0)
+            return;
+
+        if (s.Age < s.State.NextJerkAt)
+            return;
+
+        s.State.JerksRemaining--;
+
+        float intervalMin = MathF.Max(0.01f, p.JerkIntervalMinSeconds);
+        float intervalMax = MathF.Max(intervalMin, p.JerkIntervalMaxSeconds);
+        float next = intervalMin + (float)_rng.NextDouble() * (intervalMax - intervalMin);
+        s.State.NextJerkAt = s.Age + next;
+
+        float speed = s.Velocity.Length();
+        if (speed < 1e-4f)
+            return;
+
+        Vector3 dir = s.Velocity / speed;
+
+        Vector3 axis = Vector3.Cross(dir, EmissionStyles.RandomUnitVector());
+        if (axis.LengthSquared() < 1e-6f)
+            axis = Vector3.Cross(dir, Vector3.UnitY);
+        if (axis.LengthSquared() < 1e-6f)
+            axis = Vector3.UnitX;
+        axis = Vector3.Normalize(axis);
+
+        float maxRad = MathF.Abs(p.JerkMaxAngleDegrees) * (MathF.PI / 180.0f);
+        float angle = ((float)_rng.NextDouble() * 2.0f - 1.0f) * maxRad;
+
+        Vector3 newDir = Vector3.Transform(dir, Quaternion.CreateFromAxisAngle(axis, angle));
+
+        if (p.UpBiasPerJerk > 0.0f)
+            newDir = Vector3.Normalize(newDir + Vector3.UnitY * p.UpBiasPerJerk);
+
+        float jitter = Math.Clamp(p.SpeedJitter, 0.0f, 1.0f);
+        float speedMul = 1.0f + (((float)_rng.NextDouble() * 2.0f - 1.0f) * jitter);
+        speedMul = MathF.Max(0.10f, speedMul);
+
+        s.Velocity = Vector3.Normalize(newDir) * (speed * speedMul);
     }
 
     private void DetonateSubShell(SubShell s, D3D11Renderer renderer)
@@ -1063,6 +1146,60 @@ public sealed class FireworksEngine
                 trail,
                 popColor: baseColor,
                 trailColor: baseColor * trail.BrightnessScalar));
+
+            _subShells.Add(new SubShell(state, payload));
+        }
+    }
+
+    private void SpawnFish(Vector3 origin, FishParams p, BurstEmissionSettings emission, Vector4 baseColor)
+    {
+        int count = Math.Clamp(p.SubShellCount, 1, 2500);
+        var dirs = EmissionStyles.EmitChrysanthemum(count, emission);
+
+        float speedMin = MathF.Max(0.0f, p.SubShellSpeedMin);
+        float speedMax = MathF.Max(speedMin, p.SubShellSpeedMax);
+        float lifeMin = MathF.Max(0.05f, p.SubShellLifetimeMinSeconds);
+        float lifeMax = MathF.Max(lifeMin, p.SubShellLifetimeMaxSeconds);
+
+        EmitSound(new SoundEvent(
+            SoundEventType.ShellBurst,
+            Position: origin,
+            Gain: 0.80f,
+            Loop: false));
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            float speed = speedMin + (float)_rng.NextDouble() * (speedMax - speedMin);
+            float lifetime = lifeMin + (float)_rng.NextDouble() * (lifeMax - lifeMin);
+
+            int jerkMin = Math.Max(0, p.JerkCountMin);
+            int jerkMax = Math.Max(jerkMin, p.JerkCountMax);
+            int jerks = jerkMin + _rng.Next(jerkMax - jerkMin + 1);
+
+            float firstDelay = p.JerkIntervalMinSeconds +
+                               (float)_rng.NextDouble() * MathF.Max(0.0f, p.JerkIntervalMaxSeconds - p.JerkIntervalMinSeconds);
+
+            var state = new SubShellState
+            {
+                Position = origin,
+                Velocity = dirs[i] * speed,
+                Age = 0.0f,
+                DetonateAt = lifetime,
+                Detonated = false,
+                DetonateOnExpire = false,
+                GravityScale = p.SubShellGravityScale,
+                Drag = p.SubShellDrag,
+                TrailAccumulator = 0.0f,
+
+                NextJerkAt = firstDelay,
+                JerksRemaining = jerks
+            };
+
+            var payload = SubShellPayload.Fish(new FishSubShellData(
+                parameters: p,
+                trail: p.Trail,
+                popColor: baseColor,
+                trailColor: baseColor * p.Trail.BrightnessScalar));
 
             _subShells.Add(new SubShell(state, payload));
         }
@@ -2048,6 +2185,12 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.Fish)
+        {
+            SpawnFish(explosion.Position, explosion.Fish, explosion.Emission, explosion.BaseColor);
+            return;
+        }
+
         Vector3 ringAxis = Vector3.UnitY;
         if (explosion.RingAxis is { } configuredRingAxis && configuredRingAxis.LengthSquared() >= 1e-6f)
             ringAxis = Vector3.Normalize(configuredRingAxis);
@@ -2213,6 +2356,7 @@ public sealed class FireworksEngine
                 FinaleSalute: shell.Profile.FinaleSaluteParams,
                 Comet: shell.Profile.CometParams,
                 SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
+                Fish: shell.Profile.FishParams,
                 BaseColor: ev.BaseColor,
                 PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                 SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -2476,6 +2620,7 @@ public sealed class FireworkShell
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
             SparklingChrysanthemum: Profile.SparklingChrysanthemumParams,
+            Fish: Profile.FishParams,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
             PeonyToWillowParams: Profile.PeonyToWillowParams,
             SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
@@ -2505,6 +2650,7 @@ public readonly record struct ShellExplosion(
     PeonyToWillowParams PeonyToWillowParams,
     SubShellSpokeWheelPopParams SubShellSpokeWheelPop,
     SparklingChrysanthemumParams SparklingChrysanthemum,
+    FishParams Fish,
     ColorScheme ColorScheme);
 
 internal static class ColorUtil

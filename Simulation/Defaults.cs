@@ -72,6 +72,7 @@ internal static class DefaultIds
     public const string shellHorsetailGoldId = "horsetail_gold";
     public const string shellDoubleRingId = "double_ring";
     public const string shellSpiralId = "spiral";
+    public const string shellFishId = "fish";
     public const string shellSpokeWheelPopId = "spoke_wheel_pop";
     public const string shellWillowTrailOnlyId = "willow_trail_only";
     public const string shellPeonyToWillowId = "peony_to_willow";
@@ -291,6 +292,46 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.65f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 90.0f),
+
+            [shellFishId] = ShellPresets.Create(
+                id: shellFishId,
+                burstShape: FireworkBurstShape.Fish,
+                colorSchemeId: schemeNeon,
+                fuseTimeSeconds: 3.9f,
+                explosionRadius: 13.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                emission: BurstEmissionSettings.Defaults with
+                {
+                    ChrysanthemumSpokeCount = 36,
+                    ChrysanthemumSpokeJitter = 0.12f,
+                },
+                fish: new FishParams(
+                    SubShellCount: 72,
+                    SubShellSpeedMin: 18.0f,
+                    SubShellSpeedMax: 30.0f,
+                    SubShellLifetimeMinSeconds: 1.6f,
+                    SubShellLifetimeMaxSeconds: 3.0f,
+                    SubShellGravityScale: 0.58f,
+                    SubShellDrag: 0.06f,
+
+                    JerkCountMin: 4,
+                    JerkCountMax: 9,
+                    JerkIntervalMinSeconds: 0.10f,
+                    JerkIntervalMaxSeconds: 0.32f,
+                    JerkMaxAngleDegrees: 75.0f,
+                    SpeedJitter: 0.12f,
+                    UpBiasPerJerk: 0.08f,
+
+                    Trail: new SparklerLineTrailParams(
+                        SparkRate: 150.0f,
+                        SparkLifetimeSeconds: 0.60f,
+                        SparkSpeed: 2.4f,
+                        SparkDirectionJitter: 0.38f,
+                        BrightnessScalar: 1.05f,
+                        MinSpawnPerTick: 30))),
 
             [shellHorsetailGoldId] = ShellPresets.Create(
                 id: shellHorsetailGoldId,
@@ -738,14 +779,28 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == DefaultIds.shellFinaleSaluteId || kvp.Key == DefaultIds.shellWillowTrailOnlyId)).ToList();
-        //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
+        // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
+        var mainShowShellIds = new[]
+        {
+            shellBasicId,
+            shellChrysId,
+            shellWillowId,
+            shellFishId,
+            shellPalmId,
+            shellDonutId,
+            shellSpokeWheelPopId,
+            shellHorsetailGoldId,
+            shellDoubleRingId,
+            shellPeonyToWillowId,
+            shellSpiralId,
+            shellCometNeonId
+        };
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)
             {
-                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
+                string shellId = mainShowShellIds[(i + j) % mainShowShellIds.Length];
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
                 string colorSchemeId;
@@ -762,7 +817,7 @@ public static class DefaultShow
                 // debug variations
                 //shellId = "spoke_wheel_pop";
                 // shellId = "peony_to_willow";
-                // shellId = "spiral";
+                //shellId = shellFishId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 

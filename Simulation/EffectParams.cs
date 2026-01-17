@@ -75,6 +75,52 @@ public sealed record SparklingChrysanthemumParams(
         Trail: SparklerLineTrailParams.Defaults);
 }
 
+public sealed record FishParams(
+    int SubShellCount,
+    float SubShellSpeedMin,
+    float SubShellSpeedMax,
+    float SubShellLifetimeMinSeconds,
+    float SubShellLifetimeMaxSeconds,
+    float SubShellGravityScale,
+    float SubShellDrag,
+
+    int JerkCountMin,
+    int JerkCountMax,
+    float JerkIntervalMinSeconds,
+    float JerkIntervalMaxSeconds,
+    float JerkMaxAngleDegrees,
+    float SpeedJitter,
+    float UpBiasPerJerk,
+
+    SparklerLineTrailParams Trail)
+{
+    public static FishParams Defaults { get; } = new(
+        SubShellCount: 80,
+        SubShellSpeedMin: 16.0f,
+        SubShellSpeedMax: 26.0f,
+        SubShellLifetimeMinSeconds: 1.8f,
+        SubShellLifetimeMaxSeconds: 3.2f,
+        SubShellGravityScale: 0.55f,
+        SubShellDrag: 0.05f,
+
+        JerkCountMin: 3,
+        JerkCountMax: 8,
+        JerkIntervalMinSeconds: 0.12f,
+        JerkIntervalMaxSeconds: 0.40f,
+        JerkMaxAngleDegrees: 45.0f,
+        SpeedJitter: 0.12f,
+        UpBiasPerJerk: 0.10f,
+
+        Trail: SparklerLineTrailParams.Defaults with
+        {
+            SparkRate = 140.0f,
+            SparkLifetimeSeconds = 0.55f,
+            SparkSpeed = 2.2f,
+            SparkDirectionJitter = 0.35f,
+            MinSpawnPerTick = 24
+        });
+}
+
 public sealed record SubShellSpokeWheelPopParams(
     int SubShellCount,
     float RingStartAngleDegrees,
