@@ -1162,7 +1162,7 @@ public sealed class FireworksEngine
         float lifeMax = MathF.Max(lifeMin, p.SubShellLifetimeMaxSeconds);
 
         EmitSound(new SoundEvent(
-            SoundEventType.ShellBurst,
+            SoundEventType.FastCrackle,
             Position: origin,
             Gain: 0.80f,
             Loop: false));
