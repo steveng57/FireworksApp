@@ -36,10 +36,12 @@ public sealed partial class D3D11Renderer
     private static uint PackFloat(float value)
         => (uint)BitConverter.SingleToInt32Bits(value);
 
-    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f)
+    public void SpawnBurst(Vector3 position, Vector4 baseColor, int count, float sparkleRateHz = 0.0f, float sparkleIntensity = 0.0f, float crackleProbability = 0.0f)
     {
         if (_context is null)
             return;
+
+        float crackleProb = Math.Clamp(crackleProbability, 0.0f, 1.0f);
 
         count = Math.Clamp(count, 1, _particleCapacity);
         int start = _particleWriteCursor;
@@ -55,7 +57,6 @@ public sealed partial class D3D11Renderer
                 int remaining = count;
                 int offset = 0;
                 int cursor = start;
-                const float crackleProbability = 0.22f;
 
                 while (remaining > 0)
                 {
@@ -69,7 +70,7 @@ public sealed partial class D3D11Renderer
                         lifetimeSeconds: 2.8f,
                         sparkleRateHz: sparkleRateHz,
                         sparkleIntensity: sparkleIntensity,
-                        crackleProbability: crackleProbability,
+                        crackleProbability: crackleProb,
                         seed: (uint)_rng.Next());
 
                     cursor = (cursor + chunk) % _particleCapacity;
@@ -101,7 +102,7 @@ public sealed partial class D3D11Renderer
                 float speed = 6.0f + (u * u) * 12.0f;
                 Vector3 vel = dir * speed;
 
-                bool crackle = (_rng.NextSingle() < 0.22f);
+                bool crackle = (_rng.NextSingle() < crackleProb);
 
                 float lifetime;
                 if (crackle)
@@ -138,6 +139,146 @@ public sealed partial class D3D11Renderer
         _particleWriteCursor = (start + count) % _particleCapacity;
     }
 
+    public bool SpawnCrackleStarCluster(
+        Vector3 position,
+        Vector4 baseColor,
+        Vector3 baseDirection,
+        float coneAngleRadians,
+        float baseSpeed,
+        int count,
+        float microSpeedMulMin,
+        float microSpeedMulMax,
+        float microLifetimeMinSeconds,
+        float microLifetimeMaxSeconds,
+        float staggerMaxSeconds)
+    {
+        if (_context is null)
+            return false;
+
+        int clampedCount = Math.Clamp(count, 1, _particleCapacity);
+        if (clampedCount <= 0)
+            return false;
+
+        Vector3 dir = baseDirection;
+        if (dir.LengthSquared() < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir = Vector3.Normalize(dir);
+
+        float cone = Math.Max(0.0f, coneAngleRadians);
+        float baseSpd = Math.Max(0.0f, baseSpeed);
+        float speedMulMin = Math.Max(0.0f, microSpeedMulMin);
+        float speedMulMax = Math.Max(speedMulMin, microSpeedMulMax);
+        float lifeMin = Math.Max(0.0f, microLifetimeMinSeconds);
+        float lifeMax = Math.Max(lifeMin, microLifetimeMaxSeconds);
+        float stagger = Math.Max(0.0f, staggerMaxSeconds);
+
+        int start = _particleWriteCursor;
+
+        if (_particlesPipeline.CanGpuSpawn)
+        {
+            int remaining = clampedCount;
+            int cursor = start;
+
+            while (remaining > 0)
+            {
+                int chunk = Math.Min(remaining, _particleCapacity - cursor);
+                bool queued = _particlesPipeline.QueueCrackleStarClusterCone(
+                    particleStart: cursor,
+                    count: chunk,
+                    baseDirection: dir,
+                    coneAngleRadians: cone,
+                    origin: position,
+                    baseColor: baseColor,
+                    baseSpeed: baseSpd,
+                    microSpeedMulMin: speedMulMin,
+                    microSpeedMulMax: speedMulMax,
+                    microLifetimeMinSeconds: lifeMin,
+                    microLifetimeMaxSeconds: lifeMax,
+                    staggerMaxSeconds: stagger,
+                    seed: (uint)_rng.Next());
+
+                if (!queued)
+                    break;
+
+                cursor = (cursor + chunk) % _particleCapacity;
+                remaining -= chunk;
+            }
+
+            if (remaining == 0)
+            {
+                _particleWriteCursor = (start + clampedCount) % _particleCapacity;
+                return true;
+            }
+        }
+
+        var particleBuffer = _particlesPipeline.ParticleBuffer;
+        var uploadBuffer = _particlesPipeline.GetNextUploadBuffer();
+        if (particleBuffer is null || uploadBuffer is null)
+            return false;
+
+        var staging = RentParticleArray(clampedCount);
+        try
+        {
+            Vector3 axis1 = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
+            if (axis1.LengthSquared() < 1e-6f)
+                axis1 = Vector3.UnitX;
+            Vector3 axis2 = Vector3.Normalize(Vector3.Cross(axis1, dir));
+            if (axis2.LengthSquared() < 1e-6f)
+                axis2 = Vector3.UnitZ;
+
+            for (int i = 0; i < clampedCount; i++)
+            {
+                float yaw = _rng.NextSingle() * MathF.PI * 2f;
+                float pitch = _rng.NextSingle() * cone;
+
+                float sinYaw = MathF.Sin(yaw);
+                float cosYaw = MathF.Cos(yaw);
+                float sinPitch = MathF.Sin(pitch);
+                float cosPitch = MathF.Cos(pitch);
+
+                Vector3 offset = (axis1 * cosYaw + axis2 * sinYaw) * sinPitch;
+                Vector3 coneDir = dir * cosPitch + offset;
+                if (coneDir.LengthSquared() < 1e-8f)
+                    coneDir = dir;
+                else
+                    coneDir = Vector3.Normalize(coneDir);
+
+                float speedU = _rng.NextSingle();
+                float speedMul = speedMulMin + (speedMulMax - speedMulMin) * (speedU * speedU);
+                Vector3 vel = coneDir * (baseSpd * speedMul);
+
+                float lifeU = _rng.NextSingle();
+                float lifetime = lifeMin + lifeU * (lifeMax - lifeMin);
+
+                float age = stagger > 0.0f ? -_rng.NextSingle() * stagger : 0.0f;
+
+                staging[i] = new GpuParticle
+                {
+                    Position = position,
+                    Velocity = vel,
+                    Age = age,
+                    Lifetime = lifetime,
+                    BaseColor = baseColor,
+                    Color = baseColor,
+                    Kind = (uint)ParticleKind.Crackle,
+                    _pad0 = (uint)_rng.Next(),
+                    _pad1 = (uint)_rng.Next(),
+                    _pad2 = (uint)_rng.Next()
+                };
+            }
+
+            WriteParticlesToBuffer(staging, start, clampedCount, particleBuffer, uploadBuffer);
+        }
+        finally
+        {
+            ReturnParticleArray(staging);
+        }
+
+        _particleWriteCursor = (start + clampedCount) % _particleCapacity;
+        return true;
+    }
+
     public void SpawnBurstCone(
         Vector3 position,
         Vector4 baseColor,
@@ -148,10 +289,12 @@ public sealed partial class D3D11Renderer
         float particleLifetimeSeconds,
         float sparkleRateHz = 0.0f,
         float sparkleIntensity = 0.0f,
-        float crackleProbability = 0.22f)
+        float crackleProbability = 0.0f)
     {
         if (_context is null)
             return;
+
+        float crackleProb = Math.Clamp(crackleProbability, 0.0f, 1.0f);
 
         count = Math.Min(count, _particleCapacity);
         if (count <= 0)
@@ -184,7 +327,7 @@ public sealed partial class D3D11Renderer
                     lifetimeSeconds: particleLifetimeSeconds,
                     sparkleRateHz: sparkleRateHz,
                     sparkleIntensity: sparkleIntensity,
-                    crackleProbability: crackleProbability,
+                    crackleProbability: crackleProb,
                     seed: (uint)_rng.Next());
 
                 cursor = (cursor + chunk) % _particleCapacity;
@@ -227,7 +370,7 @@ public sealed partial class D3D11Renderer
             dirs[i] = coneDir;
         }
 
-        SpawnBurstDirected(position, baseColor, speed, dirs, particleLifetimeSeconds, sparkleRateHz, sparkleIntensity);
+        SpawnBurstDirected(position, baseColor, speed, dirs, particleLifetimeSeconds, sparkleRateHz, sparkleIntensity, crackleProb);
     }
 
     private void UpdateParticles(float scaledDt, bool useInterpolatedState)
@@ -463,7 +606,8 @@ public sealed partial class D3D11Renderer
         ReadOnlySpan<Vector3> directions,
         float particleLifetimeSeconds,
         float sparkleRateHz = 0.0f,
-        float sparkleIntensity = 0.0f)
+        float sparkleIntensity = 0.0f,
+        float crackleProbability = 0.0f)
     {
         _schemeTint = new Vector3(baseColor.X, baseColor.Y, baseColor.Z);
         SpawnBurstDirected(position, baseColor, speed, directions, particleLifetimeSeconds, sparkleRateHz, sparkleIntensity);
@@ -555,10 +699,13 @@ public sealed partial class D3D11Renderer
         ReadOnlySpan<Vector3> directions,
         float particleLifetimeSeconds,
         float sparkleRateHz = 0.0f,
-        float sparkleIntensity = 0.0f)
+        float sparkleIntensity = 0.0f,
+        float crackleProbability = 0.0f)
     {
         if (_context is null)
             return;
+
+        float crackleProb = Math.Clamp(crackleProbability, 0.0f, 1.0f);
 
         int dirCount = directions.Length;
         if (dirCount <= 0)
@@ -586,8 +733,6 @@ public sealed partial class D3D11Renderer
                 int remaining = count;
                 int dirOffset = 0;
                 int cursor = start;
-                const float crackleProbability = 0.22f;
-
                 while (remaining > 0)
                 {
                     int chunk = Math.Min(remaining, _particleCapacity - cursor);
@@ -600,7 +745,7 @@ public sealed partial class D3D11Renderer
                         lifetimeSeconds: particleLifetimeSeconds,
                         sparkleRateHz: sparkleRateHz,
                         sparkleIntensity: sparkleIntensity,
-                        crackleProbability: crackleProbability,
+                        crackleProbability: crackleProb,
                         seed: (uint)_rng.Next());
 
                     cursor = (cursor + chunk) % _particleCapacity;
@@ -637,7 +782,7 @@ public sealed partial class D3D11Renderer
                 float speedMul = 0.65f + (u * u) * 0.85f;
                 Vector3 vel = dir * (speed * speedMul);
 
-                bool crackle = (_rng.NextSingle() < 0.22f);
+                bool crackle = (_rng.NextSingle() < crackleProb);
 
                 float lifetime;
                 if (crackle)

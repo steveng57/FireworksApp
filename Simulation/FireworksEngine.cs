@@ -527,6 +527,7 @@ public sealed class FireworksEngine
                     Comet: shell.Profile.CometParams,
                     SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                     Fish: shell.Profile.FishParams,
+                    CrackleStar: shell.Profile.CrackleStarProfile,
                     BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
                     PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -2119,6 +2120,9 @@ public sealed class FireworksEngine
             float speed = 10.0f; // peony base speed
             float lifetime = explosion.ParticleLifetimeSeconds;
 
+            var crackleProfilePeony = explosion.CrackleStar;
+            float crackleProbabilityPeony = ComputeBaseCrackleProbability(crackleProfilePeony);
+
             renderer.SpawnBurstDirectedExplode(
                 explosion.Position,
                 baseColor,
@@ -2126,7 +2130,9 @@ public sealed class FireworksEngine
                 dirs,
                 particleLifetimeSeconds: lifetime,
                 sparkleRateHz: explosion.BurstSparkleRateHz,
-                sparkleIntensity: explosion.BurstSparkleIntensity);
+                sparkleIntensity: explosion.BurstSparkleIntensity,
+                crackleProbability: crackleProbabilityPeony);
+            SpawnCrackleStarClusters(renderer, explosion.Position, baseColor, dirs, speed, crackleProfilePeony);
             renderer.SpawnSmoke(explosion.Position);
 
             // Schedule willow takeover
@@ -2246,6 +2252,9 @@ public sealed class FireworksEngine
             _ => explosion.ParticleLifetimeSeconds
         };
 
+        var crackleProfileDefault = explosion.CrackleStar;
+        float crackleProbabilityDefault = ComputeBaseCrackleProbability(crackleProfileDefault);
+
         renderer.SpawnBurstDirectedExplode(
             explosion.Position,
             baseColorDefault,
@@ -2253,7 +2262,9 @@ public sealed class FireworksEngine
             dirsDefault,
             particleLifetimeSeconds: lifetimeDefault,
             sparkleRateHz: explosion.BurstSparkleRateHz,
-            sparkleIntensity: explosion.BurstSparkleIntensity);
+            sparkleIntensity: explosion.BurstSparkleIntensity,
+            crackleProbability: crackleProbabilityDefault);
+        SpawnCrackleStarClusters(renderer, explosion.Position, baseColorDefault, dirsDefault, speedDefault, crackleProfileDefault);
         renderer.SpawnSmoke(explosion.Position);
 
         EmitSound(new SoundEvent(
@@ -2269,6 +2280,59 @@ public sealed class FireworksEngine
                 Position: explosion.Position,
                 Gain: System.Math.Clamp(explosion.BurstSparkleIntensity, 0.15f, 1.0f),
                 Loop: false));
+        }
+    }
+
+    private static float ComputeBaseCrackleProbability(CrackleStarProfile? profile)
+    {
+        const float defaultCrackleProbability = 0.22f;
+        if (profile is null)
+            return defaultCrackleProbability;
+
+        float mix = Math.Clamp(profile.NormalSparkMixProbability, 0.0f, 1.0f);
+        return defaultCrackleProbability * mix;
+    }
+
+    private void SpawnCrackleStarClusters(
+        D3D11Renderer renderer,
+        Vector3 position,
+        Vector4 baseColor,
+        ReadOnlySpan<Vector3> directions,
+        float baseSpeed,
+        CrackleStarProfile? crackleStar)
+    {
+        if (crackleStar is null)
+            return;
+
+        float seedProbability = Math.Clamp(crackleStar.CrackleStarProbability, 0.0f, 1.0f);
+        if (seedProbability <= 0.0f || directions.Length == 0)
+            return;
+
+        int clusterMin = Math.Max(1, crackleStar.ClusterCountMin);
+        int clusterMax = Math.Max(clusterMin, crackleStar.ClusterCountMax);
+        float coneRad = crackleStar.ClusterConeAngleDegrees * (MathF.PI / 180.0f);
+
+        for (int i = 0; i < directions.Length; i++)
+        {
+            if (_rng.NextSingle() >= seedProbability)
+                continue;
+
+            int clusterCount = _rng.Next(clusterMin, clusterMax + 1);
+            if (clusterCount <= 0)
+                continue;
+
+            renderer.SpawnCrackleStarCluster(
+                position,
+                baseColor,
+                directions[i],
+                coneRad,
+                baseSpeed,
+                clusterCount,
+                crackleStar.MicroSpeedMulMin,
+                crackleStar.MicroSpeedMulMax,
+                crackleStar.MicroLifetimeMinSeconds,
+                crackleStar.MicroLifetimeMaxSeconds,
+                crackleStar.ClusterStaggerMaxSeconds);
         }
     }
 
@@ -2357,6 +2421,7 @@ public sealed class FireworksEngine
                 Comet: shell.Profile.CometParams,
                 SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                 Fish: shell.Profile.FishParams,
+                CrackleStar: shell.Profile.CrackleStarProfile,
                 BaseColor: ev.BaseColor,
                 PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                 SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -2621,6 +2686,7 @@ public sealed class FireworkShell
             Comet: Profile.CometParams,
             SparklingChrysanthemum: Profile.SparklingChrysanthemumParams,
             Fish: Profile.FishParams,
+            CrackleStar: Profile.CrackleStarProfile,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
             PeonyToWillowParams: Profile.PeonyToWillowParams,
             SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
@@ -2651,6 +2717,7 @@ public readonly record struct ShellExplosion(
     SubShellSpokeWheelPopParams SubShellSpokeWheelPop,
     SparklingChrysanthemumParams SparklingChrysanthemum,
     FishParams Fish,
+    CrackleStarProfile CrackleStar,
     ColorScheme ColorScheme);
 
 internal static class ColorUtil

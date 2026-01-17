@@ -78,6 +78,7 @@ internal static class DefaultIds
     public const string shellPeonyToWillowId = "peony_to_willow";
     public const string shellFinaleSaluteId = "finale_salute";
     public const string shellCometNeonId = "comet_neon";
+    public const string shellCracklePeonyId = "crackle_peony";
 
     public const string subshellBasicPopId = "subshell_basic_pop";
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
@@ -529,6 +530,28 @@ public static class DefaultProfiles
                     SubShellDelaySeconds = 2.0f,
                             }
                 ),
+
+            [shellCracklePeonyId] = ShellPresets.Create(
+                id: shellCracklePeonyId,
+                burstShape: FireworkBurstShape.CrackleStar,
+                colorSchemeId: schemeMixed,
+                fuseTimeSeconds: 3.8f,
+                explosionRadius: 9.0f,
+                particleCount: 2500,
+                particleLifetimeSeconds: 2.5f,
+                burstSparkleRateHz: 4.0f,
+                burstSparkleIntensity: 0.10f,
+                crackleStar: new CrackleStarProfile(
+                    CrackleStarProbability: 0.55f,
+                    ClusterCountMin: 12,
+                    ClusterCountMax: 24,
+                    ClusterConeAngleDegrees: 14.0f,
+                    MicroSpeedMulMin: 0.60f,
+                    MicroSpeedMulMax: 1.10f,
+                    MicroLifetimeMinSeconds: 0.05f,
+                    MicroLifetimeMaxSeconds: 0.14f,
+                    ClusterStaggerMaxSeconds: 0.32f,
+                    NormalSparkMixProbability: 0.05f))
         };
 
         // SubShell profiles: reusable child shell behaviors
@@ -782,6 +805,7 @@ public static class DefaultShow
         // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
         var mainShowShellIds = new[]
         {
+           // shellCracklePeonyId,
             shellBasicId,
             shellChrysId,
             shellWillowId,
@@ -818,6 +842,7 @@ public static class DefaultShow
                 //shellId = "spoke_wheel_pop";
                 // shellId = "peony_to_willow";
                 //shellId = shellFishId;
+                shellId = (j % 2 == 0)? shellCracklePeonyId : shellBasicId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
