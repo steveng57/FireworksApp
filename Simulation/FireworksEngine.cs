@@ -851,6 +851,11 @@ public sealed class FireworksEngine
             return false;
 
         float triggerTime = comet.Params.SubShellDelaySeconds ?? comet.LifetimeSeconds;
+        if (comet.Params.SubShellDelayJitterSeconds > 0.0f)
+        {
+            float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * comet.Params.SubShellDelayJitterSeconds;
+            triggerTime = MathF.Max(0.0f, triggerTime + jitter);
+        }
         if (comet.Age < triggerTime)
             return false;
 

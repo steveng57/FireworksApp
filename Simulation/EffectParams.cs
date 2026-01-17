@@ -18,7 +18,8 @@ public sealed record CometParams(
     float TrailSmokeChance,
     Vector4? TrailColor,
     SubShellId? SubShellProfileId = null,
-    float? SubShellDelaySeconds = null)
+    float? SubShellDelaySeconds = null,
+    float SubShellDelayJitterSeconds = 0.0f)
 {
     public static CometParams Defaults { get; } = new(
         CometCount: 30,
@@ -34,7 +35,8 @@ public sealed record CometParams(
         TrailSmokeChance: 0.20f,
         TrailColor: null,
         SubShellProfileId: null,
-        SubShellDelaySeconds: null);
+        SubShellDelaySeconds: null,
+        SubShellDelayJitterSeconds: 0.0f);
 }
 
 public sealed record SparklerLineTrailParams(

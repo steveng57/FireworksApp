@@ -529,7 +529,8 @@ public static class DefaultProfiles
                     // Custom vivid cyan trail color
                     TrailColor = new Vector4(0.3f, 1.5f, 2.0f, 1.0f),
                     SubShellProfileId = null,
-                    SubShellDelaySeconds = 2.0f,
+            SubShellDelaySeconds = 2.0f,
+            SubShellDelayJitterSeconds = 0.6f,
                             }
                 ),
 
@@ -546,7 +547,7 @@ public static class DefaultProfiles
                 trailProfile: ShellTrailPresets.CometNeon,
                 comet: CometParams.Defaults with
                 {
-                    CometCount = 40,
+                    CometCount = 30,
                     CometSpeedMin = 14f,
                     CometSpeedMax = 26f,
                     CometUpBias = 0.30f,
@@ -559,7 +560,8 @@ public static class DefaultProfiles
                     TrailSmokeChance = 0.20f,
                     TrailColor = null,
                     SubShellProfileId = subshellCracklePeonyId,
-                    SubShellDelaySeconds = 2.4f
+                    SubShellDelaySeconds = 2.4f,
+                    SubShellDelayJitterSeconds = 1.2f
                 }
             ),
 
