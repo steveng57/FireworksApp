@@ -40,7 +40,8 @@ public sealed record class FireworkShellProfile(
     CometParams? Comet = null,
     PeonyToWillowParams? PeonyToWillow = null,
     SubShellSpokeWheelPopParams? SubShellSpokeWheelPop = null,
-    SparklingChrysanthemumParams? SparklingChrysanthemum = null)
+    SparklingChrysanthemumParams? SparklingChrysanthemum = null,
+    FishParams? Fish = null)
 {
     public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
     public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
@@ -48,6 +49,7 @@ public sealed record class FireworkShellProfile(
     public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
     public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
     public SparklingChrysanthemumParams SparklingChrysanthemumParams => SparklingChrysanthemum ?? Simulation.SparklingChrysanthemumParams.Defaults;
+    public FishParams FishParams => Fish ?? Simulation.FishParams.Defaults;
 
     public TrailProfile Trail => TrailProfile ?? ShellTrailPresets.Default;
     public int TrailParticleCount => Trail.ParticleCount;

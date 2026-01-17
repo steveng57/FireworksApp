@@ -4,6 +4,7 @@ public enum FireworkBurstShape
 {
     Peony,
     SparklingChrysanthemum,
+    Fish,
     Willow,
     Palm,
     Ring,
