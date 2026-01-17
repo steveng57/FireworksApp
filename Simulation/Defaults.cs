@@ -779,14 +779,28 @@ public static class DefaultShow
         //events.Add(new ShowEvent(TimeSeconds: 56f, CanisterId: "c19", ShellProfileId: "comet_gold"));
         //events.Add(new ShowEvent(TimeSeconds: 58f, CanisterId: "c03", ShellProfileId: "comet_neon"));
 
-        var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == DefaultIds.shellFinaleSaluteId || kvp.Key == DefaultIds.shellWillowTrailOnlyId)).ToList();
-        //var mainShowShells = profiles.Shells.Where(kvp => !(kvp.Key == "finale_salute" || kvp.Key == "comet_neon" || kvp.Key == "peony_to_willow")).ToList();
+        // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
+        var mainShowShellIds = new[]
+        {
+            shellBasicId,
+            shellChrysId,
+            shellWillowId,
+            shellFishId,
+            shellPalmId,
+            shellDonutId,
+            shellSpokeWheelPopId,
+            shellHorsetailGoldId,
+            shellDoubleRingId,
+            shellPeonyToWillowId,
+            shellSpiralId,
+            shellCometNeonId
+        };
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
         {
             for (int j = 0; j < gridSize; j++)
             {
-                string shellId = mainShowShells[(i + j) % mainShowShells.Count].Key;
+                string shellId = mainShowShellIds[(i + j) % mainShowShellIds.Length];
 
                 string canisterId = profiles.Canisters.Keys.ElementAt((i + j) % mainCanisters);
                 string colorSchemeId;
