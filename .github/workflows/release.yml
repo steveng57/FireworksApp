@@ -10,10 +10,14 @@ env:
   PROJECT_PATH: FireworksApp.csproj
   CONFIGURATION: Release
   RUNTIME: win-x64
-  PUBLISH_DIR: bin/Release/net10.0-windows/win-x64/publish
+  PUBLISH_DIR: artifacts/publish
   PACKAGE_CERT_SUBJECT: ${{ secrets.MSIX_PUBLISHER_SUBJECT }}
   PACKAGE_CERT_PASSWORD: ${{ secrets.MSIX_CERT_PASSWORD }}
   PACKAGE_CERT_PFX_BASE64: ${{ secrets.MSIX_CERT_PFX_BASE64 }}
+
+defaults:
+  run:
+    shell: pwsh
 
 jobs:
   build-publish-release:
@@ -29,21 +33,18 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore ${{ env.PROJECT_PATH }}
+        run: dotnet restore "${{ env.PROJECT_PATH }}"
 
       - name: Read version from project
         id: version
-        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $xml = [xml](Get-Content "${{ env.PROJECT_PATH }}")
 
-          # Prefer <Version>; fall back to <PackageVersion> if used.
           $version = $xml.Project.PropertyGroup.Version | Select-Object -First 1
           if ([string]::IsNullOrWhiteSpace($version)) {
             $version = $xml.Project.PropertyGroup.PackageVersion | Select-Object -First 1
           }
-
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "No <Version> (or <PackageVersion>) found in ${{ env.PROJECT_PATH }}"
           }
@@ -51,54 +52,68 @@ jobs:
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           $parts = $version.Split('.')
-          if ($parts.Length -lt 4) {
-            $appxVersion = "$version.0"
-          } else {
-            $appxVersion = $version
-          }
-
+          $appxVersion = if ($parts.Length -lt 4) { "$version.0" } else { $version }
           "APPX_VERSION=$appxVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Publish (self-contained, single-file)
-        run: >-
-          dotnet publish ${{ env.PROJECT_PATH }}
-          -c ${{ env.CONFIGURATION }}
-          -r ${{ env.RUNTIME }}
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=None
-          -p:DebugSymbols=false
+        run: |
+          dotnet publish "${{ env.PROJECT_PATH }}" `
+            -c "${{ env.CONFIGURATION }}" `
+            -r "${{ env.RUNTIME }}" `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output "${{ env.PUBLISH_DIR }}"
 
       - name: Create release folder
-        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           if (!(Test-Path "${{ env.PUBLISH_DIR }}")) { throw "Publish directory not found: ${{ env.PUBLISH_DIR }}" }
           New-Item -ItemType Directory -Path dist -Force | Out-Null
 
-          # Copy publish output
-          Copy-Item -Path "${{ env.PUBLISH_DIR }}\*" -Destination dist -Recurse -Force
+          Copy-Item -Path (Join-Path "${{ env.PUBLISH_DIR }}" '*') -Destination dist -Recurse -Force
 
-          # Ensure shaders are included even if publish trimming changes behavior
           if (Test-Path "Shaders") {
             Copy-Item -Path "Shaders" -Destination dist -Recurse -Force
           }
 
-      - name: Load signing certificate (persistent)
-        shell: pwsh
+      - name: Locate Windows SDK tools
         run: |
           $ErrorActionPreference = 'Stop'
 
-          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PFX_BASE64)) {
-            throw "Missing secret: MSIX_CERT_PFX_BASE64"
+          $candidates = @(
+            Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*' -Directory -ErrorAction SilentlyContinue |
+              Sort-Object Name -Descending |
+              ForEach-Object { Join-Path $_.FullName 'x64' } |
+              Where-Object { Test-Path $_ } |
+              ForEach-Object { Get-Item $_ }
+          ) | Where-Object { $_ }
+
+          $makeappx = $null
+          $signtool = $null
+
+          foreach ($sdkBin in $candidates) {
+            $m = Join-Path $sdkBin.FullName 'makeappx.exe'
+            $s = Join-Path $sdkBin.FullName 'signtool.exe'
+            if ((Test-Path $m) -and (Test-Path $s)) { $makeappx = $m; $signtool = $s; break }
           }
-          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PASSWORD)) {
-            throw "Missing secret: MSIX_CERT_PASSWORD"
+
+          if (-not $makeappx -or -not $signtool) {
+            throw "makeappx.exe/signtool.exe not found under Windows Kits bin"
           }
-          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_SUBJECT)) {
-            throw "Missing secret: MSIX_PUBLISHER_SUBJECT"
-          }
+
+          "MAKEAPPX_EXE=$makeappx" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SIGNTOOL_EXE=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Load signing certificate (persistent)
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PFX_BASE64)) { throw "Missing secret: MSIX_CERT_PFX_BASE64" }
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PASSWORD)) { throw "Missing secret: MSIX_CERT_PASSWORD" }
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_SUBJECT)) { throw "Missing secret: MSIX_PUBLISHER_SUBJECT" }
 
           $certPath = Join-Path $env:RUNNER_TEMP 'msix-cert.pfx'
           [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:PACKAGE_CERT_PFX_BASE64))
@@ -106,7 +121,6 @@ jobs:
           "PACKAGE_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Generate MSIX layout
-        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $assets = Join-Path "dist" "Assets"
@@ -127,14 +141,16 @@ jobs:
           New-Logo (Join-Path $assets 'Square44x44Logo.png') 44
 
           $manifestPath = Join-Path "dist" "AppxManifest.xml"
-          $manifest = @(
-            '<?xml version="1.0" encoding="utf-8"?>'
+          $publisher = $env:PACKAGE_CERT_SUBJECT
+          $version   = $env:APPX_VERSION
+
+          $manifestLines = @(
             '<Package'
             '  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"'
             '  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"'
             '  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"'
             '  IgnorableNamespaces="uap rescap">'
-            "  <Identity Name=\"FireworksApp\" Publisher=\"$($env:PACKAGE_CERT_SUBJECT)\" Version=\"$($env:APPX_VERSION)\" ProcessorArchitecture=\"x64\" />"
+            "  <Identity Name=""FireworksApp"" Publisher=""$publisher"" Version=""$version"" ProcessorArchitecture=""x64"" />"
             '  <Properties>'
             '    <DisplayName>FireworksApp</DisplayName>'
             '    <PublisherDisplayName>FireworksApp</PublisherDisplayName>'
@@ -160,22 +176,23 @@ jobs:
             '    <rescap:Capability Name="runFullTrust" />'
             '  </Capabilities>'
             '</Package>'
-          ) -join [Environment]::NewLine
+          )
 
+          $manifest = $manifestLines -join "`r`n"
           Set-Content -Path $manifestPath -Value $manifest -Encoding UTF8
 
+
       - name: Create MSIX package
-        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $msixName = "FireworksApp-${{ env.VERSION }}-${{ env.RUNTIME }}.msix"
           $msixPath = Join-Path $pwd $msixName
 
-          & makeappx.exe pack /d dist /p $msixPath /o
-
-          & signtool.exe sign /fd SHA256 /f "${{ env.PACKAGE_CERT_PATH }}" /p "${{ env.PACKAGE_CERT_PASSWORD }}" $msixPath
+          & $env:MAKEAPPX_EXE pack /d dist /p $msixPath /o
+          & $env:SIGNTOOL_EXE sign /fd SHA256 /f "${{ env.PACKAGE_CERT_PATH }}" /p "${{ env.PACKAGE_CERT_PASSWORD }}" $msixPath
 
           "MSIX_NAME=$msixName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MSIX_PATH=$msixPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -184,4 +201,4 @@ jobs:
           name: FireworksApp v${{ env.VERSION }}
           generate_release_notes: true
           files: |
-            ${{ env.MSIX_NAME }}
+            ${{ env.MSIX_PATH }}
