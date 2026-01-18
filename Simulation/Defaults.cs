@@ -354,9 +354,11 @@ public static class DefaultProfiles
                 },
                 peonyToWillow: PeonyToWillowParams.Defaults with
                 {
+                    // Simplify: one-to-one handoff driven by subshell profile count for predictable streak counts
+                    PeonySparkCount = 1,
                     HandoffDelaySeconds = 0.08f,
-                    HandoffFraction = 0.22f,
-                    HandoffRandomness = 0.28f,
+                    HandoffFraction = 1.0f,
+                    HandoffRandomness = 0.0f,
                     WillowSubshellProfileId = subshellHorsetailCometId,
                     WillowVelocityScale = 0.30f,
                     WillowGravityMultiplier = 2.6f,
@@ -457,7 +459,7 @@ public static class DefaultProfiles
                 trailProfile: ShellTrailPresets.WillowLingering,
                 comet: CometParams.Defaults with
                 {
-                    CometCount = 1,
+                    CometCount = 24,
                     CometSpeedMin = 8.0f,
                     CometSpeedMax = 12.0f,
                     CometUpBias = 0.05f,
@@ -679,7 +681,7 @@ public static class DefaultProfiles
             [subshellHorsetailCometId] = SubShellPresets.Sphere(
                 id: subshellHorsetailCometId,
                 shellProfileId: shellCometGoldStreakId,
-                count: 6,
+                count: 2,
                 minAltitudeToSpawn: 5.0f,
                 delaySeconds: 0.15f,
                 inheritParentVelocity: 0.12f,
