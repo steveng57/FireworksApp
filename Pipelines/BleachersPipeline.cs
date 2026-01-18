@@ -22,6 +22,9 @@ internal sealed class BleachersPipeline : IDisposable
     private const int RowCount = 12;
     private const float RowRiseMeters = 0.40f;
     private const float RowRunMeters = 0.85f;
+    private const float PostSpacingMeters = 3.0f;
+    private const float PostSizeMeters = 0.12f;
+    private const float BeamThicknessMeters = 0.12f;
 
     public void Initialize(ID3D11Device device)
     {
@@ -114,7 +117,7 @@ internal sealed class BleachersPipeline : IDisposable
     private static GroundVertex[] BuildGeometry()
     {
         float halfWidth = WidthMeters * 0.5f;
-        var verts = new List<GroundVertex>(RowCount * 36);
+        var verts = new List<GroundVertex>(RowCount * 36 + 2048);
 
         for (int i = 0; i < RowCount; i++)
         {
@@ -123,6 +126,35 @@ internal sealed class BleachersPipeline : IDisposable
             float z0 = i * RowRunMeters;
             float z1 = z0 + RowRunMeters;
             AddBox(verts, -halfWidth, halfWidth, y0, y1, z0, z1);
+
+            // Horizontal support beam at this row level
+            float beamY0 = y0;
+            float beamY1 = beamY0 + BeamThicknessMeters;
+            float beamZCenter = z0 + RowRunMeters * 0.5f;
+            float beamZ0 = beamZCenter - BeamThicknessMeters * 0.5f;
+            float beamZ1 = beamZCenter + BeamThicknessMeters * 0.5f;
+            AddBox(verts, -halfWidth, halfWidth, beamY0, beamY1, beamZ0, beamZ1);
+
+            // Vertical posts along width for this row (skip row 0 which sits on ground)
+            if (i > 0)
+            {
+                int postCountX = Math.Max(2, (int)MathF.Floor(WidthMeters / PostSpacingMeters) + 1);
+                float postStep = WidthMeters / (postCountX - 1);
+                float postHalf = PostSizeMeters * 0.5f;
+                float postY0 = 0.0f;
+                float postY1 = y0;
+                float postZCenter = z0;
+                float postZ0 = postZCenter - postHalf;
+                float postZ1 = postZCenter + postHalf;
+                for (int px = 0; px < postCountX; px++)
+                {
+                    float xCenter = -halfWidth + px * postStep;
+                    float postX0 = xCenter - postHalf;
+                    float postX1 = xCenter + postHalf;
+                    if (postY1 > postY0)
+                        AddBox(verts, postX0, postX1, postY0, postY1, postZ0, postZ1);
+                }
+            }
         }
 
         return verts.ToArray();
