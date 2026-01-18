@@ -201,8 +201,12 @@ jobs:
           $certs = Import-PfxCertificate -FilePath "${{ env.PACKAGE_CERT_PATH }}" -CertStoreLocation Cert:\CurrentUser\My -Password $password
           if (-not $certs) { throw "Failed to import PFX for export" }
 
+          $leaf = $certs | Where-Object { $_.HasPrivateKey -and $_.Subject -eq "${{ env.PACKAGE_CERT_SUBJECT }}" } | Select-Object -First 1
+          if (-not $leaf) { $leaf = $certs | Where-Object { $_.HasPrivateKey } | Select-Object -First 1 }
+          if (-not $leaf) { throw "No leaf certificate with private key found in imported PFX" }
+
           $cerPath = Join-Path $pwd 'FireworksApp.cer'
-          Export-Certificate -Cert $certs[0] -FilePath $cerPath -Force | Out-Null
+          Export-Certificate -Cert $leaf -FilePath $cerPath -Force | Out-Null
           "CER_PATH=$cerPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Create GitHub Release
