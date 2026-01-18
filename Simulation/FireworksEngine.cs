@@ -207,24 +207,6 @@ public readonly struct FishSubShellData
     public Vector4 TrailColor { get; }
 }
 
-    public readonly struct PendingWillowHandoff
-    {
-        public readonly float TriggerTime;
-        public readonly Vector3 Position;
-        public readonly Vector3 ParentVelocity;
-        public readonly PeonyToWillowParams Params;
-        public readonly ColorScheme ColorScheme;
-
-        public PendingWillowHandoff(float TriggerTime, Vector3 Position, Vector3 ParentVelocity, PeonyToWillowParams Params, ColorScheme ColorScheme)
-        {
-            this.TriggerTime = TriggerTime;
-            this.Position = Position;
-            this.ParentVelocity = ParentVelocity;
-            this.Params = Params;
-            this.ColorScheme = ColorScheme;
-        }
-    }
-
 public sealed class Comet
 {
     public Vector3 Position;
@@ -270,6 +252,71 @@ public sealed class FireworksEngine
 
     // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
     public float TimeScale { get; set; } = Tunables.DefaultTimeScale;
+
+    private readonly struct PendingWillowHandoff
+    {
+        public readonly float TriggerTime;
+        public readonly Vector3 Position;
+        public readonly Vector3 ParentVelocity;
+        public readonly PeonyToWillowParams Params;
+        public readonly ColorScheme ColorScheme;
+
+        public PendingWillowHandoff(float triggerTime, Vector3 position, Vector3 parentVelocity, PeonyToWillowParams @params, ColorScheme colorScheme)
+        {
+            TriggerTime = triggerTime;
+            Position = position;
+            ParentVelocity = parentVelocity;
+            Params = @params;
+            ColorScheme = colorScheme;
+        }
+    }
+
+    private void SpawnWillowSubshellsImmediate(Vector3 position, PeonyToWillowParams p, D3D11Renderer renderer)
+    {
+        if (!_profiles.SubShells.TryGetValue(p.WillowSubshellProfileId, out var subProf))
+            return;
+
+        if (!_profiles.Shells.TryGetValue(subProf.ShellProfileId, out var childProfile))
+            return;
+
+        var schemeId = subProf.ColorSchemeId ?? childProfile.ColorSchemeId;
+        if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
+            childScheme = _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default", new[] { System.Windows.Media.Colors.Gold }, 0.05f, 1.0f);
+
+        int count = Math.Max(1, subProf.Count);
+        var dirs = EmissionStyles.EmitWillow(count, BurstEmissionSettings.Defaults);
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 dir = dirs[i];
+            Vector3 pos = position + EmissionStyles.RandomUnitVector() * p.PeonySpeedMax * 0.02f;
+            Vector3 vel = dir * (p.PeonySpeedMax * p.WillowVelocityScale);
+
+            var child = new FireworkShell(
+                childProfile,
+                childScheme,
+                pos,
+                vel,
+                dragK: ShellDragK * p.WillowDragMultiplier,
+                fuseOverrideSeconds: childProfile.FuseTimeSeconds * p.WillowLifetimeMultiplier)
+            {
+                SubshellDepth = 1,
+                ParentShellId = null,
+                BurstShapeOverride = null,
+                ShellId = _nextShellId++
+            };
+
+            if (renderer.ShellsGpuRendered)
+            {
+                _gpuShells[child.ShellId] = child;
+                renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * p.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+            }
+            else
+            {
+                _shells.Add(child);
+            }
+        }
+    }
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
@@ -502,7 +549,9 @@ public sealed class FireworksEngine
 
         List<uint>? toRemove = null;
 
-        foreach (var kvp in _gpuShells)
+        // Iterate over a snapshot to avoid mutation during enumeration when explosions enqueue/removal.
+        var gpuShellSnapshot = _gpuShells.ToArray();
+        foreach (var kvp in gpuShellSnapshot)
         {
             var shell = kvp.Value;
 
@@ -2147,14 +2196,8 @@ public sealed class FireworksEngine
             SpawnCrackleStarClusters(renderer, explosion.Position, baseColor, dirs, speed, crackleProfilePeony);
             renderer.SpawnSmoke(explosion.Position);
 
-            // Schedule willow takeover
-            var p = explosion.PeonyToWillowParams;
-            _pendingWillow.Add(new PendingWillowHandoff(
-                TriggerTime: ShowTimeSeconds + MathF.Max(0.0f, p.HandoffDelaySeconds),
-                Position: explosion.Position,
-                ParentVelocity: Vector3.Zero,
-                Params: p,
-                ColorScheme: _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default", new[] { System.Windows.Media.Colors.Gold }, 0.05f, 1.0f)));
+            // Spawn willow subshells immediately for predictable comet streak counts.
+            SpawnWillowSubshellsImmediate(explosion.Position, explosion.PeonyToWillowParams, renderer);
 
             EmitSound(new SoundEvent(
                 SoundEventType.ShellBurst,

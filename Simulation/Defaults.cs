@@ -955,10 +955,8 @@ public static class DefaultShow
                 }
 
                 // debug variations
-                //shellId = "spoke_wheel_pop";
-                // shellId = "peony_to_willow";
                 //shellId = shellFishId;
-                shellId = (j % 2 == 0)? shellCracklePeonyId : shellHorsetailGoldId;
+                // shellId = (j % 2 == 0)? shellCracklePeonyId : shellHorsetailGoldId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
