@@ -127,41 +127,42 @@ jobs:
           New-Logo (Join-Path $assets 'Square44x44Logo.png') 44
 
           $manifestPath = Join-Path "dist" "AppxManifest.xml"
-          $manifest = @"
-<?xml version="1.0" encoding="utf-8"?>
-<Package
-  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
-  <Identity Name="FireworksApp" Publisher="$( $env:PACKAGE_CERT_SUBJECT )" Version="$( $env:APPX_VERSION )" ProcessorArchitecture="x64" />
-  <Properties>
-    <DisplayName>FireworksApp</DisplayName>
-    <PublisherDisplayName>FireworksApp</PublisherDisplayName>
-    <Logo>Assets\Square150x150Logo.png</Logo>
-  </Properties>
-  <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxTestedVersion="10.0.22631.0" />
-  </Dependencies>
-  <Resources>
-    <Resource Language="en-us" />
-  </Resources>
-  <Applications>
-    <Application Id="App" Executable="FireworksApp.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="FireworksApp"
-        Description="Fireworks simulation"
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png" />
-    </Application>
-  </Applications>
-  <Capabilities>
-    <rescap:Capability Name="runFullTrust" />
-  </Capabilities>
-</Package>
-"@
-          $manifest | Set-Content -Path $manifestPath -Encoding UTF8
+          $manifest = @(
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<Package'
+            '  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"'
+            '  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"'
+            '  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"'
+            '  IgnorableNamespaces="uap rescap">'
+            "  <Identity Name=\"FireworksApp\" Publisher=\"$($env:PACKAGE_CERT_SUBJECT)\" Version=\"$($env:APPX_VERSION)\" ProcessorArchitecture=\"x64\" />"
+            '  <Properties>'
+            '    <DisplayName>FireworksApp</DisplayName>'
+            '    <PublisherDisplayName>FireworksApp</PublisherDisplayName>'
+            '    <Logo>Assets\Square150x150Logo.png</Logo>'
+            '  </Properties>'
+            '  <Dependencies>'
+            '    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxTestedVersion="10.0.22631.0" />'
+            '  </Dependencies>'
+            '  <Resources>'
+            '    <Resource Language="en-us" />'
+            '  </Resources>'
+            '  <Applications>'
+            '    <Application Id="App" Executable="FireworksApp.exe" EntryPoint="Windows.FullTrustApplication">'
+            '      <uap:VisualElements'
+            '        DisplayName="FireworksApp"'
+            '        Description="Fireworks simulation"'
+            '        BackgroundColor="transparent"'
+            '        Square150x150Logo="Assets\Square150x150Logo.png"'
+            '        Square44x44Logo="Assets\Square44x44Logo.png" />'
+            '    </Application>'
+            '  </Applications>'
+            '  <Capabilities>'
+            '    <rescap:Capability Name="runFullTrust" />'
+            '  </Capabilities>'
+            '</Package>'
+          ) -join [Environment]::NewLine
+
+          Set-Content -Path $manifestPath -Value $manifest -Encoding UTF8
 
       - name: Create MSIX package
         shell: pwsh
