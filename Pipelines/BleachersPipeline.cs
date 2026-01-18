@@ -12,6 +12,21 @@ namespace FireworksApp.Rendering;
 
 internal sealed class BleachersPipeline : IDisposable
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct BleacherVertex
+    {
+        public readonly Vector3 Position;
+        public readonly Vector3 Normal;
+        public readonly uint FigureId;
+
+        public BleacherVertex(Vector3 position, Vector3 normal, uint figureId)
+        {
+            Position = position;
+            Normal = normal;
+            FigureId = figureId;
+        }
+    }
+
     private ID3D11VertexShader? _vs;
     private ID3D11PixelShader? _ps;
     private ID3D11InputLayout? _inputLayout;
@@ -54,14 +69,15 @@ internal sealed class BleachersPipeline : IDisposable
         var elements = new[]
         {
             new InputElementDescription("POSITION", 0, Format.R32G32B32_Float, 0, 0),
-            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0)
+            new InputElementDescription("NORMAL", 0, Format.R32G32B32_Float, 12, 0),
+            new InputElementDescription("TEXCOORD", 0, Format.R32_UInt, 24, 0)
         };
         _inputLayout = device.CreateInputLayout(elements, vsBytes);
 
         var verts = BuildGeometry();
         _vertexCount = verts.Length;
 
-        int stride = Marshal.SizeOf<GroundVertex>();
+        int stride = Marshal.SizeOf<BleacherVertex>();
         _vb?.Dispose();
         _vb = device.CreateBuffer(
             verts,
@@ -88,7 +104,7 @@ internal sealed class BleachersPipeline : IDisposable
         if (_vs is null || _ps is null || _vb is null || _inputLayout is null)
             return;
 
-        int stride = Marshal.SizeOf<GroundVertex>();
+        int stride = Marshal.SizeOf<BleacherVertex>();
         uint[] strides = new[] { (uint)stride };
         uint[] offsets = new[] { 0u };
         var buffers = new[] { _vb };
@@ -126,10 +142,10 @@ internal sealed class BleachersPipeline : IDisposable
         }
     }
 
-    private static GroundVertex[] BuildGeometry()
+    private static BleacherVertex[] BuildGeometry()
     {
         float halfWidth = WidthMeters * 0.5f;
-        var verts = new List<GroundVertex>(RowCount * 36 + 48000);
+        var verts = new List<BleacherVertex>(RowCount * 36 + 48000);
 
         for (int i = 0; i < RowCount; i++)
         {
@@ -174,11 +190,12 @@ internal sealed class BleachersPipeline : IDisposable
         return verts.ToArray();
     }
 
-    private static void AddAudience(List<GroundVertex> verts, float halfWidth)
+    private static void AddAudience(List<BleacherVertex> verts, float halfWidth)
     {
         var rng = new Random(AudienceSeed);
         var variants = CreateSilhouetteVariants();
         var standingIndex = variants.Count - 1;
+        uint figureId = 1;
 
         for (int row = 0; row < RowCount; row++)
         {
@@ -209,7 +226,8 @@ internal sealed class BleachersPipeline : IDisposable
                     var translation = Matrix4x4.CreateTranslation(x + jitterX, rowY, seatZ + jitterZ);
                     var transform = scaleM * rotation * translation;
 
-                    AppendVariant(verts, baseVerts, transform, rotation);
+                    AppendVariant(verts, baseVerts, transform, rotation, figureId);
+                    figureId++;
                     x += spacing;
                 }
                 else
@@ -221,9 +239,9 @@ internal sealed class BleachersPipeline : IDisposable
         }
     }
 
-    private static List<GroundVertex[]> CreateSilhouetteVariants()
+    private static List<BleacherVertex[]> CreateSilhouetteVariants()
     {
-        var list = new List<GroundVertex[]>();
+        var list = new List<BleacherVertex[]>();
 
         list.Add(BuildSeatedVariant(0.0f, 0.10f, headOffsetZ: -0.05f));
         list.Add(BuildSeatedVariant(-0.05f, -0.05f, headOffsetZ: -0.08f));
@@ -235,9 +253,9 @@ internal sealed class BleachersPipeline : IDisposable
         return list;
     }
 
-    private static GroundVertex[] BuildSeatedVariant(float torsoLeanZ, float torsoShiftZ, float headOffsetZ, float hatHeight = 0.0f)
+    private static BleacherVertex[] BuildSeatedVariant(float torsoLeanZ, float torsoShiftZ, float headOffsetZ, float hatHeight = 0.0f)
     {
-        var v = new List<GroundVertex>(120);
+        var v = new List<BleacherVertex>(120);
 
         const float seatHeight = 0.12f;
         const float seatDepth = 0.35f;
@@ -277,9 +295,9 @@ internal sealed class BleachersPipeline : IDisposable
         return v.ToArray();
     }
 
-    private static GroundVertex[] BuildStandingVariant()
+    private static BleacherVertex[] BuildStandingVariant()
     {
-        var v = new List<GroundVertex>(90);
+        var v = new List<BleacherVertex>(90);
 
         const float width = 0.45f;
         const float legHeight = 1.0f;
@@ -302,26 +320,26 @@ internal sealed class BleachersPipeline : IDisposable
         return v.ToArray();
     }
 
-    private static void AppendVariant(List<GroundVertex> dest, ReadOnlySpan<GroundVertex> variant, in Matrix4x4 transform, in Matrix4x4 rotation)
+    private static void AppendVariant(List<BleacherVertex> dest, ReadOnlySpan<BleacherVertex> variant, in Matrix4x4 transform, in Matrix4x4 rotation, uint figureId)
     {
         for (int i = 0; i < variant.Length; i++)
         {
             var p = Vector3.Transform(variant[i].Position, transform);
             var n = Vector3.TransformNormal(variant[i].Normal, rotation);
-            dest.Add(new GroundVertex(p, n));
+            dest.Add(new BleacherVertex(p, n, figureId));
         }
     }
 
-    private static void AddBoxUnlit(List<GroundVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1)
+    private static void AddBoxUnlit(List<BleacherVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1, uint figureId = 0)
     {
         // Normals set to zero to keep silhouettes dark (ambient only).
         var n = Vector3.Zero;
-        AddQuad(verts, new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1), n);
-        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0), n);
-        AddQuad(verts, new Vector3(x0, y0, z0), new Vector3(x1, y0, z0), new Vector3(x1, y1, z0), new Vector3(x0, y1, z0), n);
-        AddQuad(verts, new Vector3(x1, y0, z1), new Vector3(x0, y0, z1), new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), n);
-        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x0, y0, z0), new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), n);
-        AddQuad(verts, new Vector3(x1, y0, z0), new Vector3(x1, y0, z1), new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), n);
+        AddQuad(verts, new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1), n, figureId);
+        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0), n, figureId);
+        AddQuad(verts, new Vector3(x0, y0, z0), new Vector3(x1, y0, z0), new Vector3(x1, y1, z0), new Vector3(x0, y1, z0), n, figureId);
+        AddQuad(verts, new Vector3(x1, y0, z1), new Vector3(x0, y0, z1), new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), n, figureId);
+        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x0, y0, z0), new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), n, figureId);
+        AddQuad(verts, new Vector3(x1, y0, z0), new Vector3(x1, y0, z1), new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), n, figureId);
     }
 
     private static float Lerp(float a, float b, float t)
@@ -329,7 +347,7 @@ internal sealed class BleachersPipeline : IDisposable
         return a + (b - a) * t;
     }
 
-    private static void AddBox(List<GroundVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1)
+    private static void AddBox(List<BleacherVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1, uint figureId = 0)
     {
         var p000 = new Vector3(x0, y0, z0);
         var p100 = new Vector3(x1, y0, z0);
@@ -342,28 +360,28 @@ internal sealed class BleachersPipeline : IDisposable
         var p111 = new Vector3(x1, y1, z1);
 
         // Top (+Y)
-        AddQuad(verts, p010, p110, p111, p011, Vector3.UnitY);
+        AddQuad(verts, p010, p110, p111, p011, Vector3.UnitY, figureId);
         // Bottom (-Y)
-        AddQuad(verts, p001, p101, p100, p000, -Vector3.UnitY);
+        AddQuad(verts, p001, p101, p100, p000, -Vector3.UnitY, figureId);
         // Front (-Z, pad-facing edge at z0)
-        AddQuad(verts, p000, p100, p110, p010, -Vector3.UnitZ);
+        AddQuad(verts, p000, p100, p110, p010, -Vector3.UnitZ, figureId);
         // Back (+Z)
-        AddQuad(verts, p101, p001, p011, p111, Vector3.UnitZ);
+        AddQuad(verts, p101, p001, p011, p111, Vector3.UnitZ, figureId);
         // Left (-X)
-        AddQuad(verts, p001, p000, p010, p011, -Vector3.UnitX);
+        AddQuad(verts, p001, p000, p010, p011, -Vector3.UnitX, figureId);
         // Right (+X)
-        AddQuad(verts, p100, p101, p111, p110, Vector3.UnitX);
+        AddQuad(verts, p100, p101, p111, p110, Vector3.UnitX, figureId);
     }
 
-    private static void AddQuad(List<GroundVertex> verts, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 normal)
+    private static void AddQuad(List<BleacherVertex> verts, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 normal, uint figureId)
     {
-        verts.Add(new GroundVertex(p0, normal));
-        verts.Add(new GroundVertex(p1, normal));
-        verts.Add(new GroundVertex(p2, normal));
+        verts.Add(new BleacherVertex(p0, normal, figureId));
+        verts.Add(new BleacherVertex(p1, normal, figureId));
+        verts.Add(new BleacherVertex(p2, normal, figureId));
 
-        verts.Add(new GroundVertex(p0, normal));
-        verts.Add(new GroundVertex(p2, normal));
-        verts.Add(new GroundVertex(p3, normal));
+        verts.Add(new BleacherVertex(p0, normal, figureId));
+        verts.Add(new BleacherVertex(p2, normal, figureId));
+        verts.Add(new BleacherVertex(p3, normal, figureId));
     }
 
     private static void UploadObjectConstants(ID3D11DeviceContext context, ID3D11Buffer? objectCB, in Matrix4x4 world, in Matrix4x4 view, in Matrix4x4 proj)
