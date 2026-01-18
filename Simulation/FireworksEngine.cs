@@ -1573,12 +1573,19 @@ public sealed class FireworksEngine
             float speed = p.CometSpeedMin + u * (p.CometSpeedMax - p.CometSpeedMin);
             Vector3 vel = dir * speed;
 
+            float lifetime = p.CometLifetimeSeconds;
+            if (p.CometLifetimeJitterSeconds > 0.0f)
+            {
+                float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.CometLifetimeJitterSeconds;
+                lifetime = MathF.Max(0.05f, lifetime + jitter);
+            }
+
             _comets.Add(new Comet
             {
                 Position = origin,
                 Velocity = vel,
                 Age = 0.0f,
-                LifetimeSeconds = p.CometLifetimeSeconds,
+                LifetimeSeconds = lifetime,
                 Alive = true,
                 GravityScale = p.CometGravityScale,
                 Drag = p.CometDrag,
@@ -2364,6 +2371,10 @@ public sealed class FireworksEngine
             if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
                 childScheme = pending.ColorScheme;
 
+            var burstOverride = childProfile.BurstShape == FireworkBurstShape.Willow
+                ? FireworkBurstShape.Willow
+                : (FireworkBurstShape?)null;
+
             var child = new FireworkShell(
                 childProfile,
                 childScheme,
@@ -2374,7 +2385,7 @@ public sealed class FireworksEngine
             {
                 SubshellDepth = 1,
                 ParentShellId = null,
-                BurstShapeOverride = FireworkBurstShape.Willow,
+                BurstShapeOverride = burstOverride,
                 ShellId = _nextShellId++
             };
 

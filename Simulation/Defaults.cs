@@ -70,6 +70,7 @@ internal static class DefaultIds
     public const string shellPalmId = "palm";
     public const string shellDonutId = "donut";
     public const string shellHorsetailGoldId = "horsetail_gold";
+    public const string shellCometGoldStreakId = "comet_gold_streak";
     public const string shellDoubleRingId = "double_ring";
     public const string shellSpiralId = "spiral";
     public const string shellFishId = "fish";
@@ -85,6 +86,7 @@ internal static class DefaultIds
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
     public const string subshellRingSparkleId = "subshell_ring_sparkle";
     public const string subshellCracklePeonyId = "subshell_crackle_peony";
+    public const string subshellHorsetailCometId = "subshell_horsetail_comet";
 
     public const string groundFountainWarmId = "fountain_warm";
     public const string groundSpinnerNeonId = "spinner_neon";
@@ -338,16 +340,33 @@ public static class DefaultProfiles
 
             [shellHorsetailGoldId] = ShellPresets.Create(
                 id: shellHorsetailGoldId,
-                burstShape: FireworkBurstShape.Horsetail,
+                burstShape: FireworkBurstShape.PeonyToWillow,
                 colorSchemeId: schemeGold,
                 fuseTimeSeconds: 3.2f,             // whatever works with your canister
-                explosionRadius: 45.0f,
-                particleCount: 4000,
-                particleLifetimeSeconds: 1.5f,
-                burstSparkleRateHz: 6.0f,
-                burstSparkleIntensity: 0.20f,
-                ringAxis: Vector3.UnitY,
-                ringAxisRandomTiltDegrees: 25.0f),
+                explosionRadius: 20.0f,
+                particleCount: 220,
+                particleLifetimeSeconds: 1.2f,
+                burstSparkleRateHz: 3.0f,
+                burstSparkleIntensity: 0.18f,
+                emission: BurstEmissionSettings.Defaults with
+                {
+                    WillowDownwardBlend = 0.72f,
+                },
+                peonyToWillow: PeonyToWillowParams.Defaults with
+                {
+                    HandoffDelaySeconds = 0.08f,
+                    HandoffFraction = 0.22f,
+                    HandoffRandomness = 0.28f,
+                    WillowSubshellProfileId = subshellHorsetailCometId,
+                    WillowVelocityScale = 0.30f,
+                    WillowGravityMultiplier = 2.6f,
+                    WillowDragMultiplier = 2.4f,
+                    // Keep streaks one-stage: trigger subshell burst immediately instead of a long pre-trail.
+                    WillowLifetimeMultiplier = 0.0f,
+                    WillowBrightnessBoost = 1.10f,
+                    WillowTrailSpawnRate = 0.0f,
+                    WillowTrailSpeed = 1.9f
+                }),
 
             [shellDoubleRingId] = ShellPresets.Create(
                 id: shellDoubleRingId,
@@ -423,6 +442,39 @@ public static class DefaultProfiles
                 suppressBurst: true,
                 terminalFadeOutSeconds: 1.5f,
                 trailProfile: ShellTrailPresets.WillowLingering),
+
+            // Sub-comet shell for horsetail streaks: slow, gold, lingering trails.
+            [shellCometGoldStreakId] = ShellPresets.Create(
+                id: shellCometGoldStreakId,
+                burstShape: FireworkBurstShape.Comet,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 1.0f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                trailProfile: ShellTrailPresets.WillowLingering,
+                comet: CometParams.Defaults with
+                {
+                    CometCount = 1,
+                    CometSpeedMin = 8.0f,
+                    CometSpeedMax = 12.0f,
+                    CometUpBias = 0.05f,
+                    CometGravityScale = 1.10f,
+                    CometDrag = 0.08f,
+                    CometLifetimeSeconds = 3.6f,
+                    CometLifetimeJitterSeconds = 1.0f,
+                    TrailParticleCount = 14,
+                    TrailParticleLifetime = 1.1f,
+                    TrailSpeed = 3.2f,
+                    TrailSmokeChance = 0.22f,
+                    TrailColor = null,
+                    SubShellProfileId = null,
+                    SubShellDelaySeconds = null,
+                    SubShellDelayJitterSeconds = 0.0f
+                }
+            ),
 
             [shellPeonyToWillowId] = ShellPresets.Create(
                 id: shellPeonyToWillowId,
@@ -622,6 +674,20 @@ public static class DefaultProfiles
                 speedJitter: 0.22f,
                 positionJitter: 0.5f,
                 childTimeScale: 0.9f,
+                maxSubshellDepth: 1),
+
+            [subshellHorsetailCometId] = SubShellPresets.Sphere(
+                id: subshellHorsetailCometId,
+                shellProfileId: shellCometGoldStreakId,
+                count: 6,
+                minAltitudeToSpawn: 5.0f,
+                delaySeconds: 0.15f,
+                inheritParentVelocity: 0.12f,
+                addedSpeed: 8.0f,
+                directionJitter: 0.10f,
+                speedJitter: 0.18f,
+                positionJitter: 0.45f,
+                childTimeScale: 1.0f,
                 maxSubshellDepth: 1)
         };
 
@@ -890,7 +956,7 @@ public static class DefaultShow
                 //shellId = "spoke_wheel_pop";
                 // shellId = "peony_to_willow";
                 //shellId = shellFishId;
-                //shellId = (j % 2 == 0)? shellCracklePeonyId : shellCometCrackleId;
+                shellId = (j % 2 == 0)? shellCracklePeonyId : shellHorsetailGoldId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
