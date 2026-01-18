@@ -141,11 +141,14 @@ jobs:
               [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal
             $g.FillRectangle($bg, $rect)
 
-            $glow = New-Object System.Drawing.Drawing2D.PathGradientBrush (@(New-Object System.Drawing.PointF 0,0))
+            $glowPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $glowPath.AddEllipse($size * 0.2, $size * 0.18, $size * 0.6, $size * 0.6)
+            $glow = New-Object System.Drawing.Drawing2D.PathGradientBrush $glowPath
             $glow.CenterColor = [System.Drawing.Color]::FromArgb(120, 255, 210, 120)
             $glow.SurroundColors = ,([System.Drawing.Color]::FromArgb(0, 255, 210, 120))
-            $g.FillEllipse($glow, $size * 0.2, $size * 0.18, $size * 0.6, $size * 0.6)
+            $g.FillPath($glow, $glowPath)
             $glow.Dispose()
+            $glowPath.Dispose()
 
             $palette = @(
               [System.Drawing.Color]::FromArgb(255, 255, 214, 102),
