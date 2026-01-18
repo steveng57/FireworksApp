@@ -47,6 +47,15 @@ jobs:
 
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+          $parts = $version.Split('.')
+          if ($parts.Length -lt 4) {
+            $appxVersion = "$version.0"
+          } else {
+            $appxVersion = $version
+          }
+
+          "APPX_VERSION=$appxVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Publish (self-contained, single-file)
         run: >-
           dotnet publish ${{ env.PROJECT_PATH }}
@@ -73,15 +82,93 @@ jobs:
             Copy-Item -Path "Shaders" -Destination dist -Recurse -Force
           }
 
-      - name: Zip artifact
+      - name: Create self-signed certificate for MSIX
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = "${{ env.VERSION }}"
-          $zipName = "FireworksApp-$version-${{ env.RUNTIME }}.zip"
-          if (Test-Path $zipName) { Remove-Item $zipName -Force }
-          Compress-Archive -Path dist\* -DestinationPath $zipName
-          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $certSubject = 'CN=FireworksApp Temporary'
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $certSubject -FriendlyName 'FireworksApp CI MSIX' -CertStoreLocation Cert:\CurrentUser\My
+
+          $certPassword = [Guid]::NewGuid().ToString()
+          $certPath = Join-Path $env:RUNNER_TEMP 'msix-cert.pfx'
+
+          Export-PfxCertificate -Cert $cert -FilePath $certPath -Password (ConvertTo-SecureString $certPassword -AsPlainText -Force) | Out-Null
+
+          "PACKAGE_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_CERT_PASSWORD=$certPassword" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_CERT_SUBJECT=$certSubject" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Generate MSIX layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assets = Join-Path "dist" "Assets"
+          New-Item -ItemType Directory -Path $assets -Force | Out-Null
+
+          Add-Type -AssemblyName System.Drawing
+          function New-Logo($path, $size) {
+            $bmp = New-Object System.Drawing.Bitmap $size, $size
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.Clear([System.Drawing.Color]::FromArgb(255, 30, 46, 110))
+            $g.FillEllipse([System.Drawing.Brushes]::White, $size * 0.2, $size * 0.2, $size * 0.6, $size * 0.6)
+            $g.Dispose()
+            $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+            $bmp.Dispose()
+          }
+
+          New-Logo (Join-Path $assets 'Square150x150Logo.png') 150
+          New-Logo (Join-Path $assets 'Square44x44Logo.png') 44
+
+          $manifestPath = Join-Path "dist" "AppxManifest.xml"
+          $manifest = @"
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+  <Identity Name="FireworksApp" Publisher="${{ env.PACKAGE_CERT_SUBJECT }}" Version="${{ env.APPX_VERSION }}" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>FireworksApp</DisplayName>
+    <PublisherDisplayName>FireworksApp</PublisherDisplayName>
+    <Logo>Assets\Square150x150Logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxTestedVersion="10.0.22631.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="FireworksApp.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="FireworksApp"
+        Description="Fireworks simulation"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
+"@
+          $manifest | Set-Content -Path $manifestPath -Encoding UTF8
+
+      - name: Create MSIX package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msixName = "FireworksApp-${{ env.VERSION }}-${{ env.RUNTIME }}.msix"
+          $msixPath = Join-Path $pwd $msixName
+
+          & makeappx.exe pack /d dist /p $msixPath /o
+
+          & signtool.exe sign /fd SHA256 /f "${{ env.PACKAGE_CERT_PATH }}" /p "${{ env.PACKAGE_CERT_PASSWORD }}" $msixPath
+
+          "MSIX_NAME=$msixName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -90,4 +177,4 @@ jobs:
           name: FireworksApp v${{ env.VERSION }}
           generate_release_notes: true
           files: |
-            ${{ env.ZIP_NAME }}
+            ${{ env.MSIX_NAME }}
