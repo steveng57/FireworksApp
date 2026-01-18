@@ -127,18 +127,79 @@ jobs:
           New-Item -ItemType Directory -Path $assets -Force | Out-Null
 
           Add-Type -AssemblyName System.Drawing
-          function New-Logo($path, $size) {
+          Add-Type -AssemblyName System.Drawing.Drawing2D
+
+          function New-FireworksLogo($path, $size) {
             $bmp = New-Object System.Drawing.Bitmap $size, $size
             $g = [System.Drawing.Graphics]::FromImage($bmp)
-            $g.Clear([System.Drawing.Color]::FromArgb(255, 30, 46, 110))
-            $g.FillEllipse([System.Drawing.Brushes]::White, $size * 0.2, $size * 0.2, $size * 0.6, $size * 0.6)
+            $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+
+            $rect = New-Object System.Drawing.Rectangle 0, 0, $size, $size
+            $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect,
+              ([System.Drawing.Color]::FromArgb(255, 10, 12, 40)),
+              ([System.Drawing.Color]::FromArgb(255, 35, 60, 150)),
+              [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal
+            $g.FillRectangle($bg, $rect)
+
+            $glowPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $glowPath.AddEllipse($size * 0.2, $size * 0.18, $size * 0.6, $size * 0.6)
+            $glow = New-Object System.Drawing.Drawing2D.PathGradientBrush $glowPath
+            $glow.CenterColor = [System.Drawing.Color]::FromArgb(120, 255, 210, 120)
+            $glow.SurroundColors = ,([System.Drawing.Color]::FromArgb(0, 255, 210, 120))
+            $g.FillPath($glow, $glowPath)
+            $glow.Dispose()
+            $glowPath.Dispose()
+
+            $palette = @(
+              [System.Drawing.Color]::FromArgb(255, 255, 214, 102),
+              [System.Drawing.Color]::FromArgb(255, 255, 100, 80),
+              [System.Drawing.Color]::FromArgb(255, 120, 220, 255),
+              [System.Drawing.Color]::FromArgb(255, 170, 255, 200)
+            )
+
+            function Add-Burst($g, $cx, $cy, $radius, $segments, $color, $sparkSize) {
+              for ($i = 0; $i -lt $segments; $i++) {
+                $angle = (360.0 / $segments) * $i
+                $rad = $angle * [System.Math]::PI / 180.0
+                $x = $cx + [System.Math]::Cos($rad) * $radius
+                $y = $cy + [System.Math]::Sin($rad) * $radius
+                $pen = New-Object System.Drawing.Pen $color, ($sparkSize * 0.7)
+                $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+                $g.DrawLine($pen, $cx, $cy, $x, $y)
+                $pen.Dispose()
+
+                $sparkRect = New-Object System.Drawing.RectangleF ($x - $sparkSize/2), ($y - $sparkSize/2), $sparkSize, $sparkSize
+                $g.FillEllipse((New-Object System.Drawing.SolidBrush $color), $sparkRect)
+              }
+            }
+
+            $center = $size * 0.5
+            $g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(160, 255, 255, 255))),
+              $center - $size * 0.05, $center - $size * 0.05, $size * 0.1, $size * 0.1)
+
+            Add-Burst $g ($center - $size * 0.12) ($center - $size * 0.1) ($size * 0.28) 20 $palette[0] ($size * 0.02)
+            Add-Burst $g $center ($center + $size * 0.05) ($size * 0.32) 24 $palette[1] ($size * 0.018)
+            Add-Burst $g ($center + $size * 0.14) ($center - $size * 0.12) ($size * 0.24) 18 $palette[2] ($size * 0.016)
+
+            $trailPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(120, 255, 255, 255)), ($size * 0.01)
+            $trailPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $trailPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+            $g.DrawCurve($trailPen, @(
+              New-Object System.Drawing.PointF ($center - $size * 0.22), ($size * 0.85),
+              New-Object System.Drawing.PointF ($center - $size * 0.18), ($center + $size * 0.2),
+              New-Object System.Drawing.PointF ($center - $size * 0.05), ($center + $size * 0.08),
+              New-Object System.Drawing.PointF $center, ($center - $size * 0.08)
+            ))
+            $trailPen.Dispose()
+
             $g.Dispose()
             $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
             $bmp.Dispose()
           }
 
-          New-Logo (Join-Path $assets 'Square150x150Logo.png') 150
-          New-Logo (Join-Path $assets 'Square44x44Logo.png') 44
+          New-FireworksLogo (Join-Path $assets 'Square150x150Logo.png') 150
+          New-FireworksLogo (Join-Path $assets 'Square44x44Logo.png') 44
 
           $manifestPath = Join-Path "dist" "AppxManifest.xml"
           $publisher = $env:PACKAGE_CERT_SUBJECT
