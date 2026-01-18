@@ -194,6 +194,21 @@ jobs:
           "MSIX_NAME=$msixName" | Out-File -FilePath $env:GITHUB_ENV -Append
           "MSIX_PATH=$msixPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Export public signing certificate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $password = ConvertTo-SecureString "${{ env.PACKAGE_CERT_PASSWORD }}" -AsPlainText -Force
+          $certs = Import-PfxCertificate -FilePath "${{ env.PACKAGE_CERT_PATH }}" -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if (-not $certs) { throw "Failed to import PFX for export" }
+
+          $leaf = $certs | Where-Object { $_.HasPrivateKey -and $_.Subject -eq "${{ env.PACKAGE_CERT_SUBJECT }}" } | Select-Object -First 1
+          if (-not $leaf) { $leaf = $certs | Where-Object { $_.HasPrivateKey } | Select-Object -First 1 }
+          if (-not $leaf) { throw "No leaf certificate with private key found in imported PFX" }
+
+          $cerPath = Join-Path $pwd 'FireworksApp.cer'
+          Export-Certificate -Cert $leaf -FilePath $cerPath -Force | Out-Null
+          "CER_PATH=$cerPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -202,3 +217,4 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ env.MSIX_PATH }}
+            ${{ env.CER_PATH }}
