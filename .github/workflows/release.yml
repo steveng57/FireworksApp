@@ -11,6 +11,9 @@ env:
   CONFIGURATION: Release
   RUNTIME: win-x64
   PUBLISH_DIR: bin/Release/net10.0-windows/win-x64/publish
+  PACKAGE_CERT_SUBJECT: ${{ secrets.MSIX_PUBLISHER_SUBJECT }}
+  PACKAGE_CERT_PASSWORD: ${{ secrets.MSIX_CERT_PASSWORD }}
+  PACKAGE_CERT_PFX_BASE64: ${{ secrets.MSIX_CERT_PFX_BASE64 }}
 
 jobs:
   build-publish-release:
@@ -82,22 +85,25 @@ jobs:
             Copy-Item -Path "Shaders" -Destination dist -Recurse -Force
           }
 
-      - name: Create self-signed certificate for MSIX
+      - name: Load signing certificate (persistent)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $certSubject = 'CN=FireworksApp Temporary'
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $certSubject -FriendlyName 'FireworksApp CI MSIX' -CertStoreLocation Cert:\CurrentUser\My
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PFX_BASE64)) {
+            throw "Missing secret: MSIX_CERT_PFX_BASE64"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_PASSWORD)) {
+            throw "Missing secret: MSIX_CERT_PASSWORD"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PACKAGE_CERT_SUBJECT)) {
+            throw "Missing secret: MSIX_PUBLISHER_SUBJECT"
+          }
 
-          $certPassword = [Guid]::NewGuid().ToString()
           $certPath = Join-Path $env:RUNNER_TEMP 'msix-cert.pfx'
-
-          Export-PfxCertificate -Cert $cert -FilePath $certPath -Password (ConvertTo-SecureString $certPassword -AsPlainText -Force) | Out-Null
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:PACKAGE_CERT_PFX_BASE64))
 
           "PACKAGE_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PACKAGE_CERT_PASSWORD=$certPassword" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PACKAGE_CERT_SUBJECT=$certSubject" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Generate MSIX layout
         shell: pwsh
