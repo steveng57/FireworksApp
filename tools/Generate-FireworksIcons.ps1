@@ -10,7 +10,33 @@ $assets = Join-Path $repo 'Assets/Branding'
 New-Item -ItemType Directory -Path $assets -Force | Out-Null
 
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Drawing.Drawing2D
+
+function Add-FireworksBurst {
+    param(
+        [Parameter(Mandatory)] $Graphics,
+        [Parameter(Mandatory)] [double] $Cx,
+        [Parameter(Mandatory)] [double] $Cy,
+        [Parameter(Mandatory)] [double] $Radius,
+        [Parameter(Mandatory)] [int] $Segments,
+        [Parameter(Mandatory)] $Color,
+        [Parameter(Mandatory)] [double] $SparkSize
+    )
+
+    for ($i = 0; $i -lt $Segments; $i++) {
+        $angle = (360.0 / $Segments) * $i
+        $rad = $angle * [System.Math]::PI / 180.0
+        $x = $Cx + [System.Math]::Cos($rad) * $Radius
+        $y = $Cy + [System.Math]::Sin($rad) * $Radius
+        $pen = New-Object System.Drawing.Pen $Color, ($SparkSize * 0.7)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $Graphics.DrawLine($pen, $Cx, $Cy, $x, $y)
+        $pen.Dispose()
+
+        $sparkRect = New-Object System.Drawing.RectangleF ($x - $SparkSize/2), ($y - $SparkSize/2), $SparkSize, $SparkSize
+        $Graphics.FillEllipse((New-Object System.Drawing.SolidBrush $Color), $sparkRect)
+    }
+}
 
 function New-FireworksBitmap {
     param(
@@ -21,10 +47,12 @@ function New-FireworksBitmap {
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 
     $rect = New-Object System.Drawing.Rectangle 0, 0, $Size, $Size
-    $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect,
-        ([System.Drawing.Color]::FromArgb(255, 8, 10, 30)),
-        ([System.Drawing.Color]::FromArgb(255, 40, 70, 160)),
+    $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush -ArgumentList @(
+        $rect,
+        [System.Drawing.Color]::FromArgb(255, 8, 10, 30),
+        [System.Drawing.Color]::FromArgb(255, 40, 70, 160),
         [System.Drawing.Drawing2D.LinearGradientMode]::ForwardDiagonal
+    )
     $g.FillRectangle($bg, $rect)
     $bg.Dispose()
 
@@ -44,40 +72,24 @@ function New-FireworksBitmap {
         [System.Drawing.Color]::FromArgb(255, 180, 255, 200)
     )
 
-    function Add-Burst($g, $cx, $cy, $radius, $segments, $color, $sparkSize) {
-        for ($i = 0; $i -lt $segments; $i++) {
-            $angle = (360.0 / $segments) * $i
-            $rad = $angle * [System.Math]::PI / 180.0
-            $x = $cx + [System.Math]::Cos($rad) * $radius
-            $y = $cy + [System.Math]::Sin($rad) * $radius
-            $pen = New-Object System.Drawing.Pen $color, ($sparkSize * 0.7)
-            $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-            $g.DrawLine($pen, $cx, $cy, $x, $y)
-            $pen.Dispose()
-
-            $sparkRect = New-Object System.Drawing.RectangleF ($x - $sparkSize/2), ($y - $sparkSize/2), $sparkSize, $sparkSize
-            $g.FillEllipse((New-Object System.Drawing.SolidBrush $color), $sparkRect)
-        }
-    }
-
     $center = $Size * 0.5
     $g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(170, 255, 255, 255))),
         $center - $Size * 0.05, $center - $Size * 0.05, $Size * 0.1, $Size * 0.1)
 
-    Add-Burst $g ($center - $Size * 0.12) ($center - $Size * 0.1) ($Size * 0.28) 20 $palette[0] ($Size * 0.02)
-    Add-Burst $g $center ($center + $Size * 0.05) ($Size * 0.32) 24 $palette[1] ($Size * 0.018)
-    Add-Burst $g ($center + $Size * 0.14) ($center - $Size * 0.12) ($Size * 0.24) 18 $palette[2] ($Size * 0.016)
+    Add-FireworksBurst -Graphics $g -Cx ($center - $Size * 0.12) -Cy ($center - $Size * 0.1) -Radius ($Size * 0.28) -Segments 20 -Color $palette[0] -SparkSize ($Size * 0.02)
+    Add-FireworksBurst -Graphics $g -Cx $center -Cy ($center + $Size * 0.05) -Radius ($Size * 0.32) -Segments 24 -Color $palette[1] -SparkSize ($Size * 0.018)
+    Add-FireworksBurst -Graphics $g -Cx ($center + $Size * 0.14) -Cy ($center - $Size * 0.12) -Radius ($Size * 0.24) -Segments 18 -Color $palette[2] -SparkSize ($Size * 0.016)
 
     $trailPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(130, 255, 255, 255)), ($Size * 0.01)
     $trailPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
     $trailPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $g.DrawCurve($trailPen, @(
-        New-Object System.Drawing.PointF ($center - $Size * 0.22), ($Size * 0.85),
-        New-Object System.Drawing.PointF ($center - $Size * 0.18), ($center + $Size * 0.2),
-        New-Object System.Drawing.PointF ($center - $Size * 0.05), ($center + $Size * 0.08),
-        New-Object System.Drawing.PointF $center, ($center - $Size * 0.08)
-    ))
+    $trailPoints = [System.Drawing.PointF[]]@(
+        [System.Drawing.PointF]::new($center - $Size * 0.22, $Size * 0.85)
+        [System.Drawing.PointF]::new($center - $Size * 0.18, $center + $Size * 0.2)
+        [System.Drawing.PointF]::new($center - $Size * 0.05, $center + $Size * 0.08)
+        [System.Drawing.PointF]::new($center, $center - $Size * 0.08)
+    )
+    $g.DrawCurve($trailPen, $trailPoints)
     $trailPen.Dispose()
 
     $g.Dispose()
