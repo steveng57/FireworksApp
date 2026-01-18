@@ -54,6 +54,7 @@ public sealed partial class D3D11Renderer
 
         DrawGround();
         DrawLaunchPad();
+        DrawBleachers();
         DrawCanisters(useInterpolatedState);
 
         DrawParticles(additive: true);
