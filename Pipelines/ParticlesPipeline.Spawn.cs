@@ -100,6 +100,68 @@ internal sealed partial class ParticlesPipeline
         return true;
     }
 
+    public bool QueueCrackleStarClusterCone(
+        int particleStart,
+        int count,
+        Vector3 baseDirection,
+        float coneAngleRadians,
+        Vector3 origin,
+        Vector4 baseColor,
+        float baseSpeed,
+        float microSpeedMulMin,
+        float microSpeedMulMax,
+        float microLifetimeMinSeconds,
+        float microLifetimeMaxSeconds,
+        float staggerMaxSeconds,
+        uint seed)
+    {
+        if (!CanGpuSpawn || count <= 0)
+            return false;
+
+        int maxCount = System.Math.Max(0, _capacity - particleStart);
+        if (maxCount <= 0)
+            return false;
+        count = System.Math.Min(count, maxCount);
+
+        Vector3 dir = baseDirection;
+        float lenSq = dir.LengthSquared();
+        if (lenSq < 1e-8f)
+            dir = Vector3.UnitY;
+        else
+            dir /= System.MathF.Sqrt(lenSq);
+
+        float angle = System.Math.Max(0.0f, coneAngleRadians);
+        float lifeMin = System.Math.Max(0.0f, microLifetimeMinSeconds);
+        float lifeMax = System.Math.Max(lifeMin, microLifetimeMaxSeconds);
+        float speedMulMin = System.Math.Max(0.0f, microSpeedMulMin);
+        float speedMulMax = System.Math.Max(speedMulMin, microSpeedMulMax);
+        float stagger = System.Math.Max(0.0f, staggerMaxSeconds);
+
+        var req = new GpuSpawnRequest
+        {
+            RequestKind = 6u,
+            ParticleStart = (uint)particleStart,
+            DirStart = 0,
+            Count = (uint)count,
+            Origin = origin,
+            Speed = baseSpeed,
+            ConeAngleRadians = angle,
+            Lifetime = lifeMin,
+            CrackleProbability = 0.0f,
+            SparkleRateHz = lifeMax,
+            SparkleIntensity = 0.0f,
+            Seed = seed,
+            _pad = dir,
+            TrailParamsX = (uint)BitConverter.SingleToUInt32Bits(speedMulMin),
+            TrailParamsY = (uint)BitConverter.SingleToUInt32Bits(speedMulMax),
+            TrailParamsZ = (uint)BitConverter.SingleToUInt32Bits(stagger),
+            BaseColor = baseColor
+        };
+
+        _pendingSpawnRequests.Add(req);
+        return true;
+    }
+
     public bool QueueTrailSpawn(
         int particleStart,
         int count,

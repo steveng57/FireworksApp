@@ -14,5 +14,6 @@ public enum FireworkBurstShape
     PeonyToWillow,
     FinaleSalute,
     Comet,
-    SubShellSpokeWheelPop
+    SubShellSpokeWheelPop,
+    CrackleStar
 }

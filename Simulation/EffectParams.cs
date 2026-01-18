@@ -12,13 +12,15 @@ public sealed record CometParams(
     float CometGravityScale,
     float CometDrag,
     float CometLifetimeSeconds,
+    float CometLifetimeJitterSeconds,
     int TrailParticleCount,
     float TrailParticleLifetime,
     float TrailSpeed,
     float TrailSmokeChance,
     Vector4? TrailColor,
     SubShellId? SubShellProfileId = null,
-    float? SubShellDelaySeconds = null)
+    float? SubShellDelaySeconds = null,
+    float SubShellDelayJitterSeconds = 0.0f)
 {
     public static CometParams Defaults { get; } = new(
         CometCount: 30,
@@ -28,13 +30,15 @@ public sealed record CometParams(
         CometGravityScale: 0.8f,
         CometDrag: 0.06f,
         CometLifetimeSeconds: 4.0f,
+        CometLifetimeJitterSeconds: 0.0f,
         TrailParticleCount: 8,
         TrailParticleLifetime: 0.5f,
         TrailSpeed: 4.0f,
         TrailSmokeChance: 0.20f,
         TrailColor: null,
         SubShellProfileId: null,
-        SubShellDelaySeconds: null);
+        SubShellDelaySeconds: null,
+        SubShellDelayJitterSeconds: 0.0f);
 }
 
 public sealed record SparklerLineTrailParams(
@@ -274,4 +278,30 @@ public sealed record PeonyToWillowParams(
         WillowBrightnessBoost: 1.1f,
         WillowTrailSpawnRate: 10f,
         WillowTrailSpeed: 2.5f);
+}
+
+public sealed record CrackleStarProfile(
+    float CrackleStarProbability,
+    int ClusterCountMin,
+    int ClusterCountMax,
+    float ClusterConeAngleDegrees,
+    float MicroSpeedMulMin,
+    float MicroSpeedMulMax,
+    float MicroLifetimeMinSeconds,
+    float MicroLifetimeMaxSeconds,
+    float ClusterStaggerMaxSeconds,
+    float NormalSparkMixProbability = 0.0f)
+{
+    public static CrackleStarProfile Defaults { get; } = new(
+        CrackleStarProbability: 0.18f,
+        ClusterCountMin: 6,
+        ClusterCountMax: 14,
+        ClusterConeAngleDegrees: 10.0f,
+        MicroSpeedMulMin: 0.55f,
+        MicroSpeedMulMax: 0.95f,
+        MicroLifetimeMinSeconds: 0.035f,
+        MicroLifetimeMaxSeconds: 0.11f,
+        ClusterStaggerMaxSeconds: 0.22f,
+        NormalSparkMixProbability: 0.10f
+    );
 }

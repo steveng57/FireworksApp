@@ -207,24 +207,6 @@ public readonly struct FishSubShellData
     public Vector4 TrailColor { get; }
 }
 
-    public readonly struct PendingWillowHandoff
-    {
-        public readonly float TriggerTime;
-        public readonly Vector3 Position;
-        public readonly Vector3 ParentVelocity;
-        public readonly PeonyToWillowParams Params;
-        public readonly ColorScheme ColorScheme;
-
-        public PendingWillowHandoff(float TriggerTime, Vector3 Position, Vector3 ParentVelocity, PeonyToWillowParams Params, ColorScheme ColorScheme)
-        {
-            this.TriggerTime = TriggerTime;
-            this.Position = Position;
-            this.ParentVelocity = ParentVelocity;
-            this.Params = Params;
-            this.ColorScheme = ColorScheme;
-        }
-    }
-
 public sealed class Comet
 {
     public Vector3 Position;
@@ -270,6 +252,71 @@ public sealed class FireworksEngine
 
     // Global time scaling: 1.0 = normal, 0.8 = 20% slower, etc.
     public float TimeScale { get; set; } = Tunables.DefaultTimeScale;
+
+    private readonly struct PendingWillowHandoff
+    {
+        public readonly float TriggerTime;
+        public readonly Vector3 Position;
+        public readonly Vector3 ParentVelocity;
+        public readonly PeonyToWillowParams Params;
+        public readonly ColorScheme ColorScheme;
+
+        public PendingWillowHandoff(float triggerTime, Vector3 position, Vector3 parentVelocity, PeonyToWillowParams @params, ColorScheme colorScheme)
+        {
+            TriggerTime = triggerTime;
+            Position = position;
+            ParentVelocity = parentVelocity;
+            Params = @params;
+            ColorScheme = colorScheme;
+        }
+    }
+
+    private void SpawnWillowSubshellsImmediate(Vector3 position, PeonyToWillowParams p, D3D11Renderer renderer)
+    {
+        if (!_profiles.SubShells.TryGetValue(p.WillowSubshellProfileId, out var subProf))
+            return;
+
+        if (!_profiles.Shells.TryGetValue(subProf.ShellProfileId, out var childProfile))
+            return;
+
+        var schemeId = subProf.ColorSchemeId ?? childProfile.ColorSchemeId;
+        if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
+            childScheme = _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default", new[] { System.Windows.Media.Colors.Gold }, 0.05f, 1.0f);
+
+        int count = Math.Max(1, subProf.Count);
+        var dirs = EmissionStyles.EmitWillow(count, BurstEmissionSettings.Defaults);
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            Vector3 dir = dirs[i];
+            Vector3 pos = position + EmissionStyles.RandomUnitVector() * p.PeonySpeedMax * 0.02f;
+            Vector3 vel = dir * (p.PeonySpeedMax * p.WillowVelocityScale);
+
+            var child = new FireworkShell(
+                childProfile,
+                childScheme,
+                pos,
+                vel,
+                dragK: ShellDragK * p.WillowDragMultiplier,
+                fuseOverrideSeconds: childProfile.FuseTimeSeconds * p.WillowLifetimeMultiplier)
+            {
+                SubshellDepth = 1,
+                ParentShellId = null,
+                BurstShapeOverride = null,
+                ShellId = _nextShellId++
+            };
+
+            if (renderer.ShellsGpuRendered)
+            {
+                _gpuShells[child.ShellId] = child;
+                renderer.QueueShellGpu(pos, vel, child.FuseTimeSeconds, ShellDragK * p.WillowDragMultiplier, ColorUtil.PickBaseColor(childScheme), child.ShellId);
+            }
+            else
+            {
+                _shells.Add(child);
+            }
+        }
+    }
 
     public FireworksEngine(FireworksProfileSet profiles)
     {
@@ -502,7 +549,9 @@ public sealed class FireworksEngine
 
         List<uint>? toRemove = null;
 
-        foreach (var kvp in _gpuShells)
+        // Iterate over a snapshot to avoid mutation during enumeration when explosions enqueue/removal.
+        var gpuShellSnapshot = _gpuShells.ToArray();
+        foreach (var kvp in gpuShellSnapshot)
         {
             var shell = kvp.Value;
 
@@ -527,6 +576,7 @@ public sealed class FireworksEngine
                     Comet: shell.Profile.CometParams,
                     SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                     Fish: shell.Profile.FishParams,
+                    CrackleStar: shell.Profile.CrackleStarProfile,
                     BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
                     PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -850,6 +900,11 @@ public sealed class FireworksEngine
             return false;
 
         float triggerTime = comet.Params.SubShellDelaySeconds ?? comet.LifetimeSeconds;
+        if (comet.Params.SubShellDelayJitterSeconds > 0.0f)
+        {
+            float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * comet.Params.SubShellDelayJitterSeconds;
+            triggerTime = MathF.Max(0.0f, triggerTime + jitter);
+        }
         if (comet.Age < triggerTime)
             return false;
 
@@ -1567,12 +1622,19 @@ public sealed class FireworksEngine
             float speed = p.CometSpeedMin + u * (p.CometSpeedMax - p.CometSpeedMin);
             Vector3 vel = dir * speed;
 
+            float lifetime = p.CometLifetimeSeconds;
+            if (p.CometLifetimeJitterSeconds > 0.0f)
+            {
+                float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.CometLifetimeJitterSeconds;
+                lifetime = MathF.Max(0.05f, lifetime + jitter);
+            }
+
             _comets.Add(new Comet
             {
                 Position = origin,
                 Velocity = vel,
                 Age = 0.0f,
-                LifetimeSeconds = p.CometLifetimeSeconds,
+                LifetimeSeconds = lifetime,
                 Alive = true,
                 GravityScale = p.CometGravityScale,
                 Drag = p.CometDrag,
@@ -2119,6 +2181,9 @@ public sealed class FireworksEngine
             float speed = 10.0f; // peony base speed
             float lifetime = explosion.ParticleLifetimeSeconds;
 
+            var crackleProfilePeony = explosion.CrackleStar;
+            float crackleProbabilityPeony = ComputeBaseCrackleProbability(crackleProfilePeony);
+
             renderer.SpawnBurstDirectedExplode(
                 explosion.Position,
                 baseColor,
@@ -2126,17 +2191,13 @@ public sealed class FireworksEngine
                 dirs,
                 particleLifetimeSeconds: lifetime,
                 sparkleRateHz: explosion.BurstSparkleRateHz,
-                sparkleIntensity: explosion.BurstSparkleIntensity);
+                sparkleIntensity: explosion.BurstSparkleIntensity,
+                crackleProbability: crackleProbabilityPeony);
+            SpawnCrackleStarClusters(renderer, explosion.Position, baseColor, dirs, speed, crackleProfilePeony);
             renderer.SpawnSmoke(explosion.Position);
 
-            // Schedule willow takeover
-            var p = explosion.PeonyToWillowParams;
-            _pendingWillow.Add(new PendingWillowHandoff(
-                TriggerTime: ShowTimeSeconds + MathF.Max(0.0f, p.HandoffDelaySeconds),
-                Position: explosion.Position,
-                ParentVelocity: Vector3.Zero,
-                Params: p,
-                ColorScheme: _profiles.ColorSchemes.Values.FirstOrDefault() ?? new ColorScheme("default", new[] { System.Windows.Media.Colors.Gold }, 0.05f, 1.0f)));
+            // Spawn willow subshells immediately for predictable comet streak counts.
+            SpawnWillowSubshellsImmediate(explosion.Position, explosion.PeonyToWillowParams, renderer);
 
             EmitSound(new SoundEvent(
                 SoundEventType.ShellBurst,
@@ -2246,6 +2307,9 @@ public sealed class FireworksEngine
             _ => explosion.ParticleLifetimeSeconds
         };
 
+        var crackleProfileDefault = explosion.CrackleStar;
+        float crackleProbabilityDefault = ComputeBaseCrackleProbability(crackleProfileDefault);
+
         renderer.SpawnBurstDirectedExplode(
             explosion.Position,
             baseColorDefault,
@@ -2253,7 +2317,9 @@ public sealed class FireworksEngine
             dirsDefault,
             particleLifetimeSeconds: lifetimeDefault,
             sparkleRateHz: explosion.BurstSparkleRateHz,
-            sparkleIntensity: explosion.BurstSparkleIntensity);
+            sparkleIntensity: explosion.BurstSparkleIntensity,
+            crackleProbability: crackleProbabilityDefault);
+        SpawnCrackleStarClusters(renderer, explosion.Position, baseColorDefault, dirsDefault, speedDefault, crackleProfileDefault);
         renderer.SpawnSmoke(explosion.Position);
 
         EmitSound(new SoundEvent(
@@ -2269,6 +2335,59 @@ public sealed class FireworksEngine
                 Position: explosion.Position,
                 Gain: System.Math.Clamp(explosion.BurstSparkleIntensity, 0.15f, 1.0f),
                 Loop: false));
+        }
+    }
+
+    private static float ComputeBaseCrackleProbability(CrackleStarProfile? profile)
+    {
+        const float defaultCrackleProbability = 0.22f;
+        if (profile is null)
+            return defaultCrackleProbability;
+
+        float mix = Math.Clamp(profile.NormalSparkMixProbability, 0.0f, 1.0f);
+        return defaultCrackleProbability * mix;
+    }
+
+    private void SpawnCrackleStarClusters(
+        D3D11Renderer renderer,
+        Vector3 position,
+        Vector4 baseColor,
+        ReadOnlySpan<Vector3> directions,
+        float baseSpeed,
+        CrackleStarProfile? crackleStar)
+    {
+        if (crackleStar is null)
+            return;
+
+        float seedProbability = Math.Clamp(crackleStar.CrackleStarProbability, 0.0f, 1.0f);
+        if (seedProbability <= 0.0f || directions.Length == 0)
+            return;
+
+        int clusterMin = Math.Max(1, crackleStar.ClusterCountMin);
+        int clusterMax = Math.Max(clusterMin, crackleStar.ClusterCountMax);
+        float coneRad = crackleStar.ClusterConeAngleDegrees * (MathF.PI / 180.0f);
+
+        for (int i = 0; i < directions.Length; i++)
+        {
+            if (_rng.NextSingle() >= seedProbability)
+                continue;
+
+            int clusterCount = _rng.Next(clusterMin, clusterMax + 1);
+            if (clusterCount <= 0)
+                continue;
+
+            renderer.SpawnCrackleStarCluster(
+                position,
+                baseColor,
+                directions[i],
+                coneRad,
+                baseSpeed,
+                clusterCount,
+                crackleStar.MicroSpeedMulMin,
+                crackleStar.MicroSpeedMulMax,
+                crackleStar.MicroLifetimeMinSeconds,
+                crackleStar.MicroLifetimeMaxSeconds,
+                crackleStar.ClusterStaggerMaxSeconds);
         }
     }
 
@@ -2295,6 +2414,10 @@ public sealed class FireworksEngine
             if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
                 childScheme = pending.ColorScheme;
 
+            var burstOverride = childProfile.BurstShape == FireworkBurstShape.Willow
+                ? FireworkBurstShape.Willow
+                : (FireworkBurstShape?)null;
+
             var child = new FireworkShell(
                 childProfile,
                 childScheme,
@@ -2305,7 +2428,7 @@ public sealed class FireworksEngine
             {
                 SubshellDepth = 1,
                 ParentShellId = null,
-                BurstShapeOverride = FireworkBurstShape.Willow,
+                BurstShapeOverride = burstOverride,
                 ShellId = _nextShellId++
             };
 
@@ -2357,6 +2480,7 @@ public sealed class FireworksEngine
                 Comet: shell.Profile.CometParams,
                 SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                 Fish: shell.Profile.FishParams,
+                CrackleStar: shell.Profile.CrackleStarProfile,
                 BaseColor: ev.BaseColor,
                 PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                 SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
@@ -2621,6 +2745,7 @@ public sealed class FireworkShell
             Comet: Profile.CometParams,
             SparklingChrysanthemum: Profile.SparklingChrysanthemumParams,
             Fish: Profile.FishParams,
+            CrackleStar: Profile.CrackleStarProfile,
             BaseColor: ColorUtil.PickBaseColor(ColorScheme),
             PeonyToWillowParams: Profile.PeonyToWillowParams,
             SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
@@ -2651,6 +2776,7 @@ public readonly record struct ShellExplosion(
     SubShellSpokeWheelPopParams SubShellSpokeWheelPop,
     SparklingChrysanthemumParams SparklingChrysanthemum,
     FishParams Fish,
+    CrackleStarProfile CrackleStar,
     ColorScheme ColorScheme);
 
 internal static class ColorUtil

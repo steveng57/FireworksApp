@@ -26,7 +26,8 @@ public static class ShellPresets
         PeonyToWillowParams? peonyToWillow = null,
         SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null,
     SparklingChrysanthemumParams? sparklingChrysanthemum = null,
-    FishParams? fish = null) => new(
+    FishParams? fish = null,
+    CrackleStarProfile? crackleStar = null) => new(
             Id: id,
             BurstShape: burstShape,
             ColorSchemeId: colorSchemeId,
@@ -48,5 +49,6 @@ public static class ShellPresets
             PeonyToWillow: peonyToWillow,
             SubShellSpokeWheelPop: subShellSpokeWheelPop,
         SparklingChrysanthemum: sparklingChrysanthemum,
-        Fish: fish);
+        Fish: fish,
+        CrackleStar: crackleStar);
 }

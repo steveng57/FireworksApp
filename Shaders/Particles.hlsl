@@ -86,7 +86,7 @@ static const float SparkDragK = 0.015f;
 // GPU spawn requests (read-only SRV during CSSpawn)
 struct SpawnRequest
 {
-    uint RequestKind;     // 1 = Spark/Crackle with CPU directions, 2 = Smoke, 3 = Shell, 4 = Spark/Crackle cone on GPU
+    uint RequestKind;     // 1 = Spark/Crackle with CPU directions, 2 = Smoke, 3 = Shell, 4 = Spark/Crackle cone on GPU, 5 = Trails, 6 = CrackleStar cluster cone
     uint ParticleStart;   // destination start index in particle buffer
     uint DirStart;        // offset into SpawnDirections
     uint Count;           // particle count
@@ -357,6 +357,66 @@ void CSSpawn(uint3 tid : SV_DispatchThreadID)
                 p._pad.y = asuint(req.SparkleIntensity);
                 p._pad.z = seed;
             }
+
+            Particles[dst] = p;
+        }
+    }
+    else if (req.RequestKind == 6)
+    {
+        // Crackle-star clusters: always crackle, GPU-generated cone directions with negative age staggering.
+        float3 baseDir = SafeNormalize(req._pad, float3(0.0f, 1.0f, 0.0f));
+        float halfAngle = max(0.0f, req.ConeAngleRadians);
+
+        float speedMin = asfloat(req.TrailParamsX);
+        float speedMax = asfloat(req.TrailParamsY);
+        float stagger = asfloat(req.TrailParamsZ);
+
+        float lifeMin = req.Lifetime;
+        float lifeMax = max(lifeMin, req.SparkleRateHz);
+
+        float3 axis1 = cross(baseDir, float3(0.0f, 1.0f, 0.0f));
+        axis1 = SafeNormalize(axis1, float3(1.0f, 0.0f, 0.0f));
+        float3 axis2 = SafeNormalize(cross(baseDir, axis1), float3(0.0f, 0.0f, 1.0f));
+
+        for (uint i = 0; i < req.Count; ++i)
+        {
+            uint dst = req.ParticleStart + i;
+            uint seed = req.Seed ^ (dst * 747796405u);
+
+            float yawU = Hash01(seed);
+            float pitchU = Hash01(seed ^ 0x2468ACE0u);
+            float yaw = yawU * 6.2831853f;
+            float pitch = pitchU * halfAngle;
+
+            float sYaw, cYaw;
+            float sPitch, cPitch;
+            sincos(yaw, sYaw, cYaw);
+            sincos(pitch, sPitch, cPitch);
+
+            float3 dirOffset = (axis1 * cYaw + axis2 * sYaw) * sPitch;
+            float3 dir = SafeNormalize(baseDir * cPitch + dirOffset, baseDir);
+
+            float speedU = Hash01(seed ^ 0xAAAAu);
+            float speedMul = lerp(speedMin, speedMax, speedU * speedU);
+            float3 vel = dir * (req.Speed * speedMul);
+
+            float lifeU = Hash01(seed ^ 0xCAFEF00Du);
+            float lifetime = lerp(lifeMin, lifeMax, lifeU);
+
+            float staggerU = (stagger > 0.0f) ? Hash01(seed ^ 0xBADC0DEu) : 0.0f;
+            float age = (stagger > 0.0f) ? -stagger * staggerU : 0.0f;
+
+            Particle p;
+            p.Position = req.Origin;
+            p.Velocity = vel;
+            p.Age = age;
+            p.Lifetime = lifetime;
+            p.BaseColor = req.BaseColor;
+            p.Color = req.BaseColor;
+            p.Kind = 4u;
+            p._pad.x = seed ^ 0xDEADBEEFu;
+            p._pad.y = seed ^ 0xF00DF00Du;
+            p._pad.z = seed ^ 0x0F0F0F0Fu;
 
             Particles[dst] = p;
         }
