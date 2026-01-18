@@ -26,6 +26,18 @@ internal sealed class BleachersPipeline : IDisposable
     private const float PostSizeMeters = 0.12f;
     private const float BeamThicknessMeters = 0.12f;
 
+    // Audience placement
+    private const float AudienceSpacingMin = 0.55f;
+    private const float AudienceSpacingMax = 0.65f;
+    private const float AudienceFillBase = 0.8f;
+    private const float AudienceJitterX = 0.05f;
+    private const float AudienceJitterZ = 0.03f;
+    private const float AudienceYawJitterDeg = 8.0f;
+    private const float AudienceScaleMin = 0.9f;
+    private const float AudienceScaleMax = 1.1f;
+    private const float AudienceStandingChance = 0.02f;
+    private const int AudienceSeed = 23456789;
+
     public void Initialize(ID3D11Device device)
     {
         string shaderPath = Path.Combine(AppContext.BaseDirectory, "Shaders", "Bleachers.hlsl");
@@ -117,7 +129,7 @@ internal sealed class BleachersPipeline : IDisposable
     private static GroundVertex[] BuildGeometry()
     {
         float halfWidth = WidthMeters * 0.5f;
-        var verts = new List<GroundVertex>(RowCount * 36 + 2048);
+        var verts = new List<GroundVertex>(RowCount * 36 + 48000);
 
         for (int i = 0; i < RowCount; i++)
         {
@@ -157,7 +169,164 @@ internal sealed class BleachersPipeline : IDisposable
             }
         }
 
+        AddAudience(verts, halfWidth);
+
         return verts.ToArray();
+    }
+
+    private static void AddAudience(List<GroundVertex> verts, float halfWidth)
+    {
+        var rng = new Random(AudienceSeed);
+        var variants = CreateSilhouetteVariants();
+        var standingIndex = variants.Count - 1;
+
+        for (int row = 0; row < RowCount; row++)
+        {
+            float rowY = (row + 1) * RowRiseMeters; // seat surface at top of step
+            float rowZ = row * RowRunMeters;
+            float seatZ = rowZ + RowRunMeters * 0.35f;
+
+            float t = RowCount <= 1 ? 0.0f : (float)row / (RowCount - 1);
+            float fillRow = Math.Clamp(AudienceFillBase * Lerp(1.05f, 0.85f, t), 0.0f, 1.0f);
+
+            float x = -halfWidth + AudienceSpacingMin * 0.5f;
+            while (x <= halfWidth)
+            {
+                if (rng.NextDouble() <= fillRow)
+                {
+                    bool standing = row >= RowCount / 2 && rng.NextDouble() < AudienceStandingChance;
+                    int variantIndex = standing ? standingIndex : rng.Next(standingIndex);
+                    var baseVerts = variants[variantIndex];
+
+                    float spacing = Lerp(AudienceSpacingMin, AudienceSpacingMax, (float)rng.NextDouble());
+                    float jitterX = (float)((rng.NextDouble() - 0.5) * 2.0 * AudienceJitterX);
+                    float jitterZ = (float)((rng.NextDouble() - 0.5) * 2.0 * AudienceJitterZ);
+                    float yaw = MathF.PI / 180.0f * (float)((rng.NextDouble() - 0.5) * 2.0 * AudienceYawJitterDeg);
+                    float scale = Lerp(AudienceScaleMin, AudienceScaleMax, (float)rng.NextDouble());
+
+                    var rotation = Matrix4x4.CreateFromAxisAngle(Vector3.UnitY, yaw);
+                    var scaleM = Matrix4x4.CreateScale(scale);
+                    var translation = Matrix4x4.CreateTranslation(x + jitterX, rowY, seatZ + jitterZ);
+                    var transform = scaleM * rotation * translation;
+
+                    AppendVariant(verts, baseVerts, transform, rotation);
+                    x += spacing;
+                }
+                else
+                {
+                    float spacing = Lerp(AudienceSpacingMin, AudienceSpacingMax, (float)rng.NextDouble());
+                    x += spacing;
+                }
+            }
+        }
+    }
+
+    private static List<GroundVertex[]> CreateSilhouetteVariants()
+    {
+        var list = new List<GroundVertex[]>();
+
+        list.Add(BuildSeatedVariant(0.0f, 0.10f, headOffsetZ: -0.05f));
+        list.Add(BuildSeatedVariant(-0.05f, -0.05f, headOffsetZ: -0.08f));
+        list.Add(BuildSeatedVariant(0.03f, 0.0f, headOffsetZ: -0.02f));
+        list.Add(BuildSeatedVariant(0.0f, 0.0f, headOffsetZ: -0.05f, hatHeight: 0.08f));
+
+        list.Add(BuildStandingVariant());
+
+        return list;
+    }
+
+    private static GroundVertex[] BuildSeatedVariant(float torsoLeanZ, float torsoShiftZ, float headOffsetZ, float hatHeight = 0.0f)
+    {
+        var v = new List<GroundVertex>(120);
+
+        const float seatHeight = 0.12f;
+        const float seatDepth = 0.35f;
+        const float seatWidth = 0.5f;
+        const float legDepth = 0.45f;
+        const float legHeight = 0.45f;
+        const float torsoHeight = 0.55f;
+        const float torsoDepth = 0.28f;
+        const float headSize = 0.22f;
+
+        float seatY0 = 0.0f;
+        float seatY1 = seatY0 + seatHeight;
+        float seatZ0 = -seatDepth;
+        float seatZ1 = 0.05f;
+
+        // Seat base
+        AddBoxUnlit(v, -seatWidth * 0.5f, seatWidth * 0.5f, seatY0, seatY1, seatZ0, seatZ1);
+
+        // Legs block (tucked toward pad, -Z)
+        float legY1 = seatY0 + legHeight;
+        AddBoxUnlit(v, -seatWidth * 0.35f, seatWidth * 0.35f, seatY0, legY1, seatZ0 - legDepth, seatZ0 + 0.05f);
+
+        // Torso block
+        float torsoY0 = seatY1;
+        float torsoY1 = torsoY0 + torsoHeight;
+        float torsoZ0 = seatZ0 * 0.6f + torsoShiftZ + torsoLeanZ;
+        float torsoZ1 = torsoZ0 + torsoDepth;
+        AddBoxUnlit(v, -seatWidth * 0.32f, seatWidth * 0.32f, torsoY0, torsoY1, torsoZ0, torsoZ1);
+
+        // Head
+        float headY0 = torsoY1;
+        float headY1 = headY0 + headSize + hatHeight;
+        float headZ0 = torsoZ1 + headOffsetZ;
+        float headZ1 = headZ0 + headSize * 0.6f;
+        AddBoxUnlit(v, -headSize * 0.45f, headSize * 0.45f, headY0, headY1, headZ0, headZ1);
+
+        return v.ToArray();
+    }
+
+    private static GroundVertex[] BuildStandingVariant()
+    {
+        var v = new List<GroundVertex>(90);
+
+        const float width = 0.45f;
+        const float legHeight = 1.0f;
+        const float torsoHeight = 0.65f;
+        const float torsoDepth = 0.28f;
+        const float headSize = 0.22f;
+
+        float legY0 = 0.0f;
+        float legY1 = legY0 + legHeight;
+        AddBoxUnlit(v, -width * 0.25f, width * 0.25f, legY0, legY1, -0.15f, 0.12f);
+
+        float torsoY0 = legY1;
+        float torsoY1 = torsoY0 + torsoHeight;
+        AddBoxUnlit(v, -width * 0.3f, width * 0.3f, torsoY0, torsoY1, -0.18f, 0.12f);
+
+        float headY0 = torsoY1;
+        float headY1 = headY0 + headSize * 0.9f;
+        AddBoxUnlit(v, -headSize * 0.45f, headSize * 0.45f, headY0, headY1, -0.1f, 0.05f);
+
+        return v.ToArray();
+    }
+
+    private static void AppendVariant(List<GroundVertex> dest, ReadOnlySpan<GroundVertex> variant, in Matrix4x4 transform, in Matrix4x4 rotation)
+    {
+        for (int i = 0; i < variant.Length; i++)
+        {
+            var p = Vector3.Transform(variant[i].Position, transform);
+            var n = Vector3.TransformNormal(variant[i].Normal, rotation);
+            dest.Add(new GroundVertex(p, n));
+        }
+    }
+
+    private static void AddBoxUnlit(List<GroundVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1)
+    {
+        // Normals set to zero to keep silhouettes dark (ambient only).
+        var n = Vector3.Zero;
+        AddQuad(verts, new Vector3(x0, y1, z0), new Vector3(x1, y1, z0), new Vector3(x1, y1, z1), new Vector3(x0, y1, z1), n);
+        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x1, y0, z1), new Vector3(x1, y0, z0), new Vector3(x0, y0, z0), n);
+        AddQuad(verts, new Vector3(x0, y0, z0), new Vector3(x1, y0, z0), new Vector3(x1, y1, z0), new Vector3(x0, y1, z0), n);
+        AddQuad(verts, new Vector3(x1, y0, z1), new Vector3(x0, y0, z1), new Vector3(x0, y1, z1), new Vector3(x1, y1, z1), n);
+        AddQuad(verts, new Vector3(x0, y0, z1), new Vector3(x0, y0, z0), new Vector3(x0, y1, z0), new Vector3(x0, y1, z1), n);
+        AddQuad(verts, new Vector3(x1, y0, z0), new Vector3(x1, y0, z1), new Vector3(x1, y1, z1), new Vector3(x1, y1, z0), n);
+    }
+
+    private static float Lerp(float a, float b, float t)
+    {
+        return a + (b - a) * t;
     }
 
     private static void AddBox(List<GroundVertex> verts, float x0, float x1, float y0, float y1, float z0, float z1)
