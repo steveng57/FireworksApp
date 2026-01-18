@@ -134,7 +134,7 @@ jobs:
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap rescap">
-  <Identity Name="FireworksApp" Publisher="${{ env.PACKAGE_CERT_SUBJECT }}" Version="${{ env.APPX_VERSION }}" ProcessorArchitecture="x64" />
+  <Identity Name="FireworksApp" Publisher="$( $env:PACKAGE_CERT_SUBJECT )" Version="$( $env:APPX_VERSION )" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>FireworksApp</DisplayName>
     <PublisherDisplayName>FireworksApp</PublisherDisplayName>
