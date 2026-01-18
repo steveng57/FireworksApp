@@ -76,8 +76,8 @@ public static class CameraProfiles
     public static CameraProfile AerialOrbit { get; } = new(
         AerialOrbitId,
         CameraProfileKind.AerialOrbit,
-        75.0f,
-        240.0f,
+        85.0f,
+        250.0f,
         0.25f,
         0.22f,
         true
