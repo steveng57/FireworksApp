@@ -287,10 +287,12 @@ internal sealed class BleachersPipeline : IDisposable
 
         // Head
         float headY0 = torsoY1;
-        float headY1 = headY0 + headSize + hatHeight;
         float headZ0 = torsoZ1 + headOffsetZ;
-        float headZ1 = headZ0 + headSize * 0.6f;
-        AddBoxUnlit(v, -headSize * 0.45f, headSize * 0.45f, headY0, headY1, headZ0, headZ1);
+        float headDepth = headSize * 0.6f;
+        float headRadius = (headSize + hatHeight) * 0.5f;
+        float headCenterY = headY0 + headRadius;
+        float headCenterZ = headZ0 + headDepth * 0.5f;
+        AddSphereUnlit(v, new Vector3(0.0f, headCenterY, headCenterZ), headRadius, 3, 6);
 
         return v.ToArray();
     }
@@ -314,10 +316,48 @@ internal sealed class BleachersPipeline : IDisposable
         AddBoxUnlit(v, -width * 0.3f, width * 0.3f, torsoY0, torsoY1, -0.18f, 0.12f);
 
         float headY0 = torsoY1;
-        float headY1 = headY0 + headSize * 0.9f;
-        AddBoxUnlit(v, -headSize * 0.45f, headSize * 0.45f, headY0, headY1, -0.1f, 0.05f);
+        float headRadius = headSize * 0.45f;
+        float headCenterY = headY0 + headRadius;
+        float headCenterZ = -0.025f;
+        AddSphereUnlit(v, new Vector3(0.0f, headCenterY, headCenterZ), headRadius, 3, 6);
 
         return v.ToArray();
+    }
+
+    private static void AddSphereUnlit(List<BleacherVertex> verts, in Vector3 center, float radius, int latSegments, int lonSegments, uint figureId = 0)
+    {
+        var normal = Vector3.Zero;
+
+        for (int lat = 0; lat < latSegments; lat++)
+        {
+            float v0 = (float)lat / latSegments;
+            float v1 = (float)(lat + 1) / latSegments;
+
+            float lat0 = MathF.PI * (v0 - 0.5f);
+            float lat1 = MathF.PI * (v1 - 0.5f);
+
+            float y0 = MathF.Sin(lat0);
+            float y1 = MathF.Sin(lat1);
+            float r0 = MathF.Cos(lat0);
+            float r1 = MathF.Cos(lat1);
+
+            for (int lon = 0; lon < lonSegments; lon++)
+            {
+                float u0 = (float)lon / lonSegments;
+                float u1 = (float)(lon + 1) / lonSegments;
+
+                float lon0 = u0 * MathF.PI * 2.0f;
+                float lon1 = u1 * MathF.PI * 2.0f;
+
+                var p00 = center + radius * new Vector3(r0 * MathF.Cos(lon0), y0, r0 * MathF.Sin(lon0));
+                var p01 = center + radius * new Vector3(r0 * MathF.Cos(lon1), y0, r0 * MathF.Sin(lon1));
+                var p10 = center + radius * new Vector3(r1 * MathF.Cos(lon0), y1, r1 * MathF.Sin(lon0));
+                var p11 = center + radius * new Vector3(r1 * MathF.Cos(lon1), y1, r1 * MathF.Sin(lon1));
+
+                AddTriangle(verts, p00, p10, p11, normal, figureId);
+                AddTriangle(verts, p00, p11, p01, normal, figureId);
+            }
+        }
     }
 
     private static void AppendVariant(List<BleacherVertex> dest, ReadOnlySpan<BleacherVertex> variant, in Matrix4x4 transform, in Matrix4x4 rotation, uint figureId)
@@ -382,6 +422,13 @@ internal sealed class BleachersPipeline : IDisposable
         verts.Add(new BleacherVertex(p0, normal, figureId));
         verts.Add(new BleacherVertex(p2, normal, figureId));
         verts.Add(new BleacherVertex(p3, normal, figureId));
+    }
+
+    private static void AddTriangle(List<BleacherVertex> verts, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 normal, uint figureId)
+    {
+        verts.Add(new BleacherVertex(p0, normal, figureId));
+        verts.Add(new BleacherVertex(p1, normal, figureId));
+        verts.Add(new BleacherVertex(p2, normal, figureId));
     }
 
     private static void UploadObjectConstants(ID3D11DeviceContext context, ID3D11Buffer? objectCB, in Matrix4x4 world, in Matrix4x4 view, in Matrix4x4 proj)
