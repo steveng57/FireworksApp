@@ -157,7 +157,7 @@ jobs:
             '    <Logo>Assets\Square150x150Logo.png</Logo>'
             '  </Properties>'
             '  <Dependencies>'
-            '    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxTestedVersion="10.0.22631.0" />'
+            '    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22631.0" />'
             '  </Dependencies>'
             '  <Resources>'
             '    <Resource Language="en-us" />'
