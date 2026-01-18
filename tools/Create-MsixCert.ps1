@@ -25,8 +25,8 @@ Run in a user session (no admin required). Do not commit the generated PFX or pa
 #>
 [CmdletBinding()]
 param(
-    [string]$Subject = 'CN=FireworksApp Dev',
-    [string]$FriendlyName = 'FireworksApp Dev MSIX'
+    [string]$Subject = 'CN=Fireworks Simulator',
+    [string]$FriendlyName = 'Fireworks Simulator MSIX'
 )
 
 $ErrorActionPreference = 'Stop'
