@@ -32,12 +32,15 @@ public sealed partial class D3D11Renderer : IDisposable
     private ID3D11RasterizerState? _padRasterizerState;
 
     private readonly GroundPipeline _groundPipeline = new();
+    private readonly BleachersPipeline _bleachersPipeline = new();
     private ID3D11Buffer? _sceneCB;
     private ID3D11Buffer? _lightingCB;
     private ID3D11Buffer? _objectCB;
 
     private readonly CanisterPipeline _canisterPipeline = new();
     private readonly ShellPipeline _shellPipeline = new();
+
+    private Matrix4x4[] _bleacherWorlds = Array.Empty<Matrix4x4>();
 
     private System.Collections.Generic.IReadOnlyList<CanisterRenderState> _canisters = Array.Empty<CanisterRenderState>();
     private System.Collections.Generic.IReadOnlyList<ShellRenderState> _shells = Array.Empty<ShellRenderState>();

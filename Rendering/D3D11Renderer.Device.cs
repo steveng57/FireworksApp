@@ -33,6 +33,7 @@ public sealed partial class D3D11Renderer
         SetViewport(width, height);
         LoadPadShadersAndGeometry();
         LoadGroundShadersAndGeometry();
+        LoadBleachersShadersAndGeometry();
         LoadCanisterShadersAndGeometry();
         _shellPipeline.Initialize(_device!);
         CreateSceneConstants();
@@ -166,6 +167,7 @@ public sealed partial class D3D11Renderer
     {
         _padPipeline.Dispose();
         _groundPipeline.Dispose();
+        _bleachersPipeline.Dispose();
         _canisterPipeline.Dispose();
         _shellPipeline.Dispose();
 
