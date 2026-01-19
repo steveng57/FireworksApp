@@ -657,7 +657,7 @@ public static class DefaultProfiles
                 colorSchemeId: schemeWhite,
                 fuseTimeSeconds: 0.50f,
                 explosionRadius: 0.025f,
-                particleCount: 50,
+                particleCount: 100,
                 particleLifetimeSeconds: 0.25f,
                 burstSparkleRateHz: 0.0f,
                 burstSparkleIntensity: 0.0f,
@@ -677,12 +677,12 @@ public static class DefaultProfiles
                 emission: BurstEmissionSettings.Defaults,
                 strobe: new StrobeParams(
                     SubShellProfileId: subshellStrobeId,
-                    StrobeCount: 50,
+                    StrobeCount: 80,
                     StrobeColor: Colors.White,
                     StrobeRadiusMeters: 0.025f,
                     StrobeLifetimeSeconds: 0.25f,
                     SpawnMode: StrobeSpawnMode.Jittered,
-                    SpawnJitterSeconds: 0.12f))
+                    SpawnJitterSeconds: 0.75f))
         };
 
         // SubShell profiles: reusable child shell behaviors
