@@ -79,6 +79,17 @@ jobs:
             Copy-Item -Path "Shaders" -Destination dist -Recurse -Force
           }
 
+      - name: Copy install instructions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $pwd 'docs/Install-MSIX.md'
+          if (!(Test-Path $source)) { throw "Install instructions not found: $source" }
+
+          $destination = Join-Path $pwd 'dist/FireworksApp-Install-Instructions.md'
+          Copy-Item -Path $source -Destination $destination -Force
+
+          "INSTRUCTIONS_PATH=$destination" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Locate Windows SDK tools
         run: |
           $ErrorActionPreference = 'Stop'
@@ -211,3 +222,4 @@ jobs:
           files: |
             ${{ env.MSIX_PATH }}
             ${{ env.CER_PATH }}
+            ${{ env.INSTRUCTIONS_PATH }}
