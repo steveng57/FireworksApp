@@ -981,7 +981,8 @@ public static class DefaultShow
         var mainShowShellIds = new[]
         {
            // shellCracklePeonyId,
-            shellBasicId,
+            //shellBasicId,
+            shellStrobeId,
             shellChrysId,
             shellWillowId,
             shellFishId,
@@ -1015,7 +1016,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                shellId = (j % 2 == 0)? shellStrobeId: shellBasicId;
+                //shellId = (j % 2 == 0)? shellStrobeId: shellBasicId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 

@@ -696,7 +696,8 @@ public sealed class FireworksEngine
             if (pending.IsStrobe && pending.ParentExplosionRadius > 0.0f)
             {
                 // Strobes live inside the parent peony volume; use interior sampling and keep motion minimal.
-                pos = pending.Position + RandomPointInSphere(pending.ParentExplosionRadius * 0.5f);
+                // Spread a bit wider for better distribution.
+                pos = pending.Position + RandomPointInSphere(pending.ParentExplosionRadius * 0.75f);
             }
             else
             {
