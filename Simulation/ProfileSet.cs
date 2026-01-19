@@ -57,6 +57,11 @@ public static class ProfileValidator
                 EnsureExists(subshells, peonyToWillow.WillowSubshellProfileId, $"Shell {shell.Id} references missing subshell profile {peonyToWillow.WillowSubshellProfileId}");
             }
 
+            if (shell.Strobe is { } strobe)
+            {
+                EnsureExists(subshells, strobe.SubShellProfileId, $"Shell {shell.Id} strobe references missing subshell profile {strobe.SubShellProfileId}");
+            }
+
             if (shell.Comet is { SubShellProfileId: { } cometSubshell })
             {
                 EnsureExists(subshells, cometSubshell, $"Shell {shell.Id} comet references missing subshell profile {cometSubshell}");
@@ -115,6 +120,11 @@ public static class ProfileValidator
             if (shell.PeonyToWillow is { } peonyToWillow)
             {
                 AddEdge(shellNode, SubshellNode(peonyToWillow.WillowSubshellProfileId));
+            }
+
+            if (shell.Strobe is { } strobe)
+            {
+                AddEdge(shellNode, SubshellNode(strobe.SubShellProfileId));
             }
 
             if (shell.Comet is { SubShellProfileId: { } cometSubshell })

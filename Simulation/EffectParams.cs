@@ -305,3 +305,28 @@ public sealed record CrackleStarProfile(
         NormalSparkMixProbability: 0.10f
     );
 }
+
+public enum StrobeSpawnMode
+{
+    Immediate,
+    Jittered
+}
+
+public sealed record StrobeParams(
+    SubShellId SubShellProfileId,
+    int StrobeCount,
+    Color StrobeColor,
+    float StrobeRadiusMeters,
+    float StrobeLifetimeSeconds,
+    StrobeSpawnMode SpawnMode,
+    float SpawnJitterSeconds)
+{
+    public static StrobeParams Defaults { get; } = new(
+        SubShellProfileId: new SubShellId("subshell_strobe"),
+        StrobeCount: 100,
+        StrobeColor: Color.FromArgb(255, 255, 255, 255),
+        StrobeRadiusMeters: 0.025f,
+        StrobeLifetimeSeconds: 0.25f,
+        SpawnMode: StrobeSpawnMode.Jittered,
+        SpawnJitterSeconds: 0.15f);
+}
