@@ -681,6 +681,7 @@ public static class DefaultProfiles
                     StrobeColor: Colors.White,
                     StrobeRadiusMeters: 0.025f,
                     StrobeLifetimeSeconds: 0.25f,
+                    SpreadRadiusFraction: 0.75f,
                     SpawnMode: StrobeSpawnMode.Jittered,
                     SpawnJitterSeconds: 0.75f))
         };

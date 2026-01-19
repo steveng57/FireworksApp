@@ -318,6 +318,7 @@ public sealed record StrobeParams(
     Color StrobeColor,
     float StrobeRadiusMeters,
     float StrobeLifetimeSeconds,
+    float SpreadRadiusFraction,
     StrobeSpawnMode SpawnMode,
     float SpawnJitterSeconds)
 {
@@ -327,6 +328,7 @@ public sealed record StrobeParams(
         StrobeColor: Color.FromArgb(255, 255, 255, 255),
         StrobeRadiusMeters: 0.025f,
         StrobeLifetimeSeconds: 0.25f,
+        SpreadRadiusFraction: 0.75f,
         SpawnMode: StrobeSpawnMode.Jittered,
         SpawnJitterSeconds: 0.15f);
 }
