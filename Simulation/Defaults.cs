@@ -1048,7 +1048,7 @@ public static class DefaultShow
                 var finaleEvent = new ShowEvent(
                     TimeSeconds: t + jitter,
                     CanisterId: canisterId,
-                    ShellProfileId: DefaultIds.shellBasicId);
+                    ShellProfileId: ( i % 2 == 0) ? shellStrobeId : shellBasicId);
                 events.Add(finaleEvent);
                 //t += 1.0f;
             }
