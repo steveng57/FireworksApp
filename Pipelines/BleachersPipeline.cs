@@ -153,7 +153,7 @@ internal sealed class BleachersPipeline : IDisposable
     private const float AudienceStandingChance = 0.02f;
     private const int AudienceSeed = 23456789;
 
-    private const int WalkwayFigureCount = 12;
+    private const int WalkwayFigureCount = 24;
     private const int WalkwaySeed = 9876543;
     private const float WalkwayFigureEdgeInset = 0.2f;
 
