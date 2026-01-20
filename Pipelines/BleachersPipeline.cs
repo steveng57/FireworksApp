@@ -463,6 +463,12 @@ internal sealed class BleachersPipeline : IDisposable
         var standingIndex = variants.Count - 1;
         uint figureId = 1;
 
+        float audienceStartX = stairs.Length > 0 ? stairs[0].X0 + AudienceSpacingMin * 0.5f : -halfWidth + AudienceSpacingMin * 0.5f;
+        float audienceEndX = stairs.Length > 0 ? stairs[^1].X1 - AudienceSpacingMin * 0.5f : halfWidth;
+
+        if (audienceEndX <= audienceStartX)
+            return;
+
         for (int row = 0; row < profile.RowCount; row++)
         {
             float rowY = (row + 1) * profile.RowRiseMeters; // seat surface at top of step
@@ -472,8 +478,8 @@ internal sealed class BleachersPipeline : IDisposable
             float t = profile.RowCount <= 1 ? 0.0f : (float)row / (profile.RowCount - 1);
             float fillRow = Math.Clamp(AudienceFillBase * Lerp(1.05f, 0.85f, t), 0.0f, 1.0f);
 
-            float x = -halfWidth + AudienceSpacingMin * 0.5f;
-            while (x <= halfWidth)
+            float x = audienceStartX;
+            while (x <= audienceEndX)
             {
                 if (IsInStairSpan(x, stairs))
                 {
