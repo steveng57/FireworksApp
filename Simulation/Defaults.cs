@@ -62,6 +62,7 @@ internal static class DefaultIds
     public const string schemeWhite = "white";
     public const string schemeDebug = "debug";
     public const string schemeGold = "gold";
+    public const string schemeSilver = "silver";
     public const string schemeBrocadeGold = "brocadegold";
 
     public const string shellBasicId = "basic";
@@ -83,6 +84,7 @@ internal static class DefaultIds
     public const string shellCometCrackleId = "comet_crackle";
     public const string shellStrobeId = "strobe";
     public const string shellStrobeFlashId = "strobe_flash";
+    public const string shellSilverDragonId = "silver_dragon";
 
     public const string subshellBasicPopId = "subshell_basic_pop";
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
@@ -183,6 +185,18 @@ public static class DefaultProfiles
                 2.2f
             ),
 
+            [schemeSilver] = new ColorScheme(
+                schemeSilver,
+                new[]
+                {
+                    Color.FromArgb(255, 235, 238, 242),
+                    Color.FromArgb(255, 220, 224, 230),
+                    Color.FromArgb(255, 205, 210, 218)
+                },
+                0.03f,
+                2.0f
+            ),
+
             [schemeBrocadeGold] = new ColorScheme(
                 schemeBrocadeGold,
                 new[]
@@ -203,6 +217,13 @@ public static class DefaultProfiles
             [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
             [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
             [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon,
+            ["trail_silver_dragon"] = new TrailProfile(
+                Id: "trail_silver_dragon",
+                ParticleCount: 10,
+                ParticleLifetimeSeconds: 0.6f,
+                Speed: 4.8f,
+                SmokeChance: 0.10f,
+                Color: new Vector4(1.20f, 1.20f, 1.15f, 1.0f)),
             ["trail_none"] = new TrailProfile(
                 Id: "trail_none",
                 ParticleCount: 0,
@@ -629,6 +650,45 @@ public static class DefaultProfiles
                 }
             ),
 
+            [shellSilverDragonId] = ShellPresets.Create(
+                id: shellSilverDragonId,
+                burstShape: FireworkBurstShape.SilverDragon,
+                colorSchemeId: schemeSilver,
+                fuseTimeSeconds: 3.6f,
+                explosionRadius: 0.0f,
+                particleCount: 0,
+                particleLifetimeSeconds: 0.0f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                trailProfile: trailProfiles["trail_silver_dragon"],
+                silverDragon: SilverDragonParams.Defaults with
+                {
+                    DragonCount = 15,
+                    SpeedMin = 14.0f,
+                    SpeedMax = 22.0f,
+                    UpBias = 0.25f,
+                    LifetimeSeconds = 3.4f,
+                    LifetimeJitterSeconds = 0.5f,
+                    GravityScale = 0.85f,
+                    Drag = 0.05f,
+                    SpiralRadiusMeters = 0.5f,
+                    SpiralRadiusGrowth = 0.05f,
+                    AngularSpeedRadPerSec = 15.0f,
+                    AngularSpeedJitterFraction = 0.22f,
+                    TrailSpawnRate = 22.0f,
+                    TrailParticleCount = 30,
+                    TrailParticleLifetimeSeconds = 1.20f,
+                    TrailSpeed = 4.8f,
+                    TrailSmokeChance = 0.08f,
+                    TrailColor = new Vector4(1.15f, 1.15f, 1.10f, 1.0f),
+                    EndExplosionEnabled = false,
+                    EndExplosionBurstShape = FireworkBurstShape.Peony,
+                    EndExplosionCount = 40,
+                    EndExplosionSpeed = 6.4f,
+                    EndExplosionLifetimeSeconds = 0.9f
+                }
+            ),
+
             [shellCracklePeonyId] = ShellPresets.Create(
                 id: shellCracklePeonyId,
                 burstShape: FireworkBurstShape.CrackleStar,
@@ -956,6 +1016,9 @@ public static class DefaultShow
         int gridSize = 5;
         var random = new Random();
 
+        // Quick SilverDragon demo pass for validation.
+        events.Add(new ShowEvent(TimeSeconds: 5.0f, CanisterId: canC13, ShellProfileId: shellSilverDragonId, ColorSchemeId: schemeSilver));
+
 
 
         //// Kick off a few overlapping ground effects near the start.
@@ -991,6 +1054,7 @@ public static class DefaultShow
             shellDonutId,   // not-Hero
             shellWillowHorseId, // Hero
             shellCometNeonId, // Hero
+            shellSilverDragonId, // Hero
             shellWillowId,  // not-Hero
             shellCometCrackleId,  // Hero
             shellPeonyToWillowId, // Hero
@@ -1018,7 +1082,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                //shellId = (j % 2 == 0)? shellStrobeId: shellWillowId;
+                //shellId = (j % 2 == 0)? shellStrobeId: shellSilverDragonId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 

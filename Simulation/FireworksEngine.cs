@@ -222,6 +222,28 @@ public sealed class Comet
     public Vector4 BaseColor;
 }
 
+public sealed class SilverDragon
+{
+    public Vector3 Position;
+    public Vector3 Velocity;
+    public float Age;
+    public float LifetimeSeconds;
+    public bool Alive = true;
+    public bool EndExplosionTriggered;
+
+    public float GravityScale;
+    public float Drag;
+    public SilverDragonParams Params;
+    public Vector4 BaseColor;
+
+    public float SpiralPhase;
+    public float AngularSpeed;
+    public float SpiralRadiusBase;
+    public float SpiralRadiusGrowth;
+    public float TrailAccumulator;
+    public Vector3 LastForward;
+}
+
 public sealed class FireworksEngine
 {
     public event Action<SoundEvent>? SoundEvent;
@@ -233,6 +255,7 @@ public sealed class FireworksEngine
     private readonly List<FireworkShell> _shells = new();
     private readonly List<SubShell> _subShells = new();
     private readonly List<Comet> _comets = new();
+    private readonly List<SilverDragon> _silverDragons = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
     private readonly List<PendingWillowHandoff> _pendingWillow = new();
@@ -429,6 +452,7 @@ public sealed class FireworksEngine
 
         UpdateSubShells(stepDt, renderer);
         UpdateComets(stepDt, renderer);
+        UpdateSilverDragons(stepDt, renderer);
 
         // Process delayed willow handoffs
         if (_pendingWillow.Count > 0)
@@ -533,6 +557,7 @@ public sealed class FireworksEngine
                     Emission: shell.Profile.EmissionSettings,
                     FinaleSalute: shell.Profile.FinaleSaluteParams,
                     Comet: shell.Profile.CometParams,
+                    SilverDragon: shell.Profile.SilverDragonParams,
                     SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                     Fish: shell.Profile.FishParams,
                     CrackleStar: shell.Profile.CrackleStarProfile,
@@ -977,6 +1002,56 @@ public sealed class FireworksEngine
 
             // write back struct/class state
             _comets[i] = c;
+        }
+    }
+
+    private void UpdateSilverDragons(float dt, D3D11Renderer renderer)
+    {
+        if (dt <= 0.0f || _silverDragons.Count == 0)
+            return;
+
+        const float groundY = 0.0f;
+        Vector3 gravity = new(0.0f, -9.81f, 0.0f);
+
+        for (int i = _silverDragons.Count - 1; i >= 0; i--)
+        {
+            var d = _silverDragons[i];
+
+            if (!d.Alive)
+            {
+                TriggerSilverDragonEndBurst(d, renderer);
+                _silverDragons.RemoveAt(i);
+                continue;
+            }
+
+            d.Age += dt;
+
+            Vector3 accel = gravity * d.GravityScale;
+            Vector3 v = d.Velocity;
+            float speedSq = v.LengthSquared();
+            if (speedSq > 1e-8f && d.Drag > 0.0f)
+            {
+                float speed = MathF.Sqrt(speedSq);
+                Vector3 dragAccel = -v / speed * (d.Drag * speed * speed);
+                accel += dragAccel;
+            }
+
+            v += accel * dt;
+            d.Position += v * dt;
+            d.Velocity = v;
+            if (v.LengthSquared() > 1e-8f)
+                d.LastForward = Vector3.Normalize(v);
+
+            EmitSilverDragonTrail(d, dt, renderer);
+
+            bool expired = d.Age >= d.LifetimeSeconds;
+            bool hitGround = d.Position.Y <= groundY;
+            if (expired || hitGround)
+            {
+                d.Alive = false;
+                TriggerSilverDragonEndBurst(d, renderer);
+                _silverDragons.RemoveAt(i);
+            }
         }
     }
 
@@ -1731,6 +1806,58 @@ public sealed class FireworksEngine
         }
     }
 
+    private void SpawnSilverDragon(Vector3 origin, SilverDragonParams p, Vector4 baseColor)
+    {
+        int count = Math.Clamp(p.DragonCount, 1, 128);
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 dir = RandomUnitVector();
+            dir = Vector3.Normalize(dir + Vector3.UnitY * p.UpBias);
+
+            float speedU = _rng.NextSingle();
+            float speed = p.SpeedMin + speedU * (p.SpeedMax - p.SpeedMin);
+
+            float lifetime = p.LifetimeSeconds;
+            if (p.LifetimeJitterSeconds > 0.0f)
+            {
+                float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.LifetimeJitterSeconds;
+                lifetime = MathF.Max(0.1f, lifetime + jitter);
+            }
+
+            float angularSpeed = p.AngularSpeedRadPerSec;
+            if (p.AngularSpeedJitterFraction > 0.0f)
+            {
+                float jitterFrac = ((float)_rng.NextDouble() * 2.0f - 1.0f) * p.AngularSpeedJitterFraction;
+                angularSpeed *= 1.0f + jitterFrac;
+            }
+
+            float spiralRadius = p.SpiralRadiusMeters;
+            float radiusJitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * 0.08f;
+            spiralRadius *= 1.0f + radiusJitter;
+
+            var dragon = new SilverDragon
+            {
+                Position = origin,
+                Velocity = dir * speed,
+                Age = 0.0f,
+                LifetimeSeconds = lifetime,
+                Alive = true,
+                GravityScale = p.GravityScale,
+                Drag = p.Drag,
+                Params = p,
+                BaseColor = baseColor,
+                SpiralPhase = (float)(_rng.NextDouble() * MathF.Tau),
+                AngularSpeed = angularSpeed,
+                SpiralRadiusBase = MathF.Max(0.01f, spiralRadius),
+                SpiralRadiusGrowth = p.SpiralRadiusGrowth,
+                TrailAccumulator = 0.0f,
+                LastForward = dir
+            };
+
+            _silverDragons.Add(dragon);
+        }
+    }
+
     private void EmitCometTrail(Comet c, D3D11Renderer renderer)
     {
         var p = c.Params;
@@ -1773,6 +1900,83 @@ public sealed class FireworksEngine
         {
             renderer.SpawnSmoke(c.Position);
         }
+    }
+
+    private static Vector3 BuildSilverDragonForward(Vector3 velocity, Vector3 lastForward)
+    {
+        if (velocity.LengthSquared() > 1e-8f)
+            return Vector3.Normalize(velocity);
+
+        if (lastForward.LengthSquared() > 1e-8f)
+            return Vector3.Normalize(lastForward);
+
+        return Vector3.UnitY;
+    }
+
+    private void EmitSilverDragonTrail(SilverDragon dragon, float dt, D3D11Renderer renderer)
+    {
+        var p = dragon.Params;
+
+        Vector3 forward = BuildSilverDragonForward(dragon.Velocity, dragon.LastForward);
+        Vector3 upRef = MathF.Abs(Vector3.Dot(forward, Vector3.UnitY)) > 0.95f ? Vector3.UnitX : Vector3.UnitY;
+        Vector3 right = Vector3.Normalize(Vector3.Cross(upRef, forward));
+        Vector3 up = Vector3.Normalize(Vector3.Cross(forward, right));
+
+        dragon.SpiralPhase += dragon.AngularSpeed * dt;
+        float radius = MathF.Max(0.01f, dragon.SpiralRadiusBase + dragon.Age * dragon.SpiralRadiusGrowth);
+        Vector3 offset = right * MathF.Cos(dragon.SpiralPhase) * radius + up * MathF.Sin(dragon.SpiralPhase) * radius;
+
+        Vector3 emitPos = dragon.Position + offset;
+
+        dragon.TrailAccumulator += MathF.Max(0.0f, p.TrailSpawnRate) * dt;
+        int bursts = (int)dragon.TrailAccumulator;
+        if (bursts <= 0)
+            return;
+
+        dragon.TrailAccumulator -= bursts;
+
+        int particleCount = Math.Clamp(bursts * p.TrailParticleCount, 1, 64);
+        float coneAngle = 6.0f * (MathF.PI / 180.0f);
+
+        Vector4 trailColor = p.TrailColor ?? dragon.BaseColor;
+
+        renderer.SpawnBurstCone(
+            position: emitPos,
+            baseColor: trailColor,
+            speed: p.TrailSpeed,
+            baseDirection: -forward,
+            coneAngleRadians: coneAngle,
+            count: particleCount,
+            particleLifetimeSeconds: p.TrailParticleLifetimeSeconds);
+
+        if (_rng.NextDouble() < Math.Clamp(p.TrailSmokeChance, 0.0f, 1.0f))
+        {
+            renderer.SpawnSmoke(emitPos);
+        }
+    }
+
+    private void TriggerSilverDragonEndBurst(SilverDragon dragon, D3D11Renderer renderer)
+    {
+        var p = dragon.Params;
+        if (!p.EndExplosionEnabled || dragon.EndExplosionTriggered)
+            return;
+
+        dragon.EndExplosionTriggered = true;
+
+        int count = Math.Clamp(p.EndExplosionCount, 4, 256);
+        ReadOnlySpan<Vector3> dirs = p.EndExplosionBurstShape switch
+        {
+            FireworkBurstShape.Ring => EmissionStyles.EmitRing(count, axis: Vector3.UnitY),
+            FireworkBurstShape.DoubleRing => EmissionStyles.EmitDoubleRing(count, axis: Vector3.UnitY),
+            FireworkBurstShape.Willow => EmissionStyles.EmitWillow(count, BurstEmissionSettings.Defaults),
+            _ => EmissionStyles.EmitPeony(count)
+        };
+        renderer.SpawnBurstDirected(
+            dragon.Position,
+            dragon.BaseColor,
+            speed: p.EndExplosionSpeed,
+            directions: dirs,
+            particleLifetimeSeconds: MathF.Max(0.05f, p.EndExplosionLifetimeSeconds));
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
@@ -2316,6 +2520,17 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.SilverDragon)
+        {
+            SpawnSilverDragon(explosion.Position, explosion.SilverDragon, explosion.BaseColor);
+            EmitSound(new SoundEvent(
+                SoundEventType.ShellBurst,
+                Position: explosion.Position,
+                Gain: 0.65f,
+                Loop: false));
+            return;
+        }
+
         if (explosion.BurstShape == FireworkBurstShape.SubShellSpokeWheelPop)
         {
             SpawnSpokeWheelPop(explosion.Position, explosion.SubShellSpokeWheelPop, explosion.ColorScheme, explosion.BaseColor);
@@ -2565,6 +2780,7 @@ public sealed class FireworksEngine
                 Emission: shell.Profile.EmissionSettings,
                 FinaleSalute: shell.Profile.FinaleSaluteParams,
                 Comet: shell.Profile.CometParams,
+                SilverDragon: shell.Profile.SilverDragonParams,
                 SparklingChrysanthemum: shell.Profile.SparklingChrysanthemumParams,
                 Fish: shell.Profile.FishParams,
                 CrackleStar: shell.Profile.CrackleStarProfile,
@@ -2830,6 +3046,7 @@ public sealed class FireworkShell
             Emission: Profile.EmissionSettings,
             FinaleSalute: Profile.FinaleSaluteParams,
             Comet: Profile.CometParams,
+            SilverDragon: Profile.SilverDragonParams,
             SparklingChrysanthemum: Profile.SparklingChrysanthemumParams,
             Fish: Profile.FishParams,
             CrackleStar: Profile.CrackleStarProfile,
@@ -2858,6 +3075,7 @@ public readonly record struct ShellExplosion(
     BurstEmissionSettings Emission,
     FinaleSaluteParams FinaleSalute,
     CometParams Comet,
+    SilverDragonParams SilverDragon,
     Vector4 BaseColor,
     PeonyToWillowParams PeonyToWillowParams,
     SubShellSpokeWheelPopParams SubShellSpokeWheelPop,

@@ -38,6 +38,7 @@ public sealed record class FireworkShellProfile(
     BurstEmissionSettings? Emission = null,
     FinaleSaluteParams? FinaleSalute = null,
     CometParams? Comet = null,
+    SilverDragonParams? SilverDragon = null,
     PeonyToWillowParams? PeonyToWillow = null,
     SubShellSpokeWheelPopParams? SubShellSpokeWheelPop = null,
     SparklingChrysanthemumParams? SparklingChrysanthemum = null,
@@ -48,6 +49,7 @@ public sealed record class FireworkShellProfile(
     public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
     public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
     public CometParams CometParams => Comet ?? Simulation.CometParams.Defaults;
+    public SilverDragonParams SilverDragonParams => SilverDragon ?? Simulation.SilverDragonParams.Defaults;
     public PeonyToWillowParams PeonyToWillowParams => PeonyToWillow ?? Simulation.PeonyToWillowParams.Defaults;
     public SubShellSpokeWheelPopParams SubShellSpokeWheelPopParams => SubShellSpokeWheelPop ?? Simulation.SubShellSpokeWheelPopParams.Defaults;
     public SparklingChrysanthemumParams SparklingChrysanthemumParams => SparklingChrysanthemum ?? Simulation.SparklingChrysanthemumParams.Defaults;

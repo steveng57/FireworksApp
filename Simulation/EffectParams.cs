@@ -41,6 +41,57 @@ public sealed record CometParams(
         SubShellDelayJitterSeconds: 0.0f);
 }
 
+public sealed record SilverDragonParams(
+    int DragonCount,
+    float SpeedMin,
+    float SpeedMax,
+    float UpBias,
+    float LifetimeSeconds,
+    float LifetimeJitterSeconds,
+    float GravityScale,
+    float Drag,
+    float SpiralRadiusMeters,
+    float SpiralRadiusGrowth,
+    float AngularSpeedRadPerSec,
+    float AngularSpeedJitterFraction,
+    float TrailSpawnRate,
+    int TrailParticleCount,
+    float TrailParticleLifetimeSeconds,
+    float TrailSpeed,
+    float TrailSmokeChance,
+    Vector4? TrailColor,
+    bool EndExplosionEnabled,
+    FireworkBurstShape EndExplosionBurstShape,
+    int EndExplosionCount,
+    float EndExplosionSpeed,
+    float EndExplosionLifetimeSeconds)
+{
+    public static SilverDragonParams Defaults { get; } = new(
+        DragonCount: 10,
+        SpeedMin: 14.0f,
+        SpeedMax: 22.0f,
+        UpBias: 0.20f,
+        LifetimeSeconds: 3.2f,
+        LifetimeJitterSeconds: 0.6f,
+        GravityScale: 0.85f,
+        Drag: 0.05f,
+        SpiralRadiusMeters: 0.24f,
+        SpiralRadiusGrowth: 0.05f,
+        AngularSpeedRadPerSec: 18.0f,
+        AngularSpeedJitterFraction: 0.18f,
+        TrailSpawnRate: 22.0f,
+        TrailParticleCount: 20,
+        TrailParticleLifetimeSeconds: 1.20f,
+        TrailSpeed: 4.5f,
+        TrailSmokeChance: 0.08f,
+        TrailColor: null,
+        EndExplosionEnabled: false,
+        EndExplosionBurstShape: FireworkBurstShape.Peony,
+        EndExplosionCount: 32,
+        EndExplosionSpeed: 6.0f,
+        EndExplosionLifetimeSeconds: 1.0f);
+}
+
 public sealed record SparklerLineTrailParams(
     float SparkRate,
     float SparkLifetimeSeconds,
