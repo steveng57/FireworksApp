@@ -67,6 +67,16 @@ public static class ProfileValidator
                 EnsureExists(subshells, cometSubshell, $"Shell {shell.Id} comet references missing subshell profile {cometSubshell}");
             }
 
+            if (shell.Bling is { CoreColorSchemeId: { } coreBlingScheme })
+            {
+                EnsureExists(colorSchemes, coreBlingScheme, $"Shell {shell.Id} bling core references missing color scheme {coreBlingScheme}");
+            }
+
+            if (shell.Bling is { RingColorSchemeId: { } ringBlingScheme })
+            {
+                EnsureExists(colorSchemes, ringBlingScheme, $"Shell {shell.Id} bling ring references missing color scheme {ringBlingScheme}");
+            }
+
             if (shell.SubShellSpokeWheelPop is { PopFlashColorSchemeId: { } popFlashScheme })
             {
                 EnsureExists(colorSchemes, popFlashScheme, $"Shell {shell.Id} spoke pop references missing color scheme {popFlashScheme}");

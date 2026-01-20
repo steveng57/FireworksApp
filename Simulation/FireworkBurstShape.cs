@@ -8,6 +8,7 @@ public enum FireworkBurstShape
     Willow,
     Palm,
     Ring,
+    Bling,
     Horsetail,
     DoubleRing,
     Spiral,
