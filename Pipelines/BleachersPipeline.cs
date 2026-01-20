@@ -27,6 +27,20 @@ internal sealed class BleachersPipeline : IDisposable
         }
     }
 
+    private static void AddWalkway(List<BleacherVertex> verts, in BleacherDetailProfile profile)
+    {
+        if (profile.WalkwayWidthMeters <= 0.0f || profile.WalkwayThicknessMeters <= 0.0f)
+            return;
+
+        float halfWidth = profile.HalfWidth;
+        float z0 = profile.DepthMeters;
+        float z1 = z0 + profile.WalkwayWidthMeters;
+        float y1 = (profile.RowCount - 1) * profile.RowRiseMeters;
+        float y0 = y1 - profile.WalkwayThicknessMeters;
+
+        AddBox(verts, -halfWidth, halfWidth, y0, y1, z0, z1);
+    }
+
     private ID3D11VertexShader? _vs;
     private ID3D11PixelShader? _ps;
     private ID3D11InputLayout? _inputLayout;
@@ -54,7 +68,9 @@ internal sealed class BleachersPipeline : IDisposable
         float RailOffsetFromEdge,
         bool IncludeMidRail,
         float MidRailHeightFactor,
-        float SideRailFrontInsetMeters)
+        float SideRailFrontInsetMeters,
+        float WalkwayWidthMeters,
+        float WalkwayThicknessMeters)
     {
         public float HalfWidth => WidthMeters * 0.5f;
         public float DepthMeters => RowCount * RowRunMeters;
@@ -83,7 +99,9 @@ internal sealed class BleachersPipeline : IDisposable
         RailOffsetFromEdge: 0.10f,
         IncludeMidRail: true,
         MidRailHeightFactor: 0.55f,
-        SideRailFrontInsetMeters: 0.25f);
+        SideRailFrontInsetMeters: 0.25f,
+        WalkwayWidthMeters: 1.2f,
+        WalkwayThicknessMeters: 0.12f);
 
     // Audience placement
     private const float AudienceSpacingMin = 0.55f;
@@ -232,6 +250,7 @@ internal sealed class BleachersPipeline : IDisposable
         }
 
         AddStairs(verts, profile, stairs);
+        AddWalkway(verts, profile);
         AddRailings(verts, profile);
         AddAudience(verts, halfWidth, profile, stairs);
 
@@ -321,7 +340,7 @@ internal sealed class BleachersPipeline : IDisposable
             return;
 
         float halfWidth = profile.HalfWidth;
-        float depth = profile.DepthMeters;
+        float depth = profile.DepthMeters + profile.WalkwayWidthMeters;
         float topDeckY = (profile.RowCount - 1) * profile.RowRiseMeters;
         float backZ = depth - profile.RailOffsetFromEdge;
         float leftX = -halfWidth + profile.RailOffsetFromEdge;
@@ -387,6 +406,27 @@ internal sealed class BleachersPipeline : IDisposable
                 AddBox(verts, postX0, postX1, postY0, postY1, z1 - postRadius, z1 + postRadius);
                 break;
             }
+        }
+
+        float seatingDepth = profile.DepthMeters;
+        if (depth - seatingDepth > 1e-3f)
+        {
+            float baseY = (profile.RowCount - 1) * rise;
+            float postY0 = baseY;
+            float postY1 = postY0 + profile.RailHeightMeters;
+            float railY0 = postY1 - railRadius;
+            float railY1 = railY0 + railRadius * 2.0f;
+            float midRailY0 = postY0 + profile.RailHeightMeters * profile.MidRailHeightFactor - railRadius;
+            float midRailY1 = midRailY0 + railRadius * 2.0f;
+
+            // Extend rail over walkway slab
+            AddBox(verts, railX0, railX1, railY0, railY1, seatingDepth, depth);
+            if (profile.IncludeMidRail)
+            {
+                AddBox(verts, railX0, railX1, midRailY0, midRailY1, seatingDepth, depth);
+            }
+
+            AddBox(verts, postX0, postX1, postY0, postY1, depth - postRadius, depth + postRadius);
         }
     }
 
