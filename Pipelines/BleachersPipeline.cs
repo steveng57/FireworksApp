@@ -340,27 +340,54 @@ internal sealed class BleachersPipeline : IDisposable
             profile.IncludeMidRail,
             profile.MidRailHeightFactor);
 
-        AddRailRun(
-            verts,
-            new Vector3(leftX, topDeckY, sideStartZ),
-            new Vector3(leftX, topDeckY, depth),
-            profile.RailHeightMeters,
-            profile.RailPostRadiusMeters,
-            profile.RailRadiusMeters,
-            profile.RailPostSpacingMeters,
-            profile.IncludeMidRail,
-            profile.MidRailHeightFactor);
+        AddSideRail(verts, x: leftX, startZ: sideStartZ, depth, profile);
+        AddSideRail(verts, x: rightX, startZ: sideStartZ, depth, profile);
+    }
 
-        AddRailRun(
-            verts,
-            new Vector3(rightX, topDeckY, sideStartZ),
-            new Vector3(rightX, topDeckY, depth),
-            profile.RailHeightMeters,
-            profile.RailPostRadiusMeters,
-            profile.RailRadiusMeters,
-            profile.RailPostSpacingMeters,
-            profile.IncludeMidRail,
-            profile.MidRailHeightFactor);
+    private static void AddSideRail(List<BleacherVertex> verts, float x, float startZ, float depth, in BleacherDetailProfile profile)
+    {
+        if (depth <= 0.0f)
+            return;
+
+        float run = profile.RowRunMeters;
+        float rise = profile.RowRiseMeters;
+        int startRow = Math.Clamp((int)MathF.Floor(startZ / run), 0, profile.RowCount - 1);
+        float railRadius = profile.RailRadiusMeters;
+        float postRadius = profile.RailPostRadiusMeters;
+
+        float postX0 = x - postRadius;
+        float postX1 = x + postRadius;
+        float railX0 = x - railRadius;
+        float railX1 = x + railRadius;
+
+        for (int row = startRow; row < profile.RowCount; row++)
+        {
+            float z0 = row * run;
+            float z1 = MathF.Min(z0 + run, depth);
+            float baseY = row * rise;
+            float postY0 = baseY;
+            float postY1 = postY0 + profile.RailHeightMeters;
+            float railY0 = postY1 - railRadius;
+            float railY1 = railY0 + railRadius * 2.0f;
+            float midRailY0 = postY0 + profile.RailHeightMeters * profile.MidRailHeightFactor - railRadius;
+            float midRailY1 = midRailY0 + railRadius * 2.0f;
+
+            // Post at segment start
+            AddBox(verts, postX0, postX1, postY0, postY1, z0 - postRadius, z0 + postRadius);
+            // Rail segment for this step
+            AddBox(verts, railX0, railX1, railY0, railY1, z0, z1);
+            if (profile.IncludeMidRail)
+            {
+                AddBox(verts, railX0, railX1, midRailY0, midRailY1, z0, z1);
+            }
+
+            // If last segment reaches the back, add a terminal post at z1
+            if (row == profile.RowCount - 1 || Math.Abs(z1 - depth) < 1e-3f)
+            {
+                AddBox(verts, postX0, postX1, postY0, postY1, z1 - postRadius, z1 + postRadius);
+                break;
+            }
+        }
     }
 
     private static void AddRailRun(
