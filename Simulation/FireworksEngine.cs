@@ -258,6 +258,7 @@ public sealed class FireworksEngine
     private readonly List<SilverDragon> _silverDragons = new();
     private readonly List<GroundEffectInstance> _groundEffects = new();
     private readonly List<PendingSubShellSpawn> _pendingSubshells = new();
+    private readonly List<PendingSimpleSubShell> _pendingSimpleSubShells = new();
     private readonly List<PendingWillowHandoff> _pendingWillow = new();
     private readonly List<BlingBurstRequest> _pendingBlingBursts = new();
     private readonly Dictionary<uint, FireworkShell> _gpuShells = new();
@@ -628,7 +629,8 @@ public sealed class FireworksEngine
                     BaseColor: ColorUtil.PickBaseColor(shell.ColorScheme),
                     PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
-                    Bling: shell.Profile.BlingParams,
+                Bling: shell.Profile.BlingParams,
+                DiamondRing: shell.Profile.DiamondRingParams,
                     ColorScheme: shell.ColorScheme);
 
                 ScheduleSubShellAttachments(shell, explosion);
@@ -888,9 +890,39 @@ public sealed class FireworksEngine
         }
     }
 
+    private readonly struct PendingSimpleSubShell
+    {
+        public readonly float SpawnTime;
+        public readonly SubShellState State;
+        public readonly SubShellPayload Payload;
+
+        public PendingSimpleSubShell(float spawnTime, SubShellState state, SubShellPayload payload)
+        {
+            SpawnTime = spawnTime;
+            State = state;
+            Payload = payload;
+        }
+    }
+
     private void UpdateSubShells(float dt, D3D11Renderer renderer)
     {
-        if (dt <= 0.0f || _subShells.Count == 0)
+        if (dt <= 0.0f)
+            return;
+
+        if (_pendingSimpleSubShells.Count > 0)
+        {
+            for (int i = _pendingSimpleSubShells.Count - 1; i >= 0; i--)
+            {
+                var pending = _pendingSimpleSubShells[i];
+                if (ShowTimeSeconds + 1e-4f < pending.SpawnTime)
+                    continue;
+
+                _pendingSimpleSubShells.RemoveAt(i);
+                _subShells.Add(new SubShell(pending.State, pending.Payload));
+            }
+        }
+
+        if (_subShells.Count == 0)
             return;
 
         const float groundY = 0.0f;
@@ -2649,6 +2681,12 @@ public sealed class FireworksEngine
             return;
         }
 
+        if (explosion.BurstShape == FireworkBurstShape.DiamondRing)
+        {
+            SpawnDiamondRing(explosion, renderer);
+            return;
+        }
+
         Vector3 ringAxis = ResolveRingAxis(explosion.RingAxis, explosion.RingAxisRandomTiltDegrees);
 
         var dirsDefault = explosion.BurstShape switch
@@ -2806,6 +2844,121 @@ public sealed class FireworksEngine
         }
     }
 
+    private void SpawnDiamondRing(in ShellExplosion explosion, D3D11Renderer renderer)
+    {
+        var diamond = explosion.DiamondRing;
+
+        Vector3 ringAxis = ResolveRingAxis(explosion.RingAxis, explosion.RingAxisRandomTiltDegrees);
+
+        ColorScheme coreScheme = explosion.ColorScheme;
+        if (diamond.CoreColorSchemeId is { } coreSchemeId && _profiles.ColorSchemes.TryGetValue(coreSchemeId, out var coreOverride))
+            coreScheme = coreOverride;
+
+        ColorScheme ringScheme = explosion.ColorScheme;
+        if (diamond.RingColorSchemeId is { } ringSchemeId && _profiles.ColorSchemes.TryGetValue(ringSchemeId, out var ringOverride))
+            ringScheme = ringOverride;
+
+        Vector4 coreBaseColor = ColorUtil.PickBaseColor(coreScheme);
+        Vector4 ringBaseColor = ColorUtil.PickBaseColor(ringScheme);
+
+        int coreCount = Math.Max(1, diamond.CoreParticleCount ?? explosion.ParticleCount);
+        float coreLifetimeBase = MathF.Max(0.01f, diamond.CoreParticleLifetimeSeconds ?? explosion.ParticleLifetimeSeconds);
+        float coreLifetime = ResolveBurstLifetime(diamond.CoreBurstShape, coreLifetimeBase);
+        float coreSpeed = ResolveBurstSpeed(diamond.CoreBurstShape, diamond.CoreBurstSpeed ?? explosion.BurstSpeed);
+        float coreSparkleRate = Math.Max(0.0f, diamond.CoreBurstSparkleRateHz ?? explosion.BurstSparkleRateHz);
+        float coreSparkleIntensity = Math.Max(0.0f, diamond.CoreBurstSparkleIntensity ?? explosion.BurstSparkleIntensity);
+        var coreEmission = diamond.CoreEmission ?? explosion.Emission;
+
+        var coreShape = diamond.CoreBurstShape == FireworkBurstShape.DiamondRing
+            ? FireworkBurstShape.Peony
+            : diamond.CoreBurstShape;
+
+        var coreRequest = new BlingBurstRequest(
+            triggerTime: ShowTimeSeconds,
+            position: explosion.Position,
+            shape: coreShape,
+            particleCount: coreCount,
+            particleLifetimeSeconds: coreLifetime,
+            burstSpeed: coreSpeed,
+            burstSparkleRateHz: coreSparkleRate,
+            burstSparkleIntensity: coreSparkleIntensity,
+            emission: coreEmission,
+            crackle: explosion.CrackleStar,
+            sparklingChrysanthemum: explosion.SparklingChrysanthemum,
+            fish: explosion.Fish,
+            ringAxis: ringAxis,
+            baseColor: coreBaseColor);
+
+        SpawnBlingBurst(coreRequest, renderer);
+
+        int ringCount = Math.Clamp(diamond.RingSubshellCount, 1, 512);
+        float ringSpeedMultiplier = diamond.RingSpeedMultiplier > 0.0f ? diamond.RingSpeedMultiplier : 1.0f;
+        float ringSpeed = coreSpeed * ringSpeedMultiplier;
+        float ringLifetime = MathF.Max(0.05f, diamond.RingSubshellLifetimeSeconds);
+        float ringLifetimeJitter = MathF.Max(0.0f, diamond.RingSubshellLifetimeJitterSeconds);
+        float ringDelay = MathF.Max(0.0f, diamond.RingDelaySeconds);
+
+        var dirs = EmissionStyles.EmitRing(ringCount, axis: ringAxis);
+        var trail = diamond.RingTrailResolved;
+        Vector4 ringPopColor = ringBaseColor * 1.10f;
+        Vector4 ringTrailColor = ringBaseColor * trail.BrightnessScalar;
+
+        for (int i = 0; i < dirs.Length; i++)
+        {
+            float lifetime = ringLifetime;
+            if (ringLifetimeJitter > 0.0f)
+            {
+                float jitter = ((float)_rng.NextDouble() * 2.0f - 1.0f) * ringLifetimeJitter;
+                lifetime = MathF.Max(0.05f, ringLifetime + jitter);
+            }
+
+            var state = new SubShellState
+            {
+                Position = explosion.Position,
+                Velocity = dirs[i] * ringSpeed,
+                Age = 0.0f,
+                DetonateAt = lifetime,
+                Detonated = false,
+                DetonateOnExpire = false,
+                GravityScale = diamond.RingGravityScale,
+                Drag = diamond.RingDrag,
+                TrailAccumulator = 0.0f
+            };
+
+            var payload = SubShellPayload.SparklerLine(new SparklerLineSubShellData(
+                trail,
+                popColor: ringPopColor,
+                trailColor: ringTrailColor));
+
+            if (ringDelay > 0.0f)
+            {
+                _pendingSimpleSubShells.Add(new PendingSimpleSubShell(ShowTimeSeconds + ringDelay, state, payload));
+            }
+            else
+            {
+                _subShells.Add(new SubShell(state, payload));
+            }
+        }
+
+        renderer.SpawnSmoke(explosion.Position);
+
+        EmitSound(new SoundEvent(
+            SoundEventType.ShellBurst,
+            Position: explosion.Position,
+            Gain: 1.0f,
+            Loop: false));
+
+        if (coreSparkleRate > 0.0f || trail.SparkRate > 0.0f)
+        {
+            float crackleGain = Math.Max(coreSparkleIntensity, 0.35f);
+            EmitSound(new SoundEvent(
+                SoundEventType.Crackle,
+                Position: explosion.Position,
+                Gain: Math.Clamp(crackleGain, 0.15f, 1.0f),
+                Loop: false));
+        }
+    }
+
     private void SpawnBlingBurst(in BlingBurstRequest request, D3D11Renderer renderer)
     {
         if (request.Shape == FireworkBurstShape.SparklingChrysanthemum)
@@ -2864,6 +3017,31 @@ public sealed class FireworksEngine
 
         SpawnCrackleStarClusters(renderer, request.Position, request.BaseColor, dirs, speed, request.Crackle);
         renderer.SpawnSmoke(request.Position);
+    }
+
+    private static float ResolveBurstSpeed(FireworkBurstShape shape, float? overrideSpeed)
+    {
+        if (overrideSpeed is { } speed && speed > 0.0f)
+            return speed;
+
+        return shape switch
+        {
+            FireworkBurstShape.Willow => 7.0f,
+            FireworkBurstShape.Palm => 13.0f,
+            FireworkBurstShape.Horsetail => 6.0f,
+            _ => 10.0f
+        };
+    }
+
+    private static float ResolveBurstLifetime(FireworkBurstShape shape, float baseLifetime)
+    {
+        return shape switch
+        {
+            FireworkBurstShape.Willow => baseLifetime * 2.2f,
+            FireworkBurstShape.Palm => baseLifetime * 1.2f,
+            FireworkBurstShape.Horsetail => baseLifetime * 2.5f,
+            _ => baseLifetime
+        };
     }
 
     private static float ComputeBaseCrackleProbability(CrackleStarProfile? profile)
@@ -3014,6 +3192,7 @@ public sealed class FireworksEngine
                 PeonyToWillowParams: shell.Profile.PeonyToWillowParams,
                 SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
                 Bling: shell.Profile.BlingParams,
+                DiamondRing: shell.Profile.DiamondRingParams,
                 ColorScheme: shell.ColorScheme);
 
             Explode(explosion, renderer);
@@ -3281,6 +3460,7 @@ public sealed class FireworkShell
             PeonyToWillowParams: Profile.PeonyToWillowParams,
             SubShellSpokeWheelPop: Profile.SubShellSpokeWheelPopParams,
             Bling: Profile.BlingParams,
+            DiamondRing: Profile.DiamondRingParams,
             ColorScheme: ColorScheme);
 
         Alive = false;
@@ -3311,6 +3491,7 @@ public readonly record struct ShellExplosion(
     FishParams Fish,
     CrackleStarProfile CrackleStar,
     BlingParams Bling,
+    DiamondRingParams DiamondRing,
     ColorScheme ColorScheme);
 
 internal static class ColorUtil

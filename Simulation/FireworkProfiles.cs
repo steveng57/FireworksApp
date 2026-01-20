@@ -45,7 +45,8 @@ public sealed record class FireworkShellProfile(
     FishParams? Fish = null,
     CrackleStarProfile? CrackleStar = null,
     StrobeParams? Strobe = null,
-    BlingParams? Bling = null)
+    BlingParams? Bling = null,
+    DiamondRingParams? DiamondRing = null)
 {
     public BurstEmissionSettings EmissionSettings => Emission ?? BurstEmissionSettings.Defaults;
     public FinaleSaluteParams FinaleSaluteParams => FinaleSalute ?? Simulation.FinaleSaluteParams.Defaults;
@@ -58,6 +59,7 @@ public sealed record class FireworkShellProfile(
     public CrackleStarProfile CrackleStarProfile => CrackleStar ?? Simulation.CrackleStarProfile.Defaults;
     public StrobeParams StrobeParams => Strobe ?? Simulation.StrobeParams.Defaults;
     public BlingParams BlingParams => Bling ?? Simulation.BlingParams.Defaults;
+    public DiamondRingParams DiamondRingParams => DiamondRing ?? Simulation.DiamondRingParams.Defaults;
 
     public TrailProfile Trail => TrailProfile ?? ShellTrailPresets.Default;
     public int TrailParticleCount => Trail.ParticleCount;

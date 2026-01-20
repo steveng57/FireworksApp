@@ -373,6 +373,55 @@ public sealed record BlingParams(
     public CrackleStarProfile RingCrackleProfile => RingCrackle ?? CrackleStarProfile.Defaults;
 }
 
+public sealed record DiamondRingParams(
+    FireworkBurstShape CoreBurstShape,
+    int? CoreParticleCount = null,
+    float? CoreParticleLifetimeSeconds = null,
+    float? CoreBurstSpeed = null,
+    float? CoreBurstSparkleRateHz = null,
+    float? CoreBurstSparkleIntensity = null,
+    BurstEmissionSettings? CoreEmission = null,
+    ColorSchemeId? CoreColorSchemeId = null,
+    int RingSubshellCount = 18,
+    float RingSpeedMultiplier = 1.6f,
+    float RingSubshellLifetimeSeconds = 3.5f,
+    float RingSubshellLifetimeJitterSeconds = 0.0f,
+    float RingGravityScale = 0.75f,
+    float RingDrag = 0.05f,
+    SparklerLineTrailParams? RingTrail = null,
+    ColorSchemeId? RingColorSchemeId = null,
+    float RingDelaySeconds = 0.0f)
+{
+    public static DiamondRingParams Defaults { get; } = new(
+        CoreBurstShape: FireworkBurstShape.Peony,
+        CoreParticleCount: 3000,
+        CoreParticleLifetimeSeconds: 3.2f,
+        CoreBurstSpeed: 10.0f,
+        CoreBurstSparkleRateHz: 10.0f,
+        CoreBurstSparkleIntensity: 0.40f,
+        CoreEmission: BurstEmissionSettings.Defaults,
+        CoreColorSchemeId: null,
+        RingSubshellCount: 20,
+        RingSpeedMultiplier: 1.65f,
+        RingSubshellLifetimeSeconds: 3.8f,
+        RingSubshellLifetimeJitterSeconds: 0.6f,
+        RingGravityScale: 0.70f,
+        RingDrag: 0.05f,
+        RingTrail: SparklerLineTrailParams.Defaults with
+        {
+            SparkRate = 160.0f,
+            SparkLifetimeSeconds = 0.60f,
+            SparkSpeed = 2.8f,
+            SparkDirectionJitter = 0.32f,
+            BrightnessScalar = 1.20f,
+            MinSpawnPerTick = 28
+        },
+        RingColorSchemeId: null,
+        RingDelaySeconds: 0.0f);
+
+    public SparklerLineTrailParams RingTrailResolved => RingTrail ?? SparklerLineTrailParams.Defaults;
+}
+
 public sealed record CrackleStarProfile(
     float CrackleStarProbability,
     int ClusterCountMin,

@@ -86,6 +86,7 @@ internal static class DefaultIds
     public const string shellStrobeId = "strobe";
     public const string shellStrobeFlashId = "strobe_flash";
     public const string shellSilverDragonId = "silver_dragon";
+    public const string shellDiamondRingId = "diamond_ring";
 
     public const string subshellBasicPopId = "subshell_basic_pop";
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
@@ -444,6 +445,45 @@ public static class DefaultProfiles
                     RingColorSchemeId: schemeGold,
                     RingDelaySeconds: 0.0f,
                     RingCrackle: CrackleStarProfile.Defaults with { CrackleStarProbability = 0.0f })),
+
+            [shellDiamondRingId] = ShellPresets.Create(
+                id: shellDiamondRingId,
+                burstShape: FireworkBurstShape.DiamondRing,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 3200,
+                particleLifetimeSeconds: 3.2f,
+                burstSparkleRateHz: 10.0f,
+                burstSparkleIntensity: 0.40f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 12.0f,
+                diamondRing: new DiamondRingParams(
+                    CoreBurstShape: FireworkBurstShape.Peony,
+                    CoreParticleCount: 3200,
+                    CoreParticleLifetimeSeconds: 3.2f,
+                    CoreBurstSpeed: 10.0f,
+                    CoreBurstSparkleRateHz: 10.0f,
+                    CoreBurstSparkleIntensity: 0.40f,
+                    CoreEmission: BurstEmissionSettings.Defaults,
+                    CoreColorSchemeId: schemeGold,
+                    RingSubshellCount: 22,
+                    RingSpeedMultiplier: 1.75f,
+                    RingSubshellLifetimeSeconds: 2.5f,
+                    RingSubshellLifetimeJitterSeconds: 0.5f,
+                    RingGravityScale: 0.70f,
+                    RingDrag: 0.05f,
+                    RingTrail: SparklerLineTrailParams.Defaults with
+                    {
+                        SparkRate = 170.0f,
+                        SparkLifetimeSeconds = 0.5f,
+                        SparkSpeed = 3.0f,
+                        SparkDirectionJitter = 0.30f,
+                        BrightnessScalar = 1.25f,
+                        MinSpawnPerTick = 28
+                    },
+                    RingColorSchemeId: schemeWhite,
+                    RingDelaySeconds: 0.0f)),
 
             [shellSpiralId] = ShellPresets.Create(
                 id: shellSpiralId,
@@ -1048,7 +1088,7 @@ public static class DefaultShow
         var random = new Random();
 
         // Quick SilverDragon demo pass for validation.
-        events.Add(new ShowEvent(TimeSeconds: 5.0f, CanisterId: canC13, ShellProfileId: shellSilverDragonId, ColorSchemeId: schemeSilver));
+        //events.Add(new ShowEvent(TimeSeconds: 5.0f, CanisterId: canC13, ShellProfileId: shellSilverDragonId, ColorSchemeId: schemeSilver));
 
 
 
@@ -1076,8 +1116,8 @@ public static class DefaultShow
         // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
         var mainShowShellIds = new[]
         {
-            //shellCracklePeonyId,
-            //shellBasicId,
+            ////shellCracklePeonyId,
+            ////shellBasicId,
             shellStrobeId,  // Hero
             shellSpokeWheelPopId, // Hero
             shellDoubleRingId, // not-Hero
@@ -1087,7 +1127,8 @@ public static class DefaultShow
             shellCometNeonId, // Hero
             shellSilverDragonId, // Hero
             shellBlingId, // not-Hero
-            // shellWillowId,  // not-Hero
+            shellDiamondRingId, // semi-Hero
+            //// shellWillowId,  // not-Hero
             shellCometCrackleId,  // Hero
             shellPeonyToWillowId, // Hero
             shellSpiralId, // not-Hero
@@ -1114,7 +1155,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                //shellId = (j % 2 == 0)? shellBlingId: shellSilverDragonId;
+                //shellId = (j % 2 == 0)? shellSilverDragonId: shellCometCrackleId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
