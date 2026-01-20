@@ -658,9 +658,10 @@ public static class DefaultProfiles
                 fuseTimeSeconds: 0.50f,
                 explosionRadius: 0.025f,
                 particleCount: 100,
-                particleLifetimeSeconds: 0.25f,
+                particleLifetimeSeconds: 0.60f,
                 burstSparkleRateHz: 0.0f,
                 burstSparkleIntensity: 0.0f,
+                burstSpeed: 8.0f,
                 trailProfile: trailProfiles["trail_none"],
                 emission: BurstEmissionSettings.Defaults),
 
