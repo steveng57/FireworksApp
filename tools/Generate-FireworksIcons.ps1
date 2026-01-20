@@ -1,5 +1,5 @@
 # Generates FireworksApp icons locally so the build/release pipelines can use prebuilt assets.
-# Usage: run from repo root:  powershell -ExecutionPolicy Bypass -File tools/Generate-FireworksIcons.ps1
+# Usage: run from repo root:  pwsh -ExecutionPolicy Bypass -File tools/Generate-FireworksIcons.ps1
 # Output: Assets/Branding/FireworksApp.ico, Square150x150Logo.png, Square44x44Logo.png, plus supporting PNG sizes.
 
 $ErrorActionPreference = 'Stop'
@@ -149,12 +149,18 @@ function Save-Ico {
     $fs.Dispose()
 }
 
-$pngSizes = @(44, 64, 128, 150, 256)
+$pngSizes = @(44, 64, 128, 150, 256, 1024)
+$icoSizes = @(44, 64, 128, 150, 256)
 $bitmaps = @()
 foreach ($s in $pngSizes) {
     $bmp = New-FireworksBitmap -Size $s
     Save-Png -Bitmap $bmp -Path (Join-Path $assets "Square${s}x${s}Logo.png")
-    $bitmaps += ,$bmp
+    if ($icoSizes -contains $s) {
+        $bitmaps += ,$bmp
+    }
+    else {
+        $bmp.Dispose()
+    }
 }
 
 Save-Ico -Bitmaps $bitmaps -Path (Join-Path $assets 'FireworksApp.ico')

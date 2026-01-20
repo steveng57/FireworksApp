@@ -409,48 +409,7 @@ public sealed class FireworksEngine
                 Explode(explosion, renderer);
 
                 // Schedule subshells per attachments before removing parent
-                var attachments = GetShellAttachments(shell.Profile);
-                if (attachments != null && attachments.Count > 0)
-                {
-                    foreach (var att in attachments)
-                    {
-                        if (_rng.NextDouble() > att.Probability)
-                            continue;
-
-                        if (!_profiles.SubShells.TryGetValue(att.SubShellProfileId, out var subProf))
-                            continue;
-
-                        int nextDepth = shell.SubshellDepth + 1;
-                        if (nextDepth > subProf.MaxSubshellDepth || nextDepth > att.DepthBudget)
-                            continue;
-
-                        if (explosion.Position.Y < subProf.MinAltitudeToSpawn)
-                            continue;
-
-                        int count = System.Math.Max(0, (int)System.MathF.Round(subProf.Count * att.Scale));
-                        if (count <= 0)
-                            continue;
-
-                        Vector3[] dirs = subProf.SpawnMode switch
-                        {
-                            SubShellSpawnMode.Ring => EmissionStyles.EmitRing(count, Vector3.UnitY),
-                            SubShellSpawnMode.Cone => EmitConeDirections(count, Vector3.UnitY, subProf.DirectionJitter),
-                            _ => EmissionStyles.EmitPeony(count)
-                        };
-
-                        var pending = new PendingSubShellSpawn(
-                            SpawnTime: ShowTimeSeconds + System.MathF.Max(0.0f, subProf.DelaySeconds),
-                            Position: explosion.Position,
-                            ParentVelocity: shell.Velocity,
-                            SubProfile: subProf,
-                            Attachment: att,
-                            ParentColorScheme: shell.ColorScheme,
-                            ParentDepth: shell.SubshellDepth,
-                            Directions: dirs);
-
-                        _pendingSubshells.Add(pending);
-                    }
-                }
+                ScheduleSubShellAttachments(shell, explosion);
 
                 _shells.RemoveAt(i);
             }
@@ -582,6 +541,7 @@ public sealed class FireworksEngine
                     SubShellSpokeWheelPop: shell.Profile.SubShellSpokeWheelPopParams,
                     ColorScheme: shell.ColorScheme);
 
+                ScheduleSubShellAttachments(shell, explosion);
                 Explode(explosion, renderer);
 
                 toRemove ??= new List<uint>();
@@ -608,11 +568,83 @@ public sealed class FireworksEngine
 
     // Attachments resolver: replace missing property access with a method.
     // If future profiles add attachments, hook them up here.
+// Test tool for FireworksEngine
     private IReadOnlyList<SubShellAttachment>? GetShellAttachments(FireworkShellProfile profile)
     {
-        // No attachments currently defined in FireworkShellProfile.
-        // Return null to indicate none; routine remains intact.
+        if (profile.Strobe is { } strobe && _profiles.SubShells.TryGetValue(strobe.SubShellProfileId, out var subProfile))
+        {
+            float scale = subProfile.Count > 0 ? strobe.StrobeCount / (float)subProfile.Count : 1.0f;
+            if (scale <= 0.0f)
+                scale = 0.0f;
+
+            return new[]
+            {
+                new SubShellAttachment(
+                    SubShellProfileId: strobe.SubShellProfileId,
+                    Probability: 1.0f,
+                    Scale: scale,
+                    DepthBudget: 1)
+            };
+        }
+
         return null;
+    }
+
+    private void ScheduleSubShellAttachments(FireworkShell shell, in ShellExplosion explosion)
+    {
+        var attachments = GetShellAttachments(shell.Profile);
+        if (attachments == null || attachments.Count == 0)
+            return;
+
+        foreach (var att in attachments)
+        {
+            if (_rng.NextDouble() > att.Probability)
+                continue;
+
+            if (!_profiles.SubShells.TryGetValue(att.SubShellProfileId, out var subProf))
+                continue;
+
+            int nextDepth = shell.SubshellDepth + 1;
+            if (nextDepth > subProf.MaxSubshellDepth || nextDepth > att.DepthBudget)
+                continue;
+
+            if (explosion.Position.Y < subProf.MinAltitudeToSpawn)
+                continue;
+
+            int count = System.Math.Max(0, (int)System.MathF.Round(subProf.Count * att.Scale));
+            if (count <= 0)
+                continue;
+
+            Vector3[] dirs = subProf.SpawnMode switch
+            {
+                SubShellSpawnMode.Ring => EmissionStyles.EmitRing(count, Vector3.UnitY),
+                SubShellSpawnMode.Cone => EmitConeDirections(count, Vector3.UnitY, subProf.DirectionJitter),
+                _ => EmissionStyles.EmitPeony(count)
+            };
+
+            bool isStrobe = shell.Profile.Strobe is { } strobeParamsRaw && strobeParamsRaw.SubShellProfileId == att.SubShellProfileId;
+            var strobeParams = shell.Profile.StrobeParams;
+            float spawnTime = ShowTimeSeconds + System.MathF.Max(0.0f, subProf.DelaySeconds);
+            if (isStrobe && strobeParams.SpawnMode == StrobeSpawnMode.Jittered && strobeParams.SpawnJitterSeconds > 0.0f)
+            {
+                spawnTime += (float)_rng.NextDouble() * strobeParams.SpawnJitterSeconds;
+            }
+
+            var pending = new PendingSubShellSpawn(
+                SpawnTime: spawnTime,
+                Position: explosion.Position,
+                ParentVelocity: shell.Velocity,
+                SubProfile: subProf,
+                Attachment: att,
+                ParentColorScheme: shell.ColorScheme,
+                ParentDepth: shell.SubshellDepth,
+                Directions: dirs,
+                IsStrobe: isStrobe,
+                StrobeParams: strobeParams,
+                ParentExplosionRadius: explosion.ExplosionRadius);
+
+            _pendingSubshells.Add(pending);
+        }
     }
 
     // Local helper for emitting cone directions for subshell spawns
@@ -640,18 +672,55 @@ public sealed class FireworksEngine
         return Vector3.Normalize(Vector3.Transform(baseDir, qPitch * qYaw));
     }
 
+    private Vector3 RandomPointInSphere(float radius)
+    {
+        float u = (float)_rng.NextDouble();
+        float v = (float)_rng.NextDouble();
+        float w = (float)_rng.NextDouble();
+
+        float r = radius * MathF.Pow(w, 1.0f / 3.0f);
+        float theta = u * MathF.Tau;
+        float z = 2.0f * v - 1.0f;
+        float s = MathF.Sqrt(MathF.Max(0.0f, 1.0f - z * z));
+
+        return new Vector3(r * s * MathF.Cos(theta), r * z, r * s * MathF.Sin(theta));
+    }
+
     private void SpawnResolvedSubShells(in PendingSubShellSpawn pending, D3D11Renderer renderer)
     {
         var dirs = pending.Directions;
         for (int i = 0; i < dirs.Length; i++)
         {
             Vector3 dir = dirs[i];
-            // Position jitter around parent burst
-            Vector3 pos = pending.Position + EmissionStyles.RandomUnitVector() * pending.SubProfile.PositionJitter;
+            Vector3 pos;
+            if (pending.IsStrobe && pending.ParentExplosionRadius > 0.0f)
+            {
+                // Strobes live inside the parent peony volume; use interior sampling and keep motion minimal.
+                // Spread is configurable via strobe params; fall back to 0.5x if unset.
+                float spreadMul = pending.StrobeParams.SpreadRadiusFraction;
+                if (spreadMul <= 0.0f)
+                    spreadMul = 0.5f;
+                pos = pending.Position + RandomPointInSphere(pending.ParentExplosionRadius * spreadMul);
+            }
+            else
+            {
+                // Position jitter around parent burst
+                pos = pending.Position + EmissionStyles.RandomUnitVector() * pending.SubProfile.PositionJitter;
+            }
 
             // Velocity blend: inherit portion of parent velocity + added along dir with jitter
-            float speedMul = 1.0f + (float)(_rng.NextDouble() * 2.0 - 1.0) * pending.SubProfile.SpeedJitter;
-            Vector3 vel = pending.ParentVelocity * pending.SubProfile.InheritParentVelocity + dir * (pending.SubProfile.AddedSpeed * speedMul);
+            Vector3 vel;
+            if (pending.IsStrobe)
+            {
+                Vector3 jitterDir = EmissionStyles.RandomUnitVector();
+                float speedMul = 0.35f * (float)_rng.NextDouble();
+                vel = pending.ParentVelocity * pending.SubProfile.InheritParentVelocity + jitterDir * speedMul;
+            }
+            else
+            {
+                float speedMul = 1.0f + (float)(_rng.NextDouble() * 2.0 - 1.0) * pending.SubProfile.SpeedJitter;
+                vel = pending.ParentVelocity * pending.SubProfile.InheritParentVelocity + dir * (pending.SubProfile.AddedSpeed * speedMul);
+            }
 
             // Resolve child shell profile and color scheme
             if (!_profiles.Shells.TryGetValue(pending.SubProfile.ShellProfileId, out var childProfile))
@@ -661,13 +730,25 @@ public sealed class FireworksEngine
             if (!_profiles.ColorSchemes.TryGetValue(schemeId, out var childScheme))
                 childScheme = _profiles.ColorSchemes.Values.FirstOrDefault();
 
+            var effectiveProfile = childProfile;
+            if (pending.IsStrobe && childProfile.BurstSparkleIntensity < 1.0f)
+            {
+                effectiveProfile = childProfile with { BurstSparkleIntensity = 1.0f };
+            }
+
+            float? fuseOverride = null;
+            if (pending.IsStrobe && pending.StrobeParams.SpawnMode == StrobeSpawnMode.Jittered && pending.StrobeParams.SpawnJitterSeconds > 0.0f)
+            {
+                fuseOverride = childProfile.FuseTimeSeconds + (float)_rng.NextDouble() * pending.StrobeParams.SpawnJitterSeconds;
+            }
+
             var child = new FireworkShell(
-                childProfile,
+                effectiveProfile,
                 childScheme,
                 pos,
                 vel,
                 dragK: ShellDragK,
-                fuseOverrideSeconds: null)
+                fuseOverrideSeconds: fuseOverride)
             {
                 SubshellDepth = pending.ParentDepth + 1,
                 ParentShellId = null,
@@ -697,8 +778,11 @@ public sealed class FireworksEngine
         public readonly ColorScheme ParentColorScheme;
         public readonly int ParentDepth;
         public readonly Vector3[] Directions;
+        public readonly bool IsStrobe;
+        public readonly StrobeParams StrobeParams;
+        public readonly float ParentExplosionRadius;
 
-        public PendingSubShellSpawn(float SpawnTime, Vector3 Position, Vector3 ParentVelocity, SubShellProfile SubProfile, SubShellAttachment Attachment, ColorScheme ParentColorScheme, int ParentDepth, Vector3[] Directions)
+        public PendingSubShellSpawn(float SpawnTime, Vector3 Position, Vector3 ParentVelocity, SubShellProfile SubProfile, SubShellAttachment Attachment, ColorScheme ParentColorScheme, int ParentDepth, Vector3[] Directions, bool IsStrobe, StrobeParams StrobeParams, float ParentExplosionRadius)
         {
             this.SpawnTime = SpawnTime;
             this.Position = Position;
@@ -708,6 +792,9 @@ public sealed class FireworksEngine
             this.ParentColorScheme = ParentColorScheme;
             this.ParentDepth = ParentDepth;
             this.Directions = Directions;
+            this.IsStrobe = IsStrobe;
+            this.StrobeParams = StrobeParams;
+            this.ParentExplosionRadius = ParentExplosionRadius;
         }
     }
 

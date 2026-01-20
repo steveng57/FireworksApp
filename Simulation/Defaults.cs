@@ -81,12 +81,15 @@ internal static class DefaultIds
     public const string shellCometNeonId = "comet_neon";
     public const string shellCracklePeonyId = "crackle_peony";
     public const string shellCometCrackleId = "comet_crackle";
+    public const string shellStrobeId = "strobe";
+    public const string shellStrobeFlashId = "strobe_flash";
 
     public const string subshellBasicPopId = "subshell_basic_pop";
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
     public const string subshellRingSparkleId = "subshell_ring_sparkle";
     public const string subshellCracklePeonyId = "subshell_crackle_peony";
     public const string subshellHorsetailCometId = "subshell_horsetail_comet";
+    public const string subshellStrobeId = "subshell_strobe";
 
     public const string groundFountainWarmId = "fountain_warm";
     public const string groundSpinnerNeonId = "spinner_neon";
@@ -199,7 +202,14 @@ public static class DefaultProfiles
             [ShellTrailPresets.Default.Id] = ShellTrailPresets.Default,
             [ShellTrailPresets.ShortBright.Id] = ShellTrailPresets.ShortBright,
             [ShellTrailPresets.WillowLingering.Id] = ShellTrailPresets.WillowLingering,
-            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon
+            [ShellTrailPresets.CometNeon.Id] = ShellTrailPresets.CometNeon,
+            ["trail_none"] = new TrailProfile(
+                Id: "trail_none",
+                ParticleCount: 0,
+                ParticleLifetimeSeconds: 0.0f,
+                Speed: 0.0f,
+                SmokeChance: 0.0f,
+                Color: Vector4.Zero)
         };
 
         var subshellTrailProfiles = new Dictionary<string, TrailProfile>
@@ -639,7 +649,42 @@ public static class DefaultProfiles
                     MicroLifetimeMinSeconds: 0.05f,
                     MicroLifetimeMaxSeconds: 0.14f,
                     ClusterStaggerMaxSeconds: 0.32f,
-                    NormalSparkMixProbability: 0.05f))
+                    NormalSparkMixProbability: 0.05f)),
+
+            [shellStrobeFlashId] = ShellPresets.Create(
+                id: shellStrobeFlashId,
+                burstShape: FireworkBurstShape.Peony,
+                colorSchemeId: schemeWhite,
+                fuseTimeSeconds: 0.50f,
+                explosionRadius: 0.025f,
+                particleCount: 100,
+                particleLifetimeSeconds: 0.60f,
+                burstSparkleRateHz: 0.0f,
+                burstSparkleIntensity: 0.0f,
+                burstSpeed: 5.0f,
+                trailProfile: trailProfiles["trail_none"],
+                emission: BurstEmissionSettings.Defaults),
+
+            [shellStrobeId] = ShellPresets.Create(
+                id: shellStrobeId,
+                burstShape: FireworkBurstShape.Peony,
+                colorSchemeId: schemeWhite,
+                fuseTimeSeconds: 3.7f,
+                explosionRadius: 12.0f,
+                particleCount: 5200,
+                particleLifetimeSeconds: 1.4f,
+                burstSparkleRateHz: 10.0f,
+                burstSparkleIntensity: 0.45f,
+                emission: BurstEmissionSettings.Defaults,
+                strobe: new StrobeParams(
+                    SubShellProfileId: subshellStrobeId,
+                    StrobeCount: 80,
+                    StrobeColor: Colors.White,
+                    StrobeRadiusMeters: 0.025f,
+                    StrobeLifetimeSeconds: 0.25f,
+                    SpreadRadiusFraction: 0.75f,
+                    SpawnMode: StrobeSpawnMode.Jittered,
+                    SpawnJitterSeconds: 0.75f))
         };
 
         // SubShell profiles: reusable child shell behaviors
@@ -690,6 +735,22 @@ public static class DefaultProfiles
                 speedJitter: 0.18f,
                 positionJitter: 0.45f,
                 childTimeScale: 1.0f,
+                maxSubshellDepth: 1),
+
+            [subshellStrobeId] = SubShellPresets.Sphere(
+                id: subshellStrobeId,
+                shellProfileId: shellStrobeFlashId,
+                count: 100,
+                minAltitudeToSpawn: 5.0f,
+                delaySeconds: 0.0f,
+                inheritParentVelocity: 0.05f,
+                addedSpeed: 6.0f,
+                directionJitter: 0.15f,
+                speedJitter: 0.20f,
+                positionJitter: 0.35f,
+                childTimeScale: 1.0f,
+                colorSchemeId: schemeWhite,
+                burstShapeOverride: FireworkBurstShape.Peony,
                 maxSubshellDepth: 1)
         };
 
@@ -922,18 +983,19 @@ public static class DefaultShow
         var mainShowShellIds = new[]
         {
            // shellCracklePeonyId,
-            shellBasicId,
-            shellChrysId,
-            shellWillowId,
-            shellFishId,
-            shellDonutId,
-            shellSpokeWheelPopId,
-            shellHorsetailGoldId,
-            shellCometCrackleId,
-            shellDoubleRingId,
-            shellPeonyToWillowId,
-            shellSpiralId,
-            shellCometNeonId
+            //shellBasicId,
+            shellStrobeId,  // Hero
+            shellDoubleRingId, // not-Hero
+            shellChrysId,   // Hero
+            shellFishId,    // Hero
+            shellDonutId,   // not-Hero
+            shellSpokeWheelPopId, // Hero
+            shellHorsetailGoldId, // Hero
+            shellWillowId,  // not-Hero
+            shellCometCrackleId,  // Hero
+            shellPeonyToWillowId, // Hero
+            shellSpiralId, // not-Hero
+            shellCometNeonId // Hero
         };
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
@@ -956,7 +1018,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                // shellId = (j % 2 == 0)? shellCracklePeonyId : shellHorsetailGoldId;
+                //shellId = (j % 2 == 0)? shellStrobeId: shellWillowId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 

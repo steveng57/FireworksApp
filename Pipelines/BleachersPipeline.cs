@@ -33,13 +33,57 @@ internal sealed class BleachersPipeline : IDisposable
     private ID3D11Buffer? _vb;
     private int _vertexCount;
 
-    private const float WidthMeters = 60.0f;
-    private const int RowCount = 12;
-    private const float RowRiseMeters = 0.40f;
-    private const float RowRunMeters = 0.85f;
-    private const float PostSpacingMeters = 3.0f;
-    private const float PostSizeMeters = 0.12f;
-    private const float BeamThicknessMeters = 0.12f;
+    private readonly record struct BleacherDetailProfile(
+        float WidthMeters,
+        int RowCount,
+        float RowRiseMeters,
+        float RowRunMeters,
+        float PostSpacingMeters,
+        float PostSizeMeters,
+        float BeamThicknessMeters,
+        bool StairEnabled,
+        float StairWidthMeters,
+        float StairInsetMeters,
+        float StairTreadThickness,
+        float StairSideClearance,
+        bool RailingEnabled,
+        float RailHeightMeters,
+        float RailPostSpacingMeters,
+        float RailRadiusMeters,
+        float RailPostRadiusMeters,
+        float RailOffsetFromEdge,
+        bool IncludeMidRail,
+        float MidRailHeightFactor,
+        float SideRailFrontInsetMeters)
+    {
+        public float HalfWidth => WidthMeters * 0.5f;
+        public float DepthMeters => RowCount * RowRunMeters;
+    }
+
+    private readonly record struct StairSpec(float CenterX, float X0, float X1);
+
+    private static readonly BleacherDetailProfile Profile = new(
+        WidthMeters: 60.0f,
+        RowCount: 12,
+        RowRiseMeters: 0.40f,
+        RowRunMeters: 0.85f,
+        PostSpacingMeters: 3.0f,
+        PostSizeMeters: 0.12f,
+        BeamThicknessMeters: 0.12f,
+        StairEnabled: true,
+        StairWidthMeters: 1.2f,
+        StairInsetMeters: 1.2f,
+        StairTreadThickness: 0.10f,
+        StairSideClearance: 0.05f,
+        RailingEnabled: true,
+        RailHeightMeters: 1.10f,
+        RailPostSpacingMeters: 2.0f,
+        RailRadiusMeters: 0.035f,
+        RailPostRadiusMeters: 0.04f,
+        RailOffsetFromEdge: 0.10f,
+        IncludeMidRail: true,
+        MidRailHeightFactor: 0.55f,
+        SideRailFrontInsetMeters: 0.25f);
 
     // Audience placement
     private const float AudienceSpacingMin = 0.55f;
@@ -74,7 +118,7 @@ internal sealed class BleachersPipeline : IDisposable
         };
         _inputLayout = device.CreateInputLayout(elements, vsBytes);
 
-        var verts = BuildGeometry();
+        var verts = BuildGeometry(Profile);
         _vertexCount = verts.Length;
 
         int stride = Marshal.SizeOf<BleacherVertex>();
@@ -142,33 +186,35 @@ internal sealed class BleachersPipeline : IDisposable
         }
     }
 
-    private static BleacherVertex[] BuildGeometry()
+    private static BleacherVertex[] BuildGeometry(in BleacherDetailProfile profile)
     {
-        float halfWidth = WidthMeters * 0.5f;
-        var verts = new List<BleacherVertex>(RowCount * 36 + 48000);
+        float halfWidth = profile.HalfWidth;
+        var verts = new List<BleacherVertex>(profile.RowCount * 64 + 52000);
+        var stairs = BuildStairSpecs(profile);
 
-        for (int i = 0; i < RowCount; i++)
+        for (int i = 0; i < profile.RowCount; i++)
         {
-            float y0 = i * RowRiseMeters;
-            float y1 = y0 + RowRiseMeters;
-            float z0 = i * RowRunMeters;
-            float z1 = z0 + RowRunMeters;
-            AddBox(verts, -halfWidth, halfWidth, y0, y1, z0, z1);
+            float y0 = i * profile.RowRiseMeters;
+            float y1 = y0 + profile.RowRiseMeters;
+            float z0 = i * profile.RowRunMeters;
+            float z1 = z0 + profile.RowRunMeters;
+
+            AddSeatRow(verts, profile, stairs, i, halfWidth);
 
             // Horizontal support beam at this row level
             float beamY0 = y0;
-            float beamY1 = beamY0 + BeamThicknessMeters;
-            float beamZCenter = z0 + RowRunMeters * 0.5f;
-            float beamZ0 = beamZCenter - BeamThicknessMeters * 0.5f;
-            float beamZ1 = beamZCenter + BeamThicknessMeters * 0.5f;
+            float beamY1 = beamY0 + profile.BeamThicknessMeters;
+            float beamZCenter = z0 + profile.RowRunMeters * 0.5f;
+            float beamZ0 = beamZCenter - profile.BeamThicknessMeters * 0.5f;
+            float beamZ1 = beamZCenter + profile.BeamThicknessMeters * 0.5f;
             AddBox(verts, -halfWidth, halfWidth, beamY0, beamY1, beamZ0, beamZ1);
 
             // Vertical posts along width for this row (skip row 0 which sits on ground)
             if (i > 0)
             {
-                int postCountX = Math.Max(2, (int)MathF.Floor(WidthMeters / PostSpacingMeters) + 1);
-                float postStep = WidthMeters / (postCountX - 1);
-                float postHalf = PostSizeMeters * 0.5f;
+                int postCountX = Math.Max(2, (int)MathF.Floor(profile.WidthMeters / profile.PostSpacingMeters) + 1);
+                float postStep = profile.WidthMeters / (postCountX - 1);
+                float postHalf = profile.PostSizeMeters * 0.5f;
                 float postY0 = 0.0f;
                 float postY1 = y0;
                 float postZCenter = z0;
@@ -185,33 +231,292 @@ internal sealed class BleachersPipeline : IDisposable
             }
         }
 
-        AddAudience(verts, halfWidth);
+        AddStairs(verts, profile, stairs);
+        AddRailings(verts, profile);
+        AddAudience(verts, halfWidth, profile, stairs);
 
         return verts.ToArray();
     }
 
-    private static void AddAudience(List<BleacherVertex> verts, float halfWidth)
+    private static StairSpec[] BuildStairSpecs(in BleacherDetailProfile profile)
+    {
+        if (!profile.StairEnabled)
+            return Array.Empty<StairSpec>();
+
+        float halfWidth = profile.HalfWidth;
+        var centers = new[] { -halfWidth + profile.StairInsetMeters, 0.0f, halfWidth - profile.StairInsetMeters };
+        var specs = new List<StairSpec>(centers.Length);
+        float halfSpan = profile.StairWidthMeters * 0.5f + profile.StairSideClearance;
+
+        for (int i = 0; i < centers.Length; i++)
+        {
+            float x0 = centers[i] - halfSpan;
+            float x1 = centers[i] + halfSpan;
+            x0 = MathF.Max(x0, -halfWidth);
+            x1 = MathF.Min(x1, halfWidth);
+            if (x1 - x0 > 0.05f)
+            {
+                specs.Add(new StairSpec(centers[i], x0, x1));
+            }
+        }
+
+        specs.Sort((a, b) => a.X0.CompareTo(b.X0));
+        return specs.ToArray();
+    }
+
+    private static void AddSeatRow(List<BleacherVertex> verts, in BleacherDetailProfile profile, ReadOnlySpan<StairSpec> stairs, int rowIndex, float halfWidth)
+    {
+        float y0 = rowIndex * profile.RowRiseMeters;
+        float y1 = y0 + profile.RowRiseMeters;
+        float z0 = rowIndex * profile.RowRunMeters;
+        float z1 = z0 + profile.RowRunMeters;
+
+        float minSegmentWidth = 0.50f;
+        float segmentStart = -halfWidth;
+
+        for (int i = 0; i < stairs.Length; i++)
+        {
+            float segmentEnd = MathF.Min(stairs[i].X0, halfWidth);
+            if (segmentEnd - segmentStart >= minSegmentWidth)
+            {
+                AddBox(verts, segmentStart, segmentEnd, y0, y1, z0, z1);
+            }
+
+            segmentStart = MathF.Max(segmentStart, stairs[i].X1);
+        }
+
+        if (halfWidth - segmentStart >= minSegmentWidth)
+        {
+            AddBox(verts, segmentStart, halfWidth, y0, y1, z0, z1);
+        }
+    }
+
+    private static void AddStairs(List<BleacherVertex> verts, in BleacherDetailProfile profile, ReadOnlySpan<StairSpec> stairs)
+    {
+        if (!profile.StairEnabled || stairs.Length == 0)
+            return;
+
+        float halfWidth = profile.HalfWidth;
+        float stairHalfWidth = profile.StairWidthMeters * 0.5f;
+
+        for (int row = 0; row < profile.RowCount; row++)
+        {
+            float y0 = row * profile.RowRiseMeters;
+            float y1 = y0 + profile.RowRiseMeters;
+            float z0 = row * profile.RowRunMeters;
+            float z1 = z0 + profile.RowRunMeters;
+
+            for (int i = 0; i < stairs.Length; i++)
+            {
+                float stairX0 = MathF.Max(stairs[i].CenterX - stairHalfWidth, -halfWidth);
+                float stairX1 = MathF.Min(stairs[i].CenterX + stairHalfWidth, halfWidth);
+                AddBox(verts, stairX0, stairX1, y0, y1, z0, z1);
+            }
+        }
+    }
+
+    private static void AddRailings(List<BleacherVertex> verts, in BleacherDetailProfile profile)
+    {
+        if (!profile.RailingEnabled)
+            return;
+
+        float halfWidth = profile.HalfWidth;
+        float depth = profile.DepthMeters;
+        float topDeckY = (profile.RowCount - 1) * profile.RowRiseMeters;
+        float backZ = depth - profile.RailOffsetFromEdge;
+        float leftX = -halfWidth + profile.RailOffsetFromEdge;
+        float rightX = halfWidth - profile.RailOffsetFromEdge;
+        float sideStartZ = profile.StairEnabled ? MathF.Max(profile.SideRailFrontInsetMeters, 0.0f) : 0.0f;
+        sideStartZ = MathF.Min(sideStartZ, depth);
+
+        AddRailRun(
+            verts,
+            new Vector3(leftX, topDeckY, backZ),
+            new Vector3(rightX, topDeckY, backZ),
+            profile.RailHeightMeters,
+            profile.RailPostRadiusMeters,
+            profile.RailRadiusMeters,
+            profile.RailPostSpacingMeters,
+            profile.IncludeMidRail,
+            profile.MidRailHeightFactor);
+
+        AddSideRail(verts, x: leftX, startZ: sideStartZ, depth, profile);
+        AddSideRail(verts, x: rightX, startZ: sideStartZ, depth, profile);
+    }
+
+    private static void AddSideRail(List<BleacherVertex> verts, float x, float startZ, float depth, in BleacherDetailProfile profile)
+    {
+        if (depth <= 0.0f)
+            return;
+
+        float run = profile.RowRunMeters;
+        float rise = profile.RowRiseMeters;
+        int startRow = Math.Clamp((int)MathF.Floor(startZ / run), 0, profile.RowCount - 1);
+        float railRadius = profile.RailRadiusMeters;
+        float postRadius = profile.RailPostRadiusMeters;
+
+        float postX0 = x - postRadius;
+        float postX1 = x + postRadius;
+        float railX0 = x - railRadius;
+        float railX1 = x + railRadius;
+
+        for (int row = startRow; row < profile.RowCount; row++)
+        {
+            float z0 = row * run;
+            float z1 = MathF.Min(z0 + run, depth);
+            float baseY = row * rise;
+            float postY0 = baseY;
+            float postY1 = postY0 + profile.RailHeightMeters;
+            float railY0 = postY1 - railRadius;
+            float railY1 = railY0 + railRadius * 2.0f;
+            float midRailY0 = postY0 + profile.RailHeightMeters * profile.MidRailHeightFactor - railRadius;
+            float midRailY1 = midRailY0 + railRadius * 2.0f;
+
+            // Post at segment start
+            AddBox(verts, postX0, postX1, postY0, postY1, z0 - postRadius, z0 + postRadius);
+            // Rail segment for this step
+            AddBox(verts, railX0, railX1, railY0, railY1, z0, z1);
+            if (profile.IncludeMidRail)
+            {
+                AddBox(verts, railX0, railX1, midRailY0, midRailY1, z0, z1);
+            }
+
+            // If last segment reaches the back, add a terminal post at z1
+            if (row == profile.RowCount - 1 || Math.Abs(z1 - depth) < 1e-3f)
+            {
+                AddBox(verts, postX0, postX1, postY0, postY1, z1 - postRadius, z1 + postRadius);
+                break;
+            }
+        }
+    }
+
+    private static void AddRailRun(
+        List<BleacherVertex> verts,
+        in Vector3 start,
+        in Vector3 end,
+        float postHeight,
+        float postRadius,
+        float railRadius,
+        float postSpacing,
+        bool includeMidRail,
+        float midRailHeightFactor)
+    {
+        float length = MathF.Max(MathF.Abs(end.X - start.X), MathF.Abs(end.Z - start.Z));
+        if (length < 1e-3f)
+            return;
+
+        int postCount = Math.Max(2, (int)MathF.Floor(length / MathF.Max(postSpacing, 0.01f)) + 1);
+        float step = length / (postCount - 1);
+        var dir = Vector3.Normalize(new Vector3(end.X - start.X, 0.0f, end.Z - start.Z));
+        bool alongX = MathF.Abs(dir.X) > MathF.Abs(dir.Z);
+
+        for (int i = 0; i < postCount; i++)
+        {
+            float dist = step * i;
+            var pos = start + dir * dist;
+            float px0 = pos.X - postRadius;
+            float px1 = pos.X + postRadius;
+            float pz0 = pos.Z - postRadius;
+            float pz1 = pos.Z + postRadius;
+            float py0 = start.Y;
+            float py1 = py0 + postHeight;
+            AddBox(verts, px0, px1, py0, py1, pz0, pz1);
+        }
+
+        float railY0 = start.Y + postHeight - railRadius;
+        float railY1 = railY0 + railRadius * 2.0f;
+
+        if (alongX)
+        {
+            float x0 = MathF.Min(start.X, end.X);
+            float x1 = MathF.Max(start.X, end.X);
+            float z0 = start.Z - railRadius;
+            float z1 = start.Z + railRadius;
+            AddBox(verts, x0, x1, railY0, railY1, z0, z1);
+
+            if (includeMidRail)
+            {
+                float midY0 = start.Y + postHeight * midRailHeightFactor - railRadius;
+                float midY1 = midY0 + railRadius * 2.0f;
+                AddBox(verts, x0, x1, midY0, midY1, z0, z1);
+            }
+        }
+        else
+        {
+            float z0 = MathF.Min(start.Z, end.Z);
+            float z1 = MathF.Max(start.Z, end.Z);
+            float x0 = start.X - railRadius;
+            float x1 = start.X + railRadius;
+            AddBox(verts, x0, x1, railY0, railY1, z0, z1);
+
+            if (includeMidRail)
+            {
+                float midY0 = start.Y + postHeight * midRailHeightFactor - railRadius;
+                float midY1 = midY0 + railRadius * 2.0f;
+                AddBox(verts, x0, x1, midY0, midY1, z0, z1);
+            }
+        }
+    }
+
+    private static bool IsInStairSpan(float x, ReadOnlySpan<StairSpec> stairs)
+    {
+        for (int i = 0; i < stairs.Length; i++)
+        {
+            if (x >= stairs[i].X0 && x <= stairs[i].X1)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static float AdvancePastStair(float x, ReadOnlySpan<StairSpec> stairs)
+    {
+        float next = x;
+        for (int i = 0; i < stairs.Length; i++)
+        {
+            if (x >= stairs[i].X0 - 1e-3f && x <= stairs[i].X1 + 1e-3f)
+            {
+                next = MathF.Max(next, stairs[i].X1);
+            }
+        }
+
+        return next;
+    }
+
+    private static void AddAudience(List<BleacherVertex> verts, float halfWidth, in BleacherDetailProfile profile, ReadOnlySpan<StairSpec> stairs)
     {
         var rng = new Random(AudienceSeed);
         var variants = CreateSilhouetteVariants();
         var standingIndex = variants.Count - 1;
         uint figureId = 1;
 
-        for (int row = 0; row < RowCount; row++)
-        {
-            float rowY = (row + 1) * RowRiseMeters; // seat surface at top of step
-            float rowZ = row * RowRunMeters;
-            float seatZ = rowZ + RowRunMeters * 0.35f;
+        float audienceStartX = stairs.Length > 0 ? stairs[0].X0 + AudienceSpacingMin * 0.5f : -halfWidth + AudienceSpacingMin * 0.5f;
+        float audienceEndX = stairs.Length > 0 ? stairs[^1].X1 - AudienceSpacingMin * 0.5f : halfWidth;
 
-            float t = RowCount <= 1 ? 0.0f : (float)row / (RowCount - 1);
+        if (audienceEndX <= audienceStartX)
+            return;
+
+        for (int row = 0; row < profile.RowCount; row++)
+        {
+            float rowY = (row + 1) * profile.RowRiseMeters; // seat surface at top of step
+            float rowZ = row * profile.RowRunMeters;
+            float seatZ = rowZ + profile.RowRunMeters * 0.35f;
+
+            float t = profile.RowCount <= 1 ? 0.0f : (float)row / (profile.RowCount - 1);
             float fillRow = Math.Clamp(AudienceFillBase * Lerp(1.05f, 0.85f, t), 0.0f, 1.0f);
 
-            float x = -halfWidth + AudienceSpacingMin * 0.5f;
-            while (x <= halfWidth)
+            float x = audienceStartX;
+            while (x <= audienceEndX)
             {
+                if (IsInStairSpan(x, stairs))
+                {
+                    x = AdvancePastStair(x, stairs) + AudienceSpacingMin;
+                    continue;
+                }
+
                 if (rng.NextDouble() <= fillRow)
                 {
-                    bool standing = row >= RowCount / 2 && rng.NextDouble() < AudienceStandingChance;
+                    bool standing = row >= profile.RowCount / 2 && rng.NextDouble() < AudienceStandingChance;
                     int variantIndex = standing ? standingIndex : rng.Next(standingIndex);
                     var baseVerts = variants[variantIndex];
 

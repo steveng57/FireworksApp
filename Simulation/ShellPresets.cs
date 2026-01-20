@@ -25,9 +25,10 @@ public static class ShellPresets
         CometParams? comet = null,
         PeonyToWillowParams? peonyToWillow = null,
         SubShellSpokeWheelPopParams? subShellSpokeWheelPop = null,
-    SparklingChrysanthemumParams? sparklingChrysanthemum = null,
-    FishParams? fish = null,
-    CrackleStarProfile? crackleStar = null) => new(
+        SparklingChrysanthemumParams? sparklingChrysanthemum = null,
+        FishParams? fish = null,
+        CrackleStarProfile? crackleStar = null,
+        StrobeParams? strobe = null) => new(
             Id: id,
             BurstShape: burstShape,
             ColorSchemeId: colorSchemeId,
@@ -48,7 +49,8 @@ public static class ShellPresets
             Comet: comet,
             PeonyToWillow: peonyToWillow,
             SubShellSpokeWheelPop: subShellSpokeWheelPop,
-        SparklingChrysanthemum: sparklingChrysanthemum,
-        Fish: fish,
-        CrackleStar: crackleStar);
+            SparklingChrysanthemum: sparklingChrysanthemum,
+            Fish: fish,
+            CrackleStar: crackleStar,
+            Strobe: strobe);
 }
