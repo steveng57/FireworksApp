@@ -69,7 +69,7 @@ internal static class DefaultIds
     public const string shellWillowId = "willow";
     public const string shellPalmId = "palm";
     public const string shellDonutId = "donut";
-    public const string shellHorsetailGoldId = "horsetail_gold";
+    public const string shellWillowHorseId = "horsetail_gold";
     public const string shellCometGoldStreakId = "comet_gold_streak";
     public const string shellDoubleRingId = "double_ring";
     public const string shellSpiralId = "spiral";
@@ -348,8 +348,8 @@ public static class DefaultProfiles
                         BrightnessScalar: 1.05f,
                         MinSpawnPerTick: 30))),
 
-            [shellHorsetailGoldId] = ShellPresets.Create(
-                id: shellHorsetailGoldId,
+            [shellWillowHorseId] = ShellPresets.Create(
+                id: shellWillowHorseId,
                 burstShape: FireworkBurstShape.PeonyToWillow,
                 colorSchemeId: schemeGold,
                 fuseTimeSeconds: 3.2f,             // whatever works with your canister
@@ -982,14 +982,14 @@ public static class DefaultShow
         // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
         var mainShowShellIds = new[]
         {
-           // shellCracklePeonyId,
+            //shellCracklePeonyId,
             //shellBasicId,
+            shellStrobeId,  // Hero
             shellSpokeWheelPopId, // Hero
             shellDoubleRingId, // not-Hero
             shellFishId,    // Hero
-            shellStrobeId,  // Hero
-            shellHorsetailGoldId, // Hero
             shellDonutId,   // not-Hero
+            shellWillowHorseId, // Hero
             shellCometNeonId, // Hero
             shellWillowId,  // not-Hero
             shellCometCrackleId,  // Hero
