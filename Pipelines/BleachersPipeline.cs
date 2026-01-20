@@ -41,6 +41,44 @@ internal sealed class BleachersPipeline : IDisposable
         AddBox(verts, -halfWidth, halfWidth, y0, y1, z0, z1);
     }
 
+    private static void AddWalkwayFigures(List<BleacherVertex> verts, in BleacherDetailProfile profile)
+    {
+        if (profile.WalkwayWidthMeters <= 0.0f || WalkwayFigureCount <= 0)
+            return;
+
+        var standingVariant = BuildStandingVariant();
+        var rng = new Random(WalkwaySeed);
+
+        float halfWidth = profile.HalfWidth;
+        float zStart = profile.DepthMeters;
+        float zEnd = zStart + profile.WalkwayWidthMeters;
+        float zMin = zStart + WalkwayFigureEdgeInset;
+        float zMax = zEnd - WalkwayFigureEdgeInset;
+        float xMin = -halfWidth + WalkwayFigureEdgeInset;
+        float xMax = halfWidth - WalkwayFigureEdgeInset;
+
+        if (zMax <= zMin || xMax <= xMin)
+            return;
+
+        float baseY = (profile.RowCount - 1) * profile.RowRiseMeters;
+        uint figureId = 10_000;
+
+        for (int i = 0; i < WalkwayFigureCount; i++)
+        {
+            float x = Lerp(xMin, xMax, (float)rng.NextDouble());
+            float z = Lerp(zMin, zMax, (float)rng.NextDouble());
+            float yaw = MathF.PI / 180.0f * (float)((rng.NextDouble() - 0.5) * 30.0);
+            float scale = Lerp(0.95f, 1.08f, (float)rng.NextDouble());
+
+            var rotation = Matrix4x4.CreateFromAxisAngle(Vector3.UnitY, yaw);
+            var scaleM = Matrix4x4.CreateScale(scale);
+            var translation = Matrix4x4.CreateTranslation(x, baseY, z);
+            var transform = scaleM * rotation * translation;
+
+            AppendVariant(verts, standingVariant, transform, rotation, figureId++);
+        }
+    }
+
     private ID3D11VertexShader? _vs;
     private ID3D11PixelShader? _ps;
     private ID3D11InputLayout? _inputLayout;
@@ -114,6 +152,10 @@ internal sealed class BleachersPipeline : IDisposable
     private const float AudienceScaleMax = 1.1f;
     private const float AudienceStandingChance = 0.02f;
     private const int AudienceSeed = 23456789;
+
+    private const int WalkwayFigureCount = 12;
+    private const int WalkwaySeed = 9876543;
+    private const float WalkwayFigureEdgeInset = 0.2f;
 
     public void Initialize(ID3D11Device device)
     {
@@ -251,6 +293,7 @@ internal sealed class BleachersPipeline : IDisposable
 
         AddStairs(verts, profile, stairs);
         AddWalkway(verts, profile);
+        AddWalkwayFigures(verts, profile);
         AddRailings(verts, profile);
         AddAudience(verts, halfWidth, profile, stairs);
 
