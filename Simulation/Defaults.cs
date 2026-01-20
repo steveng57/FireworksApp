@@ -984,18 +984,18 @@ public static class DefaultShow
         {
            // shellCracklePeonyId,
             //shellBasicId,
-            shellStrobeId,  // Hero
-            shellDoubleRingId, // not-Hero
-            shellChrysId,   // Hero
-            shellFishId,    // Hero
-            shellDonutId,   // not-Hero
             shellSpokeWheelPopId, // Hero
+            shellDoubleRingId, // not-Hero
+            shellFishId,    // Hero
+            shellStrobeId,  // Hero
             shellHorsetailGoldId, // Hero
+            shellDonutId,   // not-Hero
+            shellCometNeonId, // Hero
             shellWillowId,  // not-Hero
             shellCometCrackleId,  // Hero
             shellPeonyToWillowId, // Hero
             shellSpiralId, // not-Hero
-            shellCometNeonId // Hero
+            shellChrysId,   // Hero
         };
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
