@@ -984,18 +984,18 @@ public static class DefaultShow
         {
            // shellCracklePeonyId,
             //shellBasicId,
-            shellStrobeId,
-            shellChrysId,
-            shellWillowId,
-            shellFishId,
-            shellDonutId,
-            shellSpokeWheelPopId,
-            shellHorsetailGoldId,
-            shellCometCrackleId,
-            shellDoubleRingId,
-            shellPeonyToWillowId,
-            shellSpiralId,
-            shellCometNeonId
+            shellStrobeId,  // Hero
+            shellDoubleRingId, // not-Hero
+            shellChrysId,   // Hero
+            shellFishId,    // Hero
+            shellDonutId,   // not-Hero
+            shellSpokeWheelPopId, // Hero
+            shellHorsetailGoldId, // Hero
+            shellWillowId,  // not-Hero
+            shellCometCrackleId,  // Hero
+            shellPeonyToWillowId, // Hero
+            shellSpiralId, // not-Hero
+            shellCometNeonId // Hero
         };
         int mainCanisters = 25;
         for (int i = 0; i < 50; i += gridSize)
@@ -1018,7 +1018,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                shellId = (j % 2 == 0)? shellStrobeId: shellWillowId;
+                //shellId = (j % 2 == 0)? shellStrobeId: shellWillowId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
