@@ -29,7 +29,9 @@ public static class ShellPresets
         SparklingChrysanthemumParams? sparklingChrysanthemum = null,
         FishParams? fish = null,
         CrackleStarProfile? crackleStar = null,
-        StrobeParams? strobe = null) => new(
+        StrobeParams? strobe = null,
+        BlingParams? bling = null,
+        DiamondRingParams? diamondRing = null) => new(
             Id: id,
             BurstShape: burstShape,
             ColorSchemeId: colorSchemeId,
@@ -54,5 +56,7 @@ public static class ShellPresets
             SparklingChrysanthemum: sparklingChrysanthemum,
             Fish: fish,
             CrackleStar: crackleStar,
-            Strobe: strobe);
+            Strobe: strobe,
+            Bling: bling,
+            DiamondRing: diamondRing);
 }

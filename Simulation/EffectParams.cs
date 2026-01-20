@@ -331,6 +331,97 @@ public sealed record PeonyToWillowParams(
         WillowTrailSpeed: 2.5f);
 }
 
+public sealed record BlingParams(
+    FireworkBurstShape CoreBurstShape,
+    int? CoreParticleCount = null,
+    float? CoreParticleLifetimeSeconds = null,
+    float? CoreBurstSpeed = null,
+    float? CoreBurstSparkleRateHz = null,
+    float? CoreBurstSparkleIntensity = null,
+    BurstEmissionSettings? CoreEmission = null,
+    ColorSchemeId? CoreColorSchemeId = null,
+    FireworkBurstShape RingBurstShape = FireworkBurstShape.Ring,
+    int RingParticleCount = 1200,
+    float RingBurstSpeed = 9.0f,
+    float RingParticleLifetimeSeconds = 2.8f,
+    float RingSparkleRateHz = 0.0f,
+    float RingSparkleIntensity = 0.25f,
+    ColorSchemeId? RingColorSchemeId = null,
+    float RingDelaySeconds = 0.0f,
+    CrackleStarProfile? RingCrackle = null)
+{
+    public static BlingParams Defaults { get; } = new(
+        CoreBurstShape: FireworkBurstShape.Peony,
+        CoreParticleCount: null,
+        CoreParticleLifetimeSeconds: null,
+        CoreBurstSpeed: null,
+        CoreBurstSparkleRateHz: null,
+        CoreBurstSparkleIntensity: null,
+        CoreEmission: null,
+        CoreColorSchemeId: null,
+        RingBurstShape: FireworkBurstShape.Ring,
+        RingParticleCount: 1100,
+        RingBurstSpeed: 9.5f,
+        RingParticleLifetimeSeconds: 3.0f,
+        RingSparkleRateHz: 0.0f,
+        RingSparkleIntensity: 0.25f,
+        RingColorSchemeId: null,
+        RingDelaySeconds: 0.0f,
+        RingCrackle: null);
+
+    public BurstEmissionSettings CoreEmissionSettings => CoreEmission ?? BurstEmissionSettings.Defaults;
+    public CrackleStarProfile RingCrackleProfile => RingCrackle ?? CrackleStarProfile.Defaults;
+}
+
+public sealed record DiamondRingParams(
+    FireworkBurstShape CoreBurstShape,
+    int? CoreParticleCount = null,
+    float? CoreParticleLifetimeSeconds = null,
+    float? CoreBurstSpeed = null,
+    float? CoreBurstSparkleRateHz = null,
+    float? CoreBurstSparkleIntensity = null,
+    BurstEmissionSettings? CoreEmission = null,
+    ColorSchemeId? CoreColorSchemeId = null,
+    int RingSubshellCount = 18,
+    float RingSpeedMultiplier = 1.6f,
+    float RingSubshellLifetimeSeconds = 3.5f,
+    float RingSubshellLifetimeJitterSeconds = 0.0f,
+    float RingGravityScale = 0.75f,
+    float RingDrag = 0.05f,
+    SparklerLineTrailParams? RingTrail = null,
+    ColorSchemeId? RingColorSchemeId = null,
+    float RingDelaySeconds = 0.0f)
+{
+    public static DiamondRingParams Defaults { get; } = new(
+        CoreBurstShape: FireworkBurstShape.Peony,
+        CoreParticleCount: 3000,
+        CoreParticleLifetimeSeconds: 3.2f,
+        CoreBurstSpeed: 10.0f,
+        CoreBurstSparkleRateHz: 10.0f,
+        CoreBurstSparkleIntensity: 0.40f,
+        CoreEmission: BurstEmissionSettings.Defaults,
+        CoreColorSchemeId: null,
+        RingSubshellCount: 20,
+        RingSpeedMultiplier: 1.65f,
+        RingSubshellLifetimeSeconds: 3.8f,
+        RingSubshellLifetimeJitterSeconds: 0.6f,
+        RingGravityScale: 0.70f,
+        RingDrag: 0.05f,
+        RingTrail: SparklerLineTrailParams.Defaults with
+        {
+            SparkRate = 160.0f,
+            SparkLifetimeSeconds = 0.60f,
+            SparkSpeed = 2.8f,
+            SparkDirectionJitter = 0.32f,
+            BrightnessScalar = 1.20f,
+            MinSpawnPerTick = 28
+        },
+        RingColorSchemeId: null,
+        RingDelaySeconds: 0.0f);
+
+    public SparklerLineTrailParams RingTrailResolved => RingTrail ?? SparklerLineTrailParams.Defaults;
+}
+
 public sealed record CrackleStarProfile(
     float CrackleStarProbability,
     int ClusterCountMin,

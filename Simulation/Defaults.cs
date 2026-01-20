@@ -73,6 +73,7 @@ internal static class DefaultIds
     public const string shellWillowHorseId = "horsetail_gold";
     public const string shellCometGoldStreakId = "comet_gold_streak";
     public const string shellDoubleRingId = "double_ring";
+    public const string shellBlingId = "bling";
     public const string shellSpiralId = "spiral";
     public const string shellFishId = "fish";
     public const string shellSpokeWheelPopId = "spoke_wheel_pop";
@@ -85,6 +86,7 @@ internal static class DefaultIds
     public const string shellStrobeId = "strobe";
     public const string shellStrobeFlashId = "strobe_flash";
     public const string shellSilverDragonId = "silver_dragon";
+    public const string shellDiamondRingId = "diamond_ring";
 
     public const string subshellBasicPopId = "subshell_basic_pop";
     public const string subshellWillowTrailOnlyId = "subshell_willow_trail_only";
@@ -413,6 +415,75 @@ public static class DefaultProfiles
                 burstSparkleIntensity: 0.65f,
                 ringAxis: Vector3.UnitY,
                 ringAxisRandomTiltDegrees: 18.0f),
+
+            [shellBlingId] = ShellPresets.Create(
+                id: shellBlingId,
+                burstShape: FireworkBurstShape.Bling,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 3.9f,
+                explosionRadius: 14.0f,
+                particleCount: 3600,
+                particleLifetimeSeconds: 2.8f,
+                burstSparkleRateHz: 9.0f,
+                burstSparkleIntensity: 0.38f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 15.0f,
+                emission: BurstEmissionSettings.Defaults,
+                bling: new BlingParams(
+                    CoreBurstShape: FireworkBurstShape.Peony,
+                    CoreParticleCount: 3200,
+                    CoreParticleLifetimeSeconds: 3.6f,
+                    CoreBurstSpeed: 12.0f,
+                    CoreBurstSparkleRateHz: 9.0f,
+                    CoreBurstSparkleIntensity: 0.38f,
+                    RingBurstShape: FireworkBurstShape.Ring,
+                    RingParticleCount: 2400,
+                    RingBurstSpeed: 20.0f,
+                    RingParticleLifetimeSeconds: 4.2f,
+                    RingSparkleRateHz: 2.0f,
+                    RingSparkleIntensity: 0.50f,
+                    RingColorSchemeId: schemeGold,
+                    RingDelaySeconds: 0.0f,
+                    RingCrackle: CrackleStarProfile.Defaults with { CrackleStarProbability = 0.0f })),
+
+            [shellDiamondRingId] = ShellPresets.Create(
+                id: shellDiamondRingId,
+                burstShape: FireworkBurstShape.DiamondRing,
+                colorSchemeId: schemeGold,
+                fuseTimeSeconds: 4.0f,
+                explosionRadius: 14.0f,
+                particleCount: 3200,
+                particleLifetimeSeconds: 3.2f,
+                burstSparkleRateHz: 10.0f,
+                burstSparkleIntensity: 0.40f,
+                ringAxis: Vector3.UnitY,
+                ringAxisRandomTiltDegrees: 12.0f,
+                diamondRing: new DiamondRingParams(
+                    CoreBurstShape: FireworkBurstShape.Peony,
+                    CoreParticleCount: 3200,
+                    CoreParticleLifetimeSeconds: 3.2f,
+                    CoreBurstSpeed: 10.0f,
+                    CoreBurstSparkleRateHz: 10.0f,
+                    CoreBurstSparkleIntensity: 0.40f,
+                    CoreEmission: BurstEmissionSettings.Defaults,
+                    CoreColorSchemeId: schemeGold,
+                    RingSubshellCount: 22,
+                    RingSpeedMultiplier: 1.75f,
+                    RingSubshellLifetimeSeconds: 2.5f,
+                    RingSubshellLifetimeJitterSeconds: 0.5f,
+                    RingGravityScale: 0.70f,
+                    RingDrag: 0.05f,
+                    RingTrail: SparklerLineTrailParams.Defaults with
+                    {
+                        SparkRate = 170.0f,
+                        SparkLifetimeSeconds = 0.5f,
+                        SparkSpeed = 3.0f,
+                        SparkDirectionJitter = 0.30f,
+                        BrightnessScalar = 1.25f,
+                        MinSpawnPerTick = 28
+                    },
+                    RingColorSchemeId: schemeWhite,
+                    RingDelaySeconds: 0.0f)),
 
             [shellSpiralId] = ShellPresets.Create(
                 id: shellSpiralId,
@@ -1017,7 +1088,7 @@ public static class DefaultShow
         var random = new Random();
 
         // Quick SilverDragon demo pass for validation.
-        events.Add(new ShowEvent(TimeSeconds: 5.0f, CanisterId: canC13, ShellProfileId: shellSilverDragonId, ColorSchemeId: schemeSilver));
+        //events.Add(new ShowEvent(TimeSeconds: 5.0f, CanisterId: canC13, ShellProfileId: shellSilverDragonId, ColorSchemeId: schemeSilver));
 
 
 
@@ -1045,8 +1116,8 @@ public static class DefaultShow
         // Ordered list of shell IDs for the main show. Adjust this list to change launch order.
         var mainShowShellIds = new[]
         {
-            //shellCracklePeonyId,
-            //shellBasicId,
+            ////shellCracklePeonyId,
+            ////shellBasicId,
             shellStrobeId,  // Hero
             shellSpokeWheelPopId, // Hero
             shellDoubleRingId, // not-Hero
@@ -1055,7 +1126,9 @@ public static class DefaultShow
             shellWillowHorseId, // Hero
             shellCometNeonId, // Hero
             shellSilverDragonId, // Hero
-            shellWillowId,  // not-Hero
+            shellBlingId, // not-Hero
+            shellDiamondRingId, // semi-Hero
+            //// shellWillowId,  // not-Hero
             shellCometCrackleId,  // Hero
             shellPeonyToWillowId, // Hero
             shellSpiralId, // not-Hero
@@ -1082,7 +1155,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                //shellId = (j % 2 == 0)? shellStrobeId: shellSilverDragonId;
+                //shellId = (j % 2 == 0)? shellSilverDragonId: shellCometCrackleId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
