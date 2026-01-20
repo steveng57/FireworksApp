@@ -15,5 +15,6 @@ public enum FireworkBurstShape
     FinaleSalute,
     Comet,
     SubShellSpokeWheelPop,
-    CrackleStar
+    CrackleStar,
+    SilverDragon
 }
