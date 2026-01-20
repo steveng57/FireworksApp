@@ -663,7 +663,7 @@ public static class DefaultProfiles
                 trailProfile: trailProfiles["trail_silver_dragon"],
                 silverDragon: SilverDragonParams.Defaults with
                 {
-                    DragonCount = 9,
+                    DragonCount = 15,
                     SpeedMin = 14.0f,
                     SpeedMax = 22.0f,
                     UpBias = 0.25f,
@@ -671,13 +671,13 @@ public static class DefaultProfiles
                     LifetimeJitterSeconds = 0.5f,
                     GravityScale = 0.85f,
                     Drag = 0.05f,
-                    SpiralRadiusMeters = 0.22f,
+                    SpiralRadiusMeters = 0.5f,
                     SpiralRadiusGrowth = 0.05f,
-                    AngularSpeedRadPerSec = 18.0f,
+                    AngularSpeedRadPerSec = 15.0f,
                     AngularSpeedJitterFraction = 0.22f,
                     TrailSpawnRate = 22.0f,
-                    TrailParticleCount = 4,
-                    TrailParticleLifetimeSeconds = 0.60f,
+                    TrailParticleCount = 30,
+                    TrailParticleLifetimeSeconds = 1.20f,
                     TrailSpeed = 4.8f,
                     TrailSmokeChance = 0.08f,
                     TrailColor = new Vector4(1.15f, 1.15f, 1.10f, 1.0f),
@@ -1082,7 +1082,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                shellId = (j % 2 == 0)? shellStrobeId: shellSilverDragonId;
+                //shellId = (j % 2 == 0)? shellStrobeId: shellSilverDragonId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
