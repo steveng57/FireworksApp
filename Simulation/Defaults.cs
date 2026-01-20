@@ -1017,7 +1017,7 @@ public static class DefaultShow
 
                 // debug variations
                 //shellId = shellFishId;
-                //shellId = (j % 2 == 0)? shellStrobeId: shellBasicId;
+                shellId = (j % 2 == 0)? shellStrobeId: shellWillowId;
                 //canisterId = "c2";
                 //colorSchemeId = "debug";
 
