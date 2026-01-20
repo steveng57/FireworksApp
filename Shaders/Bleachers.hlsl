@@ -51,26 +51,18 @@ static float3 SelectFigureColor(uint figureId)
 {
     // Keep non-figure geometry dark grey.
     const float3 darkGrey = float3(0.18f, 0.18f, 0.20f);
-    const float3 lightGrey = float3(0.70f, 0.70f, 0.75f);
     if (figureId == 0)
     {
         return darkGrey;
     }
 
     float h = Hash11(figureId);
-    if (h < 0.25f)
-    {
-        return darkGrey;
-    }
-    if (h < 0.5f)
-    {
-        return lightGrey;
-    }
-    float t = (h - 0.5f) * 2.0f; // 0..1 across color band
-    if (t < 0.2f) return float3(0.85f, 0.12f, 0.12f);      // red
-    if (t < 0.4f) return float3(0.12f, 0.75f, 0.18f);      // green
-    if (t < 0.6f) return float3(0.18f, 0.18f, 0.85f);      // blue
-    if (t < 0.8f) return float3(0.58f, 0.32f, 0.78f);      // purple
+    if (h < 0.25f) return darkGrey;
+    if (h < 0.5f) return float3(0.75f, 0.75f, 0.80f);      // lightGrey
+    if (h < 0.6f) return float3(0.85f, 0.12f, 0.12f);      // red
+    if (h < 0.7f) return float3(0.12f, 0.75f, 0.18f);      // green
+    if (h < 0.8f) return float3(0.18f, 0.18f, 0.85f);      // blue
+    if (h < 0.9f) return float3(0.58f, 0.32f, 0.78f);      // purple
     return float3(0.95f, 0.88f, 0.20f);                    // yellow
 }
 
