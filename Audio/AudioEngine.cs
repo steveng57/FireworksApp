@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Windows.Media;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 
 namespace FireworksApp.Audio;
 
@@ -24,11 +26,16 @@ public sealed class AudioEngine : IDisposable
 
     public int MaxVoices { get; set; } = 16;
 
+    public bool UseSoftwareMixer { get; set; } = true;
+
     public bool EnableDiagnostics { get; set; }
+
+    private SoftwareMixer? _mixer;
 
     public AudioEngine()
     {
         EnsureVoices();
+        TryEnsureMixer();
     }
 
     public void Enqueue(in SoundEvent ev)
@@ -86,6 +93,16 @@ public sealed class AudioEngine : IDisposable
 
     private void PlayNow(Scheduled s)
     {
+        if (UseSoftwareMixer && TryEnsureMixer() && _mixer is not null)
+        {
+            if (_mixer.TryPlay(s.Type, MasterVolume * s.Gain, s.Loop, MaxVoices, EnableDiagnostics))
+            {
+                if (EnableDiagnostics)
+                    Debug.WriteLine($"[Audio] MixerPlay {s.Type} vol={MasterVolume * s.Gain:0.00}");
+                return;
+            }
+        }
+
         // Minimal placeholder playback: uses a single MediaPlayer instance.
         // This keeps the audio system decoupled; can be replaced with a polyphonic backend later.
         Uri? uri = ResolveUri(s.Type);
@@ -150,6 +167,29 @@ public sealed class AudioEngine : IDisposable
         return stolen;
     }
 
+    private bool TryEnsureMixer()
+    {
+        if (!UseSoftwareMixer)
+            return false;
+
+        if (_mixer is { IsDisposed: false })
+            return true;
+
+        try
+        {
+            _mixer = new SoftwareMixer();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (EnableDiagnostics)
+                Debug.WriteLine($"[Audio] Mixer init failed: {ex}");
+            _mixer = null;
+            UseSoftwareMixer = false;
+            return false;
+        }
+    }
+
     private void OnVoiceMediaEnded(Voice v)
     {
         if (v.Loop)
@@ -175,6 +215,15 @@ public sealed class AudioEngine : IDisposable
 
     private static Uri? ResolveUri(SoundEventType type)
     {
+        string? path = ResolvePath(type);
+        if (path is null)
+            return null;
+
+        return new Uri(path, UriKind.Absolute);
+    }
+
+    private static string? ResolvePath(SoundEventType type)
+    {
         // Expected files under `Assets/Audio/` and copied to output directory.
         string name = type switch
         {
@@ -190,13 +239,11 @@ public sealed class AudioEngine : IDisposable
         if (string.IsNullOrWhiteSpace(name))
             return null;
 
-        // Use file URI from output directory to avoid pack:// resolution issues.
-        // This works as long as the files are copied by the .csproj item.
         string path = Path.Combine(AppContext.BaseDirectory, "Assets", "Audio", name);
         if (!File.Exists(path))
             return null;
 
-        return new Uri(path, UriKind.Absolute);
+        return path;
     }
 
     public void Dispose()
@@ -215,6 +262,8 @@ public sealed class AudioEngine : IDisposable
             }
         }
         _voices.Clear();
+
+        _mixer?.Dispose();
     }
 
     private struct Scheduled
@@ -254,6 +303,253 @@ public sealed class AudioEngine : IDisposable
 
             Player.MediaEnded += OnMediaEnded;
             Player.MediaFailed += OnMediaFailed;
+        }
+    }
+
+    private sealed class SoftwareMixer : ISampleProvider, IDisposable
+    {
+        private const int SampleRate = 44100;
+
+        private readonly object _lock = new();
+        private readonly List<MixerVoice> _voices = new();
+        private readonly Dictionary<SoundEventType, MixerClip> _clips = new();
+        private readonly WaveOutEvent _output;
+        private bool _disposed;
+
+        public SoftwareMixer()
+        {
+            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 1);
+            _output = new WaveOutEvent
+            {
+                DesiredLatency = 80,
+                NumberOfBuffers = 2
+            };
+            _output.Init(this);
+            _output.Play();
+        }
+
+        public WaveFormat WaveFormat { get; }
+
+        public bool IsDisposed => _disposed;
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            if (_disposed)
+                return 0;
+
+            var span = buffer.AsSpan(offset, count);
+            span.Clear();
+
+            lock (_lock)
+            {
+                for (int i = 0; i < _voices.Count; i++)
+                {
+                    var v = _voices[i];
+                    if (!v.Active)
+                        continue;
+
+                    int remaining = v.Clip.Samples.Length - v.Position;
+                    if (remaining <= 0)
+                    {
+                        if (v.Loop)
+                        {
+                            v.Position = 0;
+                            remaining = v.Clip.Samples.Length;
+                        }
+                        else
+                        {
+                            v.Active = false;
+                            _voices[i] = v;
+                            continue;
+                        }
+                    }
+
+                    int toCopy = Math.Min(count, remaining);
+                    var clipSpan = v.Clip.Samples.AsSpan(v.Position, toCopy);
+                    for (int s = 0; s < toCopy; s++)
+                    {
+                        span[s] += clipSpan[s] * v.Gain;
+                    }
+                    v.Position += toCopy;
+                    if (v.Position >= v.Clip.Samples.Length && !v.Loop)
+                        v.Active = false;
+
+                    _voices[i] = v;
+                }
+
+                for (int i = _voices.Count - 1; i >= 0; i--)
+                {
+                    if (!_voices[i].Active)
+                        _voices.RemoveAt(i);
+                }
+            }
+
+            float peak = 0.0f;
+            for (int i = 0; i < count; i++)
+            {
+                float p = MathF.Abs(span[i]);
+                if (p > peak)
+                    peak = p;
+            }
+
+            if (peak > 0.99f)
+            {
+                float scale = 0.99f / peak;
+                for (int i = 0; i < count; i++)
+                {
+                    span[i] *= scale;
+                }
+            }
+
+            return count;
+        }
+
+        public bool TryPlay(SoundEventType type, float gain, bool loop, int maxVoices, bool diagnostics)
+        {
+            if (_disposed || gain <= 0.0001f)
+                return false;
+
+            var clip = GetClip(type, diagnostics);
+            if (!clip.HasValue || clip.Value.Samples.Length == 0)
+                return false;
+
+            var voice = new MixerVoice(clip.Value, gain, loop);
+
+            lock (_lock)
+            {
+                if (_voices.Count >= maxVoices)
+                {
+                    int idx = FindWeakestVoice();
+                    if (idx < 0)
+                        return false;
+
+                    if (_voices[idx].Gain > gain)
+                        return false;
+
+                    _voices[idx] = voice;
+                    return true;
+                }
+
+                _voices.Add(voice);
+            }
+
+            return true;
+        }
+
+        private int FindWeakestVoice()
+        {
+            float min = float.MaxValue;
+            int idx = -1;
+            for (int i = 0; i < _voices.Count; i++)
+            {
+                if (_voices[i].Gain < min)
+                {
+                    min = _voices[i].Gain;
+                    idx = i;
+                }
+            }
+            return idx;
+        }
+
+        private MixerClip? GetClip(SoundEventType type, bool diagnostics)
+        {
+            lock (_lock)
+            {
+                if (_clips.TryGetValue(type, out var cached))
+                    return cached;
+            }
+
+            string? path = ResolvePath(type);
+            if (path is null)
+                return null;
+
+            try
+            {
+                using var reader = new AudioFileReader(path);
+                ISampleProvider provider = reader;
+
+                if (provider.WaveFormat.Channels == 2)
+                {
+                    provider = new StereoToMonoSampleProvider(provider);
+                }
+                else if (provider.WaveFormat.Channels != 1)
+                {
+                    provider = new MultiplexingSampleProvider(new[] { provider }, 1);
+                }
+
+                if (provider.WaveFormat.SampleRate != SampleRate)
+                {
+                    provider = new WdlResamplingSampleProvider(provider, SampleRate);
+                }
+
+                var samples = new List<float>(reader.Length > 0 ? (int)(reader.Length / sizeof(float)) : 4096);
+                var buffer = new float[SampleRate];
+                int read;
+                while ((read = provider.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    for (int i = 0; i < read; i++)
+                    {
+                        samples.Add(buffer[i]);
+                    }
+                }
+
+                var clip = new MixerClip(samples.ToArray());
+
+                lock (_lock)
+                {
+                    _clips[type] = clip;
+                }
+
+                return clip;
+            }
+            catch (Exception ex)
+            {
+                if (diagnostics)
+                    Debug.WriteLine($"[Audio] Mixer load failed for {type}: {ex}");
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            lock (_lock)
+            {
+                _voices.Clear();
+                _clips.Clear();
+            }
+            _output.Dispose();
+        }
+
+        private struct MixerClip
+        {
+            public MixerClip(float[] samples)
+            {
+                Samples = samples;
+            }
+
+            public float[] Samples { get; }
+        }
+
+        private struct MixerVoice
+        {
+            public MixerVoice(MixerClip clip, float gain, bool loop)
+            {
+                Clip = clip;
+                Gain = gain;
+                Loop = loop;
+                Position = 0;
+                Active = true;
+            }
+
+            public MixerClip Clip { get; }
+            public float Gain { get; }
+            public bool Loop { get; }
+            public int Position { get; set; }
+            public bool Active { get; set; }
         }
     }
 }
